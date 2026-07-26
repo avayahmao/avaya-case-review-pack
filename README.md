@@ -2,7 +2,7 @@
 
 > 🌐 **HTML Version Available**: If you do not have a Markdown reader, open **[README.html](file:///e:/case/avaya-case-review-pack/README.html)** directly in your browser.
 
-This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and embedded **Avaya Tier 4 domain rules** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs.
+This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and embedded **Avaya support domain rules** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs.
 
 ---
 
