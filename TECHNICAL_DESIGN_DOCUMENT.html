@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technical Design Document — Avaya Case Review Suite</title>
+    <style>
+        :root {
+            --navy: #0B192C;
+            --blue-accent: #1E3E62;
+            --red-accent: #E63946;
+            --bg-light: #F8FAFC;
+            --card-border: #E2E8F0;
+            --text-dark: #0F172A;
+            --text-muted: #475569;
+            --white: #FFFFFF;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: var(--navy);
+            color: var(--white);
+            padding: 40px 20px;
+            border-bottom: 6px solid var(--red-accent);
+        }
+        header .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2.2rem;
+            color: var(--white);
+        }
+        header p {
+            margin: 0;
+            font-size: 1.1rem;
+            color: #94a3b8;
+        }
+        .main-container {
+            max-width: 1000px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid var(--card-border);
+        }
+        h2 {
+            color: var(--navy);
+            border-bottom: 2px solid var(--card-border);
+            padding-bottom: 8px;
+            margin-top: 35px;
+            font-size: 1.5rem;
+        }
+        h3 {
+            color: var(--blue-accent);
+            margin-top: 25px;
+            font-size: 1.2rem;
+        }
+        p, ul, ol {
+            color: #334155;
+            font-size: 1rem;
+        }
+        li {
+            margin-bottom: 6px;
+        }
+        code {
+            background-color: #f1f5f9;
+            color: #0f172a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background-color: #090d16;
+            color: #38bdf8;
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: Consolas, Monaco, monospace;
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+        .card {
+            background: #f8fafc;
+            border-left: 4px solid var(--red-accent);
+            padding: 15px 20px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px 15px;
+            border: 1px solid var(--card-border);
+            text-align: left;
+            font-size: 0.95rem;
+        }
+        th {
+            background-color: var(--navy);
+            color: var(--white);
+        }
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        .badge {
+            display: inline-block;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <h1>Technical Design Document (TDD)</h1>
+        <p>Avaya Case Review Suite & Intelligent Diagnostic Engine</p>
+    </div>
+</header>
+
+<div class="main-container">
+
+    <h2>1. Executive Summary & System Objectives</h2>
+    <p>The <strong>Avaya Case Review Suite</strong> is an enterprise-grade AI governance system designed for Avaya Support Managers, Operations Leads, Service Delivery Managers (SDMs), and Technical Escalation Managers.</p>
+    <p>The system automates the synthesis of raw ticket data (Siebel SRs and ServiceNow INCs) and off-system email communications (Google Workspace / Gmail), while executing <strong>automated technical direction auditing</strong> using an embedded 10-Domain Avaya UC/CC expert knowledge base.</p>
+
+    <div class="card">
+        <strong>Key Architectural Goals:</strong>
+        <ul>
+            <li><strong>1-Click Executive Case Brief Generation</strong>: Transforms hundreds of pages of raw database dumps into clean, executive-ready markdown reports.</li>
+            <li><strong>Unified Off-System Email Synthesis</strong>: Integrates headless Playwright browser automation with Google Workspace to extract SDM threads, customer commitments, and auto-router (OCD) "UNASSIGNABLE" dispatch alerts.</li>
+            <li><strong>Automated Sanity Auditing</strong>: Detects engineer misdirection (e.g. blaming application SDKs for platform configuration issues), verifies system attribute dependencies (such as CM <code>SA9114</code>/<code>SA9124</code>), enforces official Javadoc API methods (<code>LucentV5CallInfo.getUCID()</code>), and flags misdirected vendor escalations (BBE vs CPE vs Verint vs Nuance).</li>
+            <li><strong>Google Apps Script & Sheet Governance Integration</strong>: Webhook endpoint and scheduled trigger engine (<code>Code.gs</code>) that synchronizes case review verdicts into Google Sheets, generates Google Docs briefs, and fires email alerts to managers for stalled cases.</li>
+        </ul>
+    </div>
+
+    <h2>2. End-to-End System Architecture</h2>
+    <p>The architecture consists of five primary decoupled layers:</p>
+
+<pre>
++-----------------------------------------------------------------------------------+
+| 1. CLIENT INTERFACE LAYER                                                          |
+|    Antigravity Windows Desktop App (Agent Runtime & Markdown Renderer)             |
++-----------------------------------------------------------------------------------+
+                                         |
+                                         v
++-----------------------------------------------------------------------------------+
+| 2. MCP BRIDGE & AGENT TOOL SUBSYSTEMS                                              |
+|  +-------------------------------------+   +------------------------------------+ |
+|  | CaseToMD MCP Bridge                 |   | Playwright Gmail MCP Server        | |
+|  | (casetomd_mcp_bridge.py)          |   | (gmail_mcp_server.py / playwright) | |
+|  +-------------------------------------+   +------------------------------------+ |
++-----------------------------------------------------------------------------------+
+                   |                                           |
+                   v                                           v
++--------------------------------------+    +---------------------------------------+
+| 3. ENTERPRISE DATA SOURCES           |    | 4. GOOGLE WORKSPACE & APPS SCRIPT     |
+|  * Siebel SR Database / ServiceNow   |    |  * @avaya.com Gmail Inbox             |
+|  * HTTPS Endpoint:                   |    |  * Google Apps Script (Code.gs)       |
+|    https://192.168.67.160:8000/mcp   |    |  * Google Sheet Governance Dashboard  |
++--------------------------------------+    +---------------------------------------+
+                   |                                           |
+                   +---------------------+---------------------+
+                                         |
+                                         v
++-----------------------------------------------------------------------------------+
+| 5. INTELLIGENCE ENGINE & 10-DOMAIN KNOWLEDGE BASE                                 |
+|  * SKILL: plugins/avaya-case-review/skills/case-review/SKILL.md                    |
+|  * 10 Domain Reference Files: aes-cti-jtapi.md, contact-center.md, etc.          |
++-----------------------------------------------------------------------------------+
+</pre>
+
+    <h2>3. Subsystem Specifications</h2>
+
+    <h3>3.1 Client Layer: Antigravity Desktop App Runtime</h3>
+    <ul>
+        <li><strong>Target OS</strong>: Windows 10 / 11 64-bit</li>
+        <li><strong>Discovery</strong>: Automatically scans <code>%USERPROFILE%\.gemini\config\plugins</code> for active skills and MCP configurations.</li>
+        <li><strong>Execution Mode</strong>: Non-sandboxed subagent execution with structured JSON tool invocations and live streaming Markdown report output.</li>
+    </ul>
+
+    <h3>3.2 MCP Server Bridges</h3>
+    
+    <h4>Subsystem A: CaseToMD MCP Bridge (<code>tools/casetomd/casetomd_mcp_bridge.py</code>)</h4>
+    <ul>
+        <li><strong>Protocol</strong>: Model Context Protocol (MCP) JSON-RPC over STDIO.</li>
+        <li><strong>Backend Endpoint</strong>: <code>https://192.168.67.160:8000/mcp</code> (Handles TLS self-signed certificates with <code>urllib3</code> SSL context suppression).</li>
+        <li><strong>Tool Signature</strong>:
+<pre>{
+  "name": "get_case_markdown",
+  "description": "Fetch raw case details from Siebel SR or ServiceNow INC and convert to structured Markdown.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "report_id": {
+        "type": "string",
+        "description": "Case ID e.g. 1-23659220672, INC7386572, CHG..., CTASK..."
+      }
+    },
+    "required": ["report_id"]
+  }
+}</pre>
+        </li>
+    </ul>
+
+    <h4>Subsystem B: Playwright Gmail MCP Server (<code>tools/gmail/gmail_mcp_server.py</code>)</h4>
+    <ul>
+        <li><strong>Protocol</strong>: MCP STDIO server interfacing with a headless Playwright Chromium instance.</li>
+        <li><strong>Authentication Persistence</strong>: Session profile is stored locally under <code>%USERPROFILE%\.gemini\tools\gmail\chrome_profile</code> preserving corporate Google SSO Duo/MFA tokens across restarts.</li>
+        <li><strong>Tools Exposed</strong>:
+            <ol>
+                <li><code>gmail_search(query)</code>: Queries inbox for case IDs, sub-task IDs (<code>TASK0614855</code>), customer names, or SDM thread keywords.</li>
+                <li><code>gmail_read_thread(thread_id)</code>: Extracts full message body, sender, recipient, and timestamps.</li>
+                <li><code>gmail_send(to, subject, body)</code>: Sends executive digest or escalation email from user's authenticated handle.</li>
+            </ol>
+        </li>
+    </ul>
+
+    <h3>3.3 Intelligence Engine & 10-Domain Knowledge Base</h3>
+    <p>The core brain of the review system is defined in <code>plugins/avaya-case-review/skills/case-review/SKILL.md</code>.</p>
+
+    <h4>Progressive Knowledge Base Loading Matrix</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>Domain Reference File</th>
+                <th>Target Product / Component</th>
+                <th>Trigger Keywords & Audit Flags</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>aes-cti-jtapi.md</code></td>
+                <td>AES / CTI / JTAPI</td>
+                <td>TSAPI, CSTA, DMCC, park/unpark, <code>SA9114</code>, <code>SA9124</code>, <code>T####</code>, <code>connBelongsToCall</code></td>
+            </tr>
+            <tr>
+                <td><code>contact-center.md</code></td>
+                <td>Contact Center & AXP</td>
+                <td>Oceana, AACC, POM, AXP, CMS, skill routing, vector wait-time > 0, EACC</td>
+            </tr>
+            <tr>
+                <td><code>recording-wfo.md</code></td>
+                <td>Recording & WFO</td>
+                <td>ACRA, Verint, WFO/WFE, RIS, WebLogic, <code>CSTA_CALL_CLEARED</code>, DMSA</td>
+            </tr>
+            <tr>
+                <td><code>analytics-kubernetes.md</code></td>
+                <td>Analytics & K8s</td>
+                <td>Oceanalytics, Kafka, Kubernetes pod failures, MicroStrategy, ETL pipeline</td>
+            </tr>
+            <tr>
+                <td><code>security-vulnerability.md</code></td>
+                <td>Security & CVE</td>
+                <td>AVAPT/NVAPT, CVE vulnerabilities, SSH/TLS cipher suite hardening, SSL handshakes</td>
+            </tr>
+            <tr>
+                <td><code>sip-voice-quality.md</code></td>
+                <td>SIP & Voice Quality</td>
+                <td>SIP signaling, SBC, one-way audio, RTP packet loss, jitter, codec negotiation</td>
+            </tr>
+            <tr>
+                <td><code>certificates-login-outage.md</code></td>
+                <td>Certificates & Outages</td>
+                <td>Certificate cascade, WebLM, SMGR, login/auth failures, major outage recovery</td>
+            </tr>
+            <tr>
+                <td><code>digital-channels.md</code></td>
+                <td>Digital Channels</td>
+                <td>Email, Social, Infinity, ESL, WeChat/WhatsApp, screen-pop routing</td>
+            </tr>
+            <tr>
+                <td><code>ip-office.md</code></td>
+                <td>IP Office (IPO)</td>
+                <td>IP Office (IPO), SSA, SysMonitor, SIP trunk registration, IPO Manager</td>
+            </tr>
+            <tr>
+                <td><code>log-collection.md</code></td>
+                <td>Log Collection Matrix</td>
+                <td><code>getlogs</code>, <code>csta_trace</code>, <code>g3trace</code>, <code>spi.log</code>, <code>acr.log</code>, <code>tcpdump</code> log matrix</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h4>Vendor Escalation Handoff Verification Rules</h4>
+    <ul>
+        <li><strong>CM / AES Core Software Bugs</strong> &rarr; Assign to <span class="badge">[BBE PEA]</span> (CM ASAI, AES service crash, crossID exhaustion).</li>
+        <li><strong>POM / AEP Product Code</strong> &rarr; Assign to <span class="badge">[CPE PEA]</span> (POM campaign engine, AEP application server, REST driver).</li>
+        <li><strong>Verint / WFO / RIS / WebLogic</strong> &rarr; Assign to <span class="badge">[Verint Support Ticket]</span> (ACRA recording failure, RIS connection, DMSA).</li>
+        <li><strong>Nuance MRCP / ASR / TTS</strong> &rarr; Assign to <span class="badge">[Nuance Support Ticket]</span> (Speech recognition grammar errors, MRCP v2 timeout).</li>
+        <li><strong>Customer Infrastructure</strong> &rarr; Assign to <span class="badge">[Customer / MSP Action]</span> (LDAP auth, SQL database, firewall ports).</li>
+    </ul>
+
+    <h3>3.4 Google Apps Script & Workspace Integration Subsystem (<code>tools/appsscript/Code.gs</code>)</h3>
+    <p>Google Apps Script provides the cloud governance layer for tracking cases across Google Sheets, generating Google Docs briefs, and firing automated daily email digests.</p>
+
+<pre>// Key Functions in Code.gs:
+
+/** 1. doPost(e): HTTP Webhook Endpoint receiving JSON from Antigravity */
+function doPost(e) { ... }
+
+/** 2. updateCaseTrackingSheet(data): Updates Google Sheet Governance Dashboard */
+function updateCaseTrackingSheet(data) { ... }
+
+/** 3. createGoogleDocReport(data): Generates formatted Google Doc Executive Brief */
+function createGoogleDocReport(data) { ... }
+
+/** 4. sendDailyManagerDigest(): Scheduled trigger sending daily email alerts for Stalled cases */
+function sendDailyManagerDigest() { ... }</pre>
+
+    <h2>4. Security, Authentication & Data Protection</h2>
+    <ol>
+        <li><strong>Credential Isolation</strong>: Zero hardcoded passwords or API keys in repository files.</li>
+        <li><strong>SSO Session Token Isolation</strong>: Gmail SSO tokens are isolated in local user directory (<code>%USERPROFILE%\.gemini\tools\gmail\chrome_profile</code>) and protected by OS file permissions.</li>
+        <li><strong>Transport Security</strong>: Internal TLS endpoints (CaseToMD server) use HTTPS with explicit SSL context handling.</li>
+        <li><strong>Data Minimization</strong>: Case data is fetched on-demand in memory; no persistent raw ticket database copies are stored locally.</li>
+    </ol>
+
+    <h2>5. Deployment & Installation Architecture</h2>
+    <p>Installation is completely automated via PowerShell (<code>setup_env.ps1</code>):</p>
+<pre># 1. Environment Verification
+# Checks Python 3.10+, PowerShell 5.1+, and Antigravity App directory
+
+# 2. Dependency Installation
+python -m pip install --upgrade pip
+pip install mcp playwright urllib3 requests python-pptx
+
+# 3. Playwright Chromium Browser Setup
+playwright install chromium
+
+# 4. Plugin & MCP Deployment
+# Copies plugins/avaya-case-review to %USERPROFILE%\.gemini\config\plugins\
+# Configures %USERPROFILE%\.gemini\config\mcp.json for CaseToMD & Gmail MCP servers</pre>
+
+</div>
+
+</body>
+</html>
