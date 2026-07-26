@@ -99,14 +99,6 @@
       border-bottom: 2px solid #f1f5f9;
     }
 
-    h3 {
-      font-size: 1.1rem;
-      font-weight: 600;
-      color: #334155;
-      margin-top: 1.5rem;
-      margin-bottom: 0.75rem;
-    }
-
     p {
       margin-bottom: 1.15rem;
       color: #334155;
@@ -150,12 +142,6 @@
       color: #1e40af;
     }
 
-    .alert-tip {
-      background-color: var(--tip-bg);
-      border-color: var(--tip-border);
-      color: #166534;
-    }
-
     code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 0.9em;
@@ -176,13 +162,6 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 0.9rem;
       line-height: 1.5;
-    }
-
-    pre code {
-      background-color: transparent;
-      color: inherit;
-      padding: 0;
-      border: none;
     }
 
     table {
@@ -241,60 +220,50 @@
       Source: <a href="https://avaya.atlassian.net/wiki/spaces/DLBBEWIKI/pages/2476572765/Antigravity+CLI+Installation+and+Login+Guide" target="_blank">Avaya Confluence Wiki — Antigravity Installation and Login Guide</a>
     </div>
 
-    <p>This guide walks you through installing the <strong>Antigravity App</strong> and signing in using Google OAuth with the dedicated corporate Google Cloud Project ID: <code>geminienterpriseprod</code>.</p>
+    <p>This guide walks you through installing the <strong>Antigravity Desktop App</strong> and signing in using Google OAuth with the dedicated corporate Google Cloud Project ID: <code>geminienterpriseprod</code>.</p>
 
     <hr>
 
-    <h2>1. Installation Commands</h2>
+    <h2>1. Installing the Antigravity App</h2>
 
-    <p>Select the command for your operating system and shell environment:</p>
+    <p>Download and run the installer for your operating system:</p>
 
     <table>
       <thead>
         <tr>
           <th>Operating System</th>
-          <th>Terminal / Shell</th>
-          <th>Installation Command</th>
+          <th>Installer Format</th>
+          <th>Installation Steps</th>
         </tr>
       </thead>
       <tbody>
         <tr>
+          <td><strong>Windows</strong></td>
+          <td><code>.exe</code> / <code>.msi</code> Installer</td>
+          <td>Download the Windows installer (<code>Antigravity Setup.exe</code>) and double-click to launch the setup wizard. Follow on-screen prompts to complete installation.</td>
+        </tr>
+        <tr>
           <td><strong>macOS</strong></td>
-          <td>Terminal</td>
-          <td><code>curl -fsSL https://antigravity.google/cli/install.sh | bash</code></td>
+          <td><code>.dmg</code> Package</td>
+          <td>Download the macOS disk image (<code>Antigravity.dmg</code>), open it, and drag the <strong>Antigravity</strong> icon into your <code>Applications</code> folder.</td>
         </tr>
         <tr>
           <td><strong>Linux</strong></td>
-          <td>Terminal</td>
-          <td><code>curl -fsSL https://antigravity.google/cli/install.sh | bash</code></td>
-        </tr>
-        <tr>
-          <td><strong>Windows</strong></td>
-          <td><strong>PowerShell</strong> <em>(Recommended)</em></td>
-          <td><code>irm https://antigravity.google/cli/install.ps1 | iex</code></td>
-        </tr>
-        <tr>
-          <td><strong>Windows</strong></td>
-          <td>Command Prompt (CMD)</td>
-          <td><code>curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd</code></td>
+          <td><code>.deb</code> / <code>.rpm</code> / <code>.AppImage</code></td>
+          <td>Download the appropriate package for your distribution and install via your system package manager or run the AppImage.</td>
         </tr>
       </tbody>
     </table>
-
-    <div class="alert alert-tip">
-      <div class="alert-title">💡 TIP</div>
-      If you are unsure which terminal to use on Windows, <strong>PowerShell</strong> is the simplest and recommended option.
-    </div>
 
     <hr>
 
     <h2>2. Step-by-Step Login Procedure</h2>
 
     <ol>
-      <li><strong>Launch Antigravity</strong>: Open the <strong>Antigravity App</strong> after installation completes.</li>
-      <li><strong>Start Sign-In</strong>: When prompted to sign in or choose an authentication method.</li>
-      <li><strong>Select Login Method</strong>: Choose <strong>Option 2: Use a Google Cloud Project</strong>.</li>
-      <li><strong>Authenticate</strong>: Sign in using your corporate <strong>Avaya email</strong> (<code>@avaya.com</code>).</li>
+      <li><strong>Launch App</strong>: Open the <strong>Antigravity App</strong> from your Start Menu, Applications folder, or desktop shortcut.</li>
+      <li><strong>Start Sign-In</strong>: Click <strong>Sign In</strong> on the welcome screen.</li>
+      <li><strong>Select Login Method</strong>: When prompted, select <strong>Option 2: Use a Google Cloud Project</strong>.</li>
+      <li><strong>Authenticate</strong>: Sign in via browser using your corporate <strong>Avaya email</strong> (<code>@avaya.com</code>).</li>
       <li><strong>Enter Project ID</strong>: After browser authentication completes, enter the project ID exactly as:
         <pre><code>geminienterpriseprod</code></pre>
       </li>
@@ -314,7 +283,7 @@
       <tbody>
         <tr>
           <td><strong>Application</strong></td>
-          <td><strong>Antigravity App</strong></td>
+          <td><strong>Antigravity Desktop App</strong></td>
         </tr>
         <tr>
           <td><strong>Login Method</strong></td>
@@ -340,19 +309,19 @@
     <h2>4. Validation Checklist</h2>
 
     <ul>
-      <li>[x] Antigravity App installation command completed successfully.</li>
-      <li>[x] Antigravity App launches successfully on your workstation.</li>
-      <li>[x] Google OAuth login completed with your Avaya email.</li>
+      <li>[x] Antigravity App installed and launches successfully.</li>
+      <li>[x] Google OAuth login completed in browser with your Avaya email.</li>
       <li>[x] Project ID <code>geminienterpriseprod</code> entered successfully.</li>
+      <li>[x] Antigravity App main interface is active.</li>
     </ul>
 
     <hr>
 
     <h2>5. Troubleshooting</h2>
 
-    <h3>Q1: Antigravity App fails to launch or command not found.</h3>
+    <h3>Q1: Antigravity App fails to launch or closes immediately.</h3>
     <ul>
-      <li><strong>Fix</strong>: Restart your computer or reopen your terminal so system environment variables and shortcuts update.</li>
+      <li><strong>Fix</strong>: Verify system requirements and check if antivirus / corporate security software is blocking the application.</li>
     </ul>
 
     <h3>Q2: Wrong account selected or authentication error.</h3>
