@@ -1,11 +1,11 @@
-# Antigravity CLI Installation and Login Guide
+# Antigravity App Installation and Login Guide
 
 > [!NOTE]
 > 🌐 **HTML Version Available**: If you do not have a Markdown reader, open **[ANTIGRAVITY_INSTALLATION_GUIDE.html](file:///e:/case/avaya-case-review-pack/ANTIGRAVITY_INSTALLATION_GUIDE.html)** directly in your web browser.
 >
-> Source: [Avaya Confluence Wiki — Antigravity CLI Installation and Login Guide](https://avaya.atlassian.net/wiki/spaces/DLBBEWIKI/pages/2476572765/Antigravity+CLI+Installation+and+Login+Guide)
+> Source: [Avaya Confluence Wiki — Antigravity Installation and Login Guide](https://avaya.atlassian.net/wiki/spaces/DLBBEWIKI/pages/2476572765/Antigravity+CLI+Installation+and+Login+Guide)
 
-This guide walks you through installing the **Antigravity CLI** (`agy`) and signing in using Google OAuth with the dedicated corporate Google Cloud Project ID: **`geminienterpriseprod`**.
+This guide walks you through installing the **Antigravity App** and signing in using Google OAuth with the dedicated corporate Google Cloud Project ID: **`geminienterpriseprod`**.
 
 ---
 
@@ -27,9 +27,9 @@ Select the command corresponding to your operating system and shell environment:
 
 ## 2. Step-by-Step Login Procedure
 
-1. **Open Terminal**: Close and reopen your terminal after installation finishes.
-2. **Start CLI**: Run `agy` in your terminal.
-3. **Select Login Method**: When prompted, select **Option 2: Use a Google Cloud Project**.
+1. **Launch Antigravity**: Open the **Antigravity App** after installation completes.
+2. **Start Sign-In**: When prompted to sign in or choose an authentication method.
+3. **Select Login Method**: Choose **Option 2: Use a Google Cloud Project**.
 4. **Authenticate**: Complete the Google OAuth browser login using your corporate **Avaya email** (`@avaya.com`).
 5. **Enter Project ID**: After browser authentication completes, enter the project ID exactly as:
    ```text
@@ -42,7 +42,7 @@ Select the command corresponding to your operating system and shell environment:
 
 | Step | What to Enter / Select |
 |---|---|
-| **Start Login** | `agy` |
+| **Application** | **Antigravity App** |
 | **Login Method** | Google OAuth |
 | **Project Selection** | **Option 2: Use a Google Cloud Project** |
 | **Account** | Your Avaya e-mail (`@avaya.com`) |
@@ -52,8 +52,8 @@ Select the command corresponding to your operating system and shell environment:
 
 ## 4. Validation Checklist
 
-- [ ] Antigravity CLI installation command finished with no errors.
-- [ ] Running `agy` launches the CLI from your terminal.
+- [ ] Antigravity App installation command completed successfully.
+- [ ] Antigravity App launches successfully on your workstation.
 - [ ] Google OAuth login completed successfully using your `@avaya.com` email.
 - [ ] Project ID `geminienterpriseprod` entered and accepted.
 
@@ -61,8 +61,8 @@ Select the command corresponding to your operating system and shell environment:
 
 ## 5. Troubleshooting & FAQs
 
-### Q1: `agy: command not found` after running installation.
-- **Fix**: Close and reopen your terminal window so system `PATH` updates take effect.
+### Q1: Antigravity App fails to launch or command not found.
+- **Fix**: Restart your computer or reopen your terminal so system environment variables and shortcuts update.
 
 ### Q2: Authentication failed or wrong project permissions.
 - **Fix**: Ensure you selected **Option 2: Use a Google Cloud Project** during login, and verify you signed in with your `@avaya.com` account rather than a personal Google account.

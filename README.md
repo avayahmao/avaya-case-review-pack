@@ -25,7 +25,7 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 ## 📖 Complete Documentation & Guides
 
 - 🌐 **[MANAGER_ONBOARDING_GUIDE.html](file:///e:/case/avaya-case-review-pack/MANAGER_ONBOARDING_GUIDE.html)** / 📄 **[MANAGER_ONBOARDING_GUIDE.md](file:///e:/case/avaya-case-review-pack/MANAGER_ONBOARDING_GUIDE.md)** — Support Manager Setup & Usage Guide
-- 🌐 **[ANTIGRAVITY_INSTALLATION_GUIDE.html](file:///e:/case/avaya-case-review-pack/ANTIGRAVITY_INSTALLATION_GUIDE.html)** / 📄 **[ANTIGRAVITY_INSTALLATION_GUIDE.md](file:///e:/case/avaya-case-review-pack/ANTIGRAVITY_INSTALLATION_GUIDE.md)** — Antigravity CLI Installation & Login Guide
+- 🌐 **[ANTIGRAVITY_INSTALLATION_GUIDE.html](file:///e:/case/avaya-case-review-pack/ANTIGRAVITY_INSTALLATION_GUIDE.html)** / 📄 **[ANTIGRAVITY_INSTALLATION_GUIDE.md](file:///e:/case/avaya-case-review-pack/ANTIGRAVITY_INSTALLATION_GUIDE.md)** — Antigravity App Installation & Login Guide
 
 ---
 
