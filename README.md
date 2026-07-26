@@ -24,8 +24,10 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 
 ## 📖 Complete Documentation Suite (`docs/`)
 
-All project documentation, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](file:///e:/case/avaya-case-review-pack/docs)** directory:
+All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](file:///e:/case/avaya-case-review-pack/docs)** directory:
 
+- 📝 **Release Notes & Version Track**:
+  - 🌐 **[docs/RELEASE_NOTES.html](file:///e:/case/avaya-case-review-pack/docs/RELEASE_NOTES.html)** / 📄 **[docs/RELEASE_NOTES.md](file:///e:/case/avaya-case-review-pack/docs/RELEASE_NOTES.md)** — Version Changelog (v1.0.0, v1.1.0, v1.2.0)
 - 📊 **Executive Presentation**:
   - 🌐 **[docs/PRESENTATION.html](file:///e:/case/avaya-case-review-pack/docs/PRESENTATION.html)** — Interactive Browser Slide Deck
   - 📄 **[docs/Avaya_Case_Review_Suite_Presentation.pptx](file:///e:/case/avaya-case-review-pack/docs/Avaya_Case_Review_Suite_Presentation.pptx)** — PowerPoint Presentation Deck
@@ -41,7 +43,7 @@ All project documentation, installation guides, design specifications, and prese
 ## 🛠️ Package Structure
 
 - **`setup_env.ps1`**: Automated environment installer script.
-- **`docs/`**: Centralized documentation suite (Guides, TDD, Presentations, PowerPoint).
+- **`docs/`**: Centralized documentation suite (Release Notes, Guides, TDD, Presentations, PowerPoint).
 - **`plugins/avaya-case-review/`**: The Case Review plugin containing the `case-review` skill, `gmail-capability` skill, and **10 embedded Avaya product domain reference guides** (`aes-cti-jtapi.md`, `contact-center.md`, `recording-wfo.md`, `analytics-kubernetes.md`, `security-vulnerability.md`, `sip-voice-quality.md`, `certificates-login-outage.md`, `digital-channels.md`, `ip-office.md`, `log-collection.md`).
 - **`tools/casetomd/`**: Python bridge for the CaseToMD server (`https://192.168.67.160:8000/mcp`).
 - **`tools/gmail/`**: Playwright-based Gmail MCP server for inbox search and email reading.

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Release Notes — Avaya Case Review Suite</title>
+    <style>
+        :root {
+            --navy: #0B192C;
+            --blue-accent: #1E3E62;
+            --red-accent: #E63946;
+            --bg-light: #F8FAFC;
+            --card-border: #E2E8F0;
+            --text-dark: #0F172A;
+            --white: #FFFFFF;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: var(--navy);
+            color: var(--white);
+            padding: 35px 20px;
+            border-bottom: 5px solid var(--red-accent);
+        }
+        header .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        header h1 {
+            margin: 0 0 10px 0;
+            font-size: 2rem;
+        }
+        header p {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 1.1rem;
+        }
+        .main-container {
+            max-width: 900px;
+            margin: 30px auto;
+            background: #ffffff;
+            padding: 35px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid var(--card-border);
+        }
+        .version-tag {
+            display: inline-block;
+            background: var(--navy);
+            color: var(--white);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .version-date {
+            color: #64748b;
+            font-size: 0.9rem;
+            margin-left: 10px;
+        }
+        h2 {
+            color: var(--navy);
+            border-bottom: 2px solid var(--card-border);
+            padding-bottom: 8px;
+            margin-top: 35px;
+        }
+        h3 {
+            color: var(--blue-accent);
+            margin-top: 20px;
+            font-size: 1.15rem;
+        }
+        ul {
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+        code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: Consolas, monospace;
+            font-size: 0.9em;
+        }
+        .badge {
+            display: inline-block;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <h1>Release Notes & Version Track</h1>
+        <p>Avaya Case Review Suite & Intelligent Diagnostic Engine</p>
+    </div>
+</header>
+
+<div class="main-container">
+
+    <!-- VERSION 1.2.0 -->
+    <div>
+        <span class="version-tag">v1.2.0</span>
+        <span class="version-date">2026-07-26 — Complete Governance & Technical Specifications Release</span>
+        
+        <h3>🚀 New Features & Modules</h3>
+        <ul>
+            <li><strong>Google Apps Script & Workspace Governance Integration (<code>tools/appsscript/Code.gs</code>)</strong>:
+                <ul>
+                    <li><strong>HTTP Webhook (<code>doPost</code>)</strong>: Endpoint to receive Antigravity case review JSON payloads in the cloud.</li>
+                    <li><strong>Google Sheets Governance Dashboard (<code>updateCaseTrackingSheet</code>)</strong>: Appends and updates case review records with conditional status highlighting (<span style="color: green;">🟢 Healthy</span>, <span style="color: orange;">🟡 At Risk</span>, <span style="color: red;">🔴 Stalled</span>).</li>
+                    <li><strong>Google Docs Brief Generator (<code>createGoogleDocReport</code>)</strong>: Automatically creates structured executive case briefs in Google Drive.</li>
+                    <li><strong>Scheduled Email Digest (<code>sendDailyManagerDigest</code>)</strong>: Automated trigger function that sweeps the tracking sheet daily and emails HTML alert digests to management for all stalled or at-risk cases.</li>
+                </ul>
+            </li>
+            <li><strong>Executive Presentation Deck (12 Slides)</strong>:
+                <ul>
+                    <li><strong>PowerPoint Presentation (<code>docs/Avaya_Case_Review_Suite_Presentation.pptx</code>)</strong>: High-impact executive slide deck designed for leadership reviews.</li>
+                    <li><strong>Interactive HTML Slide Deck (<code>docs/PRESENTATION.html</code>)</strong>: Web-browser slide deck accessible on any device.</li>
+                </ul>
+            </li>
+            <li><strong>Technical Design Document (TDD)</strong>:
+                <ul>
+                    <li>Published complete architectural specifications in <a href="TECHNICAL_DESIGN_DOCUMENT.html">docs/TECHNICAL_DESIGN_DOCUMENT.html</a> and <a href="TECHNICAL_DESIGN_DOCUMENT.md">docs/TECHNICAL_DESIGN_DOCUMENT.md</a> covering runtime discovery, MCP bridges, technical sanity auditing, and security protocols.</li>
+                </ul>
+            </li>
+        </ul>
+
+        <h3>🧹 Refactoring & Repository Organization</h3>
+        <ul>
+            <li><strong>Centralized Documentation (<code>docs/</code>)</strong>: Organized all user guides, installation manuals, design docs, release notes, and presentation files into a single <code>docs/</code> folder structure for clean repository maintenance.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.1.0 -->
+    <div style="margin-top: 40px;">
+        <span class="version-tag">v1.1.0</span>
+        <span class="version-date">2026-07-26 — Embedded 10-Domain Diagnostic Engine & Manager Onboarding</span>
+        
+        <h3>🧠 Intelligent Diagnostic Engine</h3>
+        <ul>
+            <li><strong>Embedded 10-Domain Avaya Reference Suite (<code>plugins/avaya-case-review/skills/case-review/references/</code>)</strong>:
+                <ol>
+                    <li><code>aes-cti-jtapi.md</code>: AES, TSAPI, CSTA, DMCC, park/unpark, <code>SA9114</code>/<code>SA9124</code>, <code>T####</code> ASAI trunks.</li>
+                    <li><code>contact-center.md</code>: Oceana, AACC, POM, AXP, CMS, vector wait-time > 0, skill routing.</li>
+                    <li><code>recording-wfo.md</code>: ACRA, Verint, WFO/WFE, RIS, WebLogic, <code>CSTA_CALL_CLEARED</code>.</li>
+                    <li><code>analytics-kubernetes.md</code>: Oceanalytics, Kafka, Kubernetes pod failures, MicroStrategy, ETL.</li>
+                    <li><code>security-vulnerability.md</code>: AVAPT/NVAPT, CVE vulnerabilities, SSH/TLS cipher suite hardening.</li>
+                    <li><code>sip-voice-quality.md</code>: SIP signaling, SBC, one-way audio, RTP packet loss, jitter, codec negotiation.</li>
+                    <li><code>certificates-login-outage.md</code>: Certificate cascade, WebLM, SMGR, login/auth failures, major outage recovery.</li>
+                    <li><code>digital-channels.md</code>: Email, Social, Infinity, ESL, WeChat/WhatsApp, screen-pop routing.</li>
+                    <li><code>ip-office.md</code>: IP Office (IPO), SSA, SysMonitor, SIP trunk registration, IPO Manager.</li>
+                    <li><code>log-collection.md</code>: <code>getlogs</code>, <code>csta_trace</code>, <code>g3trace</code>, <code>spi.log</code>, <code>acr.log</code>, <code>tcpdump</code> log matrix.</li>
+                </ol>
+            </li>
+            <li><strong>Automated Technical Direction Sanity Auditor</strong>:
+                <ul>
+                    <li>Detects platform vs application misdirection (e.g. blaming JTAPI SDK instead of CM ASAI snapshot configuration).</li>
+                    <li>Enforces official Javadoc API methods (<code>LucentV5CallInfo.getUCID()</code>).</li>
+                    <li>Cross-checks log sufficiency before escalation.</li>
+                </ul>
+            </li>
+            <li><strong>Vendor Escalation Verification</strong>: Validates handoffs across BBE PEA, CPE PEA, Verint Support, Nuance, and Customer MSP.</li>
+        </ul>
+
+        <h3>📖 Documentation & Guides</h3>
+        <ul>
+            <li><strong>Antigravity Installation Guide (<a href="ANTIGRAVITY_INSTALLATION_GUIDE.html">docs/ANTIGRAVITY_INSTALLATION_GUIDE.html</a>)</strong>: Common-sense Windows Desktop App setup and Google SSO login guide.</li>
+            <li><strong>Manager Onboarding Guide (<a href="MANAGER_ONBOARDING_GUIDE.html">docs/MANAGER_ONBOARDING_GUIDE.html</a>)</strong>: Support Manager operational workflow, VPN prerequisites, and example prompts.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.0.0 -->
+    <div style="margin-top: 40px;">
+        <span class="version-tag">v1.0.0</span>
+        <span class="version-date">2026-07-26 — Initial Release</span>
+        
+        <h3>🎉 Initial Release Highlights</h3>
+        <ul>
+            <li><strong>Case Review Plugin (<code>plugins/avaya-case-review/</code>)</strong>: Initial implementation of <code>case-review</code> and <code>gmail-capability</code> skills.</li>
+            <li><strong>CaseToMD MCP Bridge (<code>tools/casetomd/casetomd_mcp_bridge.py</code>)</strong>: MCP server for fetching Siebel SRs and ServiceNow INCs over internal HTTPS endpoints (<code>https://192.168.67.160:8000/mcp</code>).</li>
+            <li><strong>Playwright Gmail MCP Server (<code>tools/gmail/gmail_mcp_server.py</code>)</strong>: Headless browser integration with local SSO profile persistence (<code>chrome_profile</code>) for deep inbox searching across <code>@avaya.com</code> email threads.</li>
+            <li><strong>Automated Installer (<code>setup_env.ps1</code>)</strong>: 1-click PowerShell deployment script.</li>
+        </ul>
+    </div>
+
+</div>
+
+</body>
+</html>
