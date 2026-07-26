@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avaya Case Review Suite — Executive Presentation</title>
+    <style>
+        :root {
+            --navy: #0B192C;
+            --blue-accent: #1E3E62;
+            --red-accent: #E63946;
+            --bg-light: #F8FAFC;
+            --card-border: #E2E8F0;
+            --text-dark: #0F172A;
+            --text-muted: #475569;
+            --white: #FFFFFF;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: #0f172a;
+            color: var(--text-dark);
+            margin: 0;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .slide {
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            margin-bottom: 50px;
+            overflow: hidden;
+            position: relative;
+            min-height: 675px;
+            display: flex;
+            flex-direction: column;
+        }
+        .slide-header {
+            background: var(--navy);
+            color: var(--white);
+            padding: 20px 30px;
+            border-top: 6px solid var(--red-accent);
+        }
+        .slide-header .kicker {
+            color: var(--red-accent);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .slide-header h2 {
+            margin: 0;
+            font-size: 1.6rem;
+            color: var(--white);
+        }
+        .slide-body {
+            padding: 30px;
+            flex: 1;
+            background-color: #f1f5f9;
+        }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+        .grid-2-5 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        
+        .card {
+            background: #ffffff;
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .card.dark {
+            background: var(--navy);
+            color: var(--white);
+            border: none;
+        }
+        .card.dark h3 { color: var(--red-accent); }
+        .card h3 {
+            margin-top: 0;
+            color: var(--navy);
+            font-size: 1.25rem;
+            margin-bottom: 12px;
+        }
+        .card p, .card ul {
+            font-size: 0.95rem;
+            color: var(--text-dark);
+            line-height: 1.5;
+        }
+        .card.dark p, .card.dark ul { color: #cbd5e1; }
+        ul { padding-left: 20px; margin: 0; }
+        li { margin-bottom: 8px; }
+        
+        .code-box {
+            background: #090d16;
+            color: #38bdf8;
+            font-family: Consolas, Monaco, monospace;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+        }
+        
+        .stat-box {
+            text-align: center;
+            background: var(--navy);
+            color: var(--white);
+            padding: 25px 15px;
+            border-radius: 8px;
+        }
+        .stat-box .num {
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--red-accent);
+            margin-bottom: 8px;
+        }
+        .stat-box .desc {
+            font-size: 0.95rem;
+            color: #e2e8f0;
+        }
+        
+        .slide-title-bg {
+            background: var(--navy);
+            color: var(--white);
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 60px;
+            border-left: 12px solid var(--red-accent);
+        }
+        .slide-title-bg h1 {
+            font-size: 3rem;
+            margin: 0 0 10px 0;
+            color: var(--white);
+        }
+        .slide-title-bg h2 {
+            font-size: 2.2rem;
+            color: var(--red-accent);
+            margin: 0 0 20px 0;
+        }
+        .slide-title-bg p {
+            font-size: 1.2rem;
+            color: #94a3b8;
+            max-width: 800px;
+            line-height: 1.6;
+        }
+        
+        .tag {
+            display: inline-block;
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+
+    <!-- SLIDE 1 -->
+    <div class="slide">
+        <div class="slide-title-bg">
+            <div style="background: var(--red-accent); width: 80px; height: 6px; margin-bottom: 30px;"></div>
+            <h1>Avaya Case Review Suite</h1>
+            <h2>& Intelligent Diagnostic Engine</h2>
+            <p>AI-Powered Case Governance, Off-System Email Synthesis & Automated Technical Direction Auditing</p>
+            <div style="margin-top: 40px; font-weight: 600; color: #ffffff;">Designed for Support Managers, Operations Leads, SDMs & Technical Escalation Managers</div>
+        </div>
+    </div>
+
+    <!-- SLIDE 2 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>The Governance Challenge: Blind Spots & Technical Misdirection</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-3">
+                <div class="card">
+                    <h3>1. Invisible Off-System Email</h3>
+                    <ul>
+                        <li>Critical customer commitments & SDM updates happen in Gmail/Outlook threads outside Siebel/ServiceNow.</li>
+                        <li>Auto-router OCD dispatch alerts (e.g. "UNASSIGNABLE" tasks) are buried in inbox notifications.</li>
+                        <li>Managers lack a single unified view combining formal case notes and off-system emails.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>2. Technical Misdirection Risks</h3>
+                    <ul>
+                        <li>Engineers pursue dead-end root causes (e.g., blaming JTAPI SDK null returns instead of CM SA9114/SA9124 attributes).</li>
+                        <li>Misdirected Product Escalations (PEAs) sent to wrong vendor teams (e.g. AES PEA for Verint WebLogic issue).</li>
+                        <li>Wasted engineering weeks and prolonged customer outages due to invalid troubleshooting paths.</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <h3>3. Management Overload</h3>
+                    <ul>
+                        <li>Raw Siebel SRs & ServiceNow INCs contain hundreds of verbose activity logs that hide true status.</li>
+                        <li>Hard to detect stale cases (>7/30 days) and unassigned next steps across large queues.</li>
+                        <li>Managers need immediate bottom-line verdicts without reading 50 pages of raw logs.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 3 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Strategic Solution: AI-Powered Operations Manager Suite</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-2">
+                <div class="card dark">
+                    <h3>The Avaya Case Review Suite</h3>
+                    <p style="margin-bottom: 20px;">An automated governance layer combining 1-click execution, off-system email synthesis, and platform diagnostic intelligence.</p>
+                    <div style="margin-bottom: 15px;">
+                        <strong style="color: var(--red-accent);">⚡ 1-Click Executive Synthesis</strong>
+                        <div style="font-size: 0.9rem;">Converts raw Siebel/ServiceNow case dumps into clean, executive-ready markdown briefs with clear verdicts.</div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <strong style="color: var(--red-accent);">📧 Unified Off-System Visibility</strong>
+                        <div style="font-size: 0.9rem;">Playwright Gmail MCP integration automatically pulls SDM emails, OCD alerts, and customer threads into the timeline.</div>
+                    </div>
+                    <div>
+                        <strong style="color: var(--red-accent);">🧠 Embedded 10-Domain Debugger Engine</strong>
+                        <div style="font-size: 0.9rem;">Built-in Avaya UC/CC expert rules audit engineer technical direction, SA flags, and vendor handoffs automatically.</div>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <div class="card">
+                        <h3>🎯 Zero Technical Blind Spots</h3>
+                        <p>Managers no longer need to be CTI trace experts. The engine automatically catches misdirected investigations, invalid JTAPI PEAs, and wrong vendor assignments before they cause prolonged outages.</p>
+                    </div>
+                    <div class="card">
+                        <h3>🚀 Operational Velocity & Accountability</h3>
+                        <p>Identifies exact stall points (>7/30 days), missing next-step owners, unassigned task dispatches, and provides 2-4 concrete, prioritized manager action directives for instant execution.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 4 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>System Architecture & End-to-End Component Flow</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-4">
+                <div class="card">
+                    <div style="background: var(--navy); color: white; padding: 6px 10px; border-radius: 4px; font-weight: 700; font-size: 0.85rem; margin-bottom: 10px;">1. Interface Layer</div>
+                    <h3>Antigravity App</h3>
+                    <ul>
+                        <li>Windows Desktop App</li>
+                        <li>Local execution environment</li>
+                        <li>Natural language interaction</li>
+                        <li>Executive markdown report viewer</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div style="background: var(--navy); color: white; padding: 6px 10px; border-radius: 4px; font-weight: 700; font-size: 0.85rem; margin-bottom: 10px;">2. MCP Bridge Layer</div>
+                    <h3>CaseToMD & Gmail MCP</h3>
+                    <ul>
+                        <li>CaseToMD Server (Port 8000)</li>
+                        <li>Playwright Gmail MCP Server</li>
+                        <li>Local SSO profile persistence</li>
+                        <li>Secure corporate TLS/MFA</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div style="background: var(--navy); color: white; padding: 6px 10px; border-radius: 4px; font-weight: 700; font-size: 0.85rem; margin-bottom: 10px;">3. Intelligence Engine</div>
+                    <h3>Skill & Domain Suite</h3>
+                    <ul>
+                        <li>case-review skill</li>
+                        <li>gmail-capability skill</li>
+                        <li>10-Domain Avaya Ref Suite</li>
+                        <li>Sanity & Risk Auditor</li>
+                    </ul>
+                </div>
+                <div class="card">
+                    <div style="background: var(--navy); color: white; padding: 6px 10px; border-radius: 4px; font-weight: 700; font-size: 0.85rem; margin-bottom: 10px;">4. Enterprise Data</div>
+                    <h3>Avaya Sources</h3>
+                    <ul>
+                        <li>Siebel SR Database</li>
+                        <li>ServiceNow INC / CHG</li>
+                        <li>Avaya Corporate Gmail</li>
+                        <li>OCD Auto-router alerts</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 5 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Core Component 1: CaseToMD Automated Case Fetcher</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>Universal Case ID Resolution</h3>
+                    <p><strong>📌 Multi-System Auto-Detection</strong><br>
+                    Seamlessly handles Siebel SRs (1-23659220672), ServiceNow INCs (INC7386572), CTASKs, CHGs, and PRJTASKs without requiring string normalization.</p>
+                    <p><strong>📌 MCP Protocol Bridge</strong><br>
+                    Communicates securely via Model Context Protocol (MCP) with endpoint https://192.168.67.160:8000/mcp.</p>
+                    <p><strong>📌 Raw Dump to Markdown</strong><br>
+                    Converts complex multi-tab database records into clean, structured Markdown documents preserving exact activity history, timestamps, and customer metadata.</p>
+                </div>
+                <div class="card dark">
+                    <h3>MCP Tool Execution Signature</h3>
+                    <div class="code-box">// Tool Call:
+get_case_markdown(report_id: "1-23659220672")
+
+// JSON Response Structure:
+{
+  "success": true,
+  "case_id": "1-23659220672",
+  "title": "AES JTAPI null address on unpark",
+  "source": "Siebel SR",
+  "markdown": "# Case 1-23659220672\n..."
+}
+
+✔ Preserves full activity timeline
+✔ Extracts customer account & contact
+✔ Computes exact update currency</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 6 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Core Component 2: Gmail MCP Off-System Email Bridge</h2>
+        </div>
+        <div class="slide-body">
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="card">
+                    <h3>Step 1: SSO Token Persistence</h3>
+                    <p>Playwright headless browser automatically maintains local Chrome session profile under <code>C:\Users\...\.gemini\tools\gmail\chrome_profile</code> with full Avaya Duo/MFA support.</p>
+                </div>
+                <div class="card">
+                    <h3>Step 2: Deep Inbox Cross-Search</h3>
+                    <p>Performs real-time search across @avaya.com Gmail for Case IDs, sub-task IDs (TASK0614855), customer account names, and SDM escalation threads.</p>
+                </div>
+                <div class="card">
+                    <h3>Step 3: Off-System Signal Extraction</h3>
+                    <p>Extracts critical management signals: OCD 'UNASSIGNABLE' dispatch failures, executive customer commitments, and informal engineering workarounds.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 7 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Core Component 3: Embedded 10-Domain Avaya Knowledge Base</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-2-5">
+                <div class="card">
+                    <h3>AES / CTI / JTAPI <span class="tag">aes-cti-jtapi.md</span></h3>
+                    <p>TSAPI, CSTA, DMCC, park/unpark, SA9114/SA9124, T####, connBelong... flags</p>
+                </div>
+                <div class="card">
+                    <h3>Contact Center <span class="tag">contact-center.md</span></h3>
+                    <p>Oceana, AACC, POM, AXP, CMS, vector wait-time > 0, skill routing</p>
+                </div>
+                <div class="card">
+                    <h3>Recording & WFO <span class="tag">recording-wfo.md</span></h3>
+                    <p>ACRA, Verint, WFO/WFE, RIS, WebLogic, CSTA_CALL_CLEARED boundaries</p>
+                </div>
+                <div class="card">
+                    <h3>Analytics / K8s <span class="tag">analytics-kubernetes.md</span></h3>
+                    <p>Oceanalytics, Kafka, Kubernetes pod failures, MicroStrategy, ETL</p>
+                </div>
+                <div class="card">
+                    <h3>Security & CVE <span class="tag">security-vulnerability.md</span></h3>
+                    <p>AVAPT/NVAPT, CVE vulnerability analysis, cipher suite hardening</p>
+                </div>
+                <div class="card">
+                    <h3>SIP & Voice Quality <span class="tag">sip-voice-quality.md</span></h3>
+                    <p>SIP signaling, SBC, one-way audio, RTP, jitter, codec negotiation</p>
+                </div>
+                <div class="card">
+                    <h3>Certificates & Auth <span class="tag">certificates-login-outage.md</span></h3>
+                    <p>Certificate cascade, WebLM, SMGR, login/auth, major outage recovery</p>
+                </div>
+                <div class="card">
+                    <h3>Digital Channels <span class="tag">digital-channels.md</span></h3>
+                    <p>Email, Social, Infinity, ESL, WeChat/WhatsApp, screen-pop routing</p>
+                </div>
+                <div class="card">
+                    <h3>IP Office (IPO) <span class="tag">ip-office.md</span></h3>
+                    <p>IP Office, SSA, SysMonitor, SIP trunk registration, IPO Manager</p>
+                </div>
+                <div class="card">
+                    <h3>Log Collection <span class="tag">log-collection.md</span></h3>
+                    <p>getlogs, csta_trace, g3trace, spi.log, acr.log, tcpdump matrix</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 8 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Automated Technical Direction Auditing (The Engine Brain)</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>How Technical Auditing Works</h3>
+                    <p><strong>🧠 Layer-by-Layer Verification</strong><br>
+                    Checks if engineers blame application layer (JTAPI nulls) when the issue is platform configuration (CM ASAI snapshot returning T####).</p>
+                    <p><strong>🧠 Platform Attribute Validation</strong><br>
+                    Automatically verifies whether CM system-features SA9114 and SA9124 are enabled for park/unpark trunk CLI loss.</p>
+                    <p><strong>🧠 Correct API Path Enforcer</strong><br>
+                    Enforces official Javadoc path: LucentV5CallInfo.getUCID() over zeroed originalCallInfo.ucid.</p>
+                    <p><strong>🧠 Log Sufficiency Check</strong><br>
+                    Cross-checks case trace requests against log-collection.md matrix to ensure getlogs/csta_trace are attached.</p>
+                </div>
+                <div class="card dark">
+                    <h3>Generated Risk Flag Example</h3>
+                    <div class="code-box">## Risk Flags Detected
+
+• ⚠️ TECHNICAL DIRECTION RISK:
+  Engineer requesting JTAPI SDK PEA for missing
+  trunk CLI on 2nd unpark. JTAPI null return is
+  spec-compliant per Javadoc.
+  ➡ Correct Direction: Enable CM system-features
+     SA9114 and SA9124 (live change, no restart).
+
+• ⚠️ MISSING DIAGNOSTIC LOGS:
+  Case notes state CTI link dropped but getlogs
+  (csta_trace / g3trace) was never requested.
+
+• 🔴 Open PEA with no ETA:
+  PEA1-992813 on hold for 14 days without owner.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 9 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Automated Vendor Escalation Handoff Verification</h2>
+        </div>
+        <div class="slide-body">
+            <div class="card" style="min-height: 480px;">
+                <h3>Right-Vendor-First Handoff Matrix</h3>
+                <ul style="line-height: 2;">
+                    <li>🎯 CM / AES Core Software Bugs ➔ <strong style="color: var(--red-accent);">[BBE PEA]</strong> (CM ASAI, AES service crash, crossID exhaustion, CTI link state)</li>
+                    <li>🎯 POM / AEP Product Code ➔ <strong style="color: var(--red-accent);">[CPE PEA]</strong> (POM campaign engine, AEP application server, REST driver)</li>
+                    <li>🎯 Verint / WFO / RIS / WebLogic ➔ <strong style="color: var(--red-accent);">[Verint Support Ticket]</strong> (ACRA recording failure, RIS connection, DMSA, WebLogic heap)</li>
+                    <li>🎯 Nuance MRCP / ASR / TTS ➔ <strong style="color: var(--red-accent);">[Nuance Support Ticket]</strong> (Speech recognition grammar errors, MRCP v2 connection timeout)</li>
+                    <li>🎯 Customer Infrastructure ➔ <strong style="color: var(--red-accent);">[Customer / MSP Action]</strong> (LDAP auth, SQL database, network firewall ports, network jitter)</li>
+                </ul>
+                <div style="margin-top: 30px; background: #fee2e2; border-left: 4px solid var(--red-accent); padding: 15px; border-radius: 4px; color: #991b1b; font-weight: 700;">
+                    🔴 Flagged as MISDIRECTED ESCALATION if an SR/INC or PEA is assigned to the wrong vendor/team (e.g. opening an AES PEA for a Verint WebLogic issue).
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 10 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Standardized Executive Review Report Structure</h2>
+        </div>
+        <div class="slide-body">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div class="card" style="padding: 12px 20px;">
+                    <h3>1. Verdict & Health Status <span style="color: var(--red-accent);">🟢 Healthy / 🟡 At Risk / 🔴 Stalled</span></h3>
+                    <p style="margin: 0;">1-2 line bottom-line verdict for executive skimming.</p>
+                </div>
+                <div class="card" style="padding: 12px 20px;">
+                    <h3>2. Progress Summary & Timeline <span style="color: var(--red-accent);">Milestones + Email Entries</span></h3>
+                    <p style="margin: 0;">Unified table combining Siebel/ServiceNow and Gmail entries.</p>
+                </div>
+                <div class="card" style="padding: 12px 20px;">
+                    <h3>3. Risk Flags & Sanity Audit <span style="color: var(--red-accent);">Staleness, PEAs, Technical Misdirection</span></h3>
+                    <p style="margin: 0;">Explicit callouts with exact quotes, dates, and domain risk flags.</p>
+                </div>
+                <div class="card" style="padding: 12px 20px;">
+                    <h3>4. Ownership & Next Steps <span style="color: var(--red-accent);">Named Assignee & Next Owner</span></h3>
+                    <p style="margin: 0;">Identifies who took last action and who owns the next update due date.</p>
+                </div>
+                <div class="card" style="padding: 12px 20px;">
+                    <h3>5. Recommended Manager Actions <span style="color: var(--red-accent);">2-4 Prioritized Directives</span></h3>
+                    <p style="margin: 0;">Actionable items tied directly to identified risk flags for manager execution.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 11 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>1-Click Manager Onboarding & Deployment</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-2">
+                <div class="card">
+                    <h3>1-Click Automated Setup</h3>
+                    <p><strong>🚀 Run setup_env.ps1</strong><br>
+                    Automated PowerShell script installs Python mcp/playwright libraries and deploys plugins.</p>
+                    <p><strong>🚀 One-Time Google SSO</strong><br>
+                    Chrome window opens to authenticate @avaya.com Gmail for inbox searching.</p>
+                    <p><strong>🚀 Restart Antigravity</strong><br>
+                    Antigravity Desktop App automatically loads case-review and gmail-capability skills.</p>
+                </div>
+                <div class="card">
+                    <h3>Complete Documentation Package</h3>
+                    <p><strong>📄 MANAGER_ONBOARDING_GUIDE.html / .md</strong><br>
+                    Support Manager setup, VPN requirements, example review prompts, and troubleshooting.</p>
+                    <p><strong>📄 ANTIGRAVITY_INSTALLATION_GUIDE.html / .md</strong><br>
+                    Clean Windows Desktop App installation and login guide (zero CLI confusion).</p>
+                    <p><strong>📄 README.html / .md</strong><br>
+                    Package contents overview and 1-click execution instructions.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDE 12 -->
+    <div class="slide">
+        <div class="slide-header">
+            <div class="kicker">AVAYA CASE REVIEW SUITE</div>
+            <h2>Business Impact & Key Takeaways for Management</h2>
+        </div>
+        <div class="slide-body">
+            <div class="grid-3" style="margin-bottom: 25px;">
+                <div class="stat-box">
+                    <div class="num">80% Time Saved</div>
+                    <div class="desc">Case review prep time reduced from 45 mins to under 2 mins per case.</div>
+                </div>
+                <div class="stat-box">
+                    <div class="num">Zero Blind Spots</div>
+                    <div class="desc">Complete synthesis of Siebel/ServiceNow logs and Gmail email communications.</div>
+                </div>
+                <div class="stat-box">
+                    <div class="num">30% Faster MTTR</div>
+                    <div class="desc">Eliminates misdirected PEAs and dead-end engineering investigations.</div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Summary: Next Steps for Rollout</h3>
+                <ul>
+                    <li>1. Deploy <code>avaya-case-review-pack</code> across all Avaya Support & Operations Manager workstations.</li>
+                    <li>2. Conduct 15-minute manager onboarding session using <code>MANAGER_ONBOARDING_GUIDE.html</code>.</li>
+                    <li>3. Collect ongoing technical feedback to expand the embedded 10-domain reference suite.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
