@@ -1,341 +1,127 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Antigravity App Installation and Login Guide (Windows)</title>
-  <style>
-    :root {
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --bg: #f8fafc;
-      --card-bg: #ffffff;
-      --text: #1e293b;
-      --text-muted: #64748b;
-      --border: #e2e8f0;
-      --code-bg: #0f172a;
-      --code-text: #f8fafc;
-      --note-bg: #eff6ff;
-      --note-border: #3b82f6;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg);
-      color: var(--text);
-      line-height: 1.6;
-      padding: 2rem 1rem;
-    }
-
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
-      background: var(--card-bg);
-      padding: 2.5rem;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-      border: 1px solid var(--border);
-    }
-
-    .format-switcher {
-      display: flex;
-      justify-content: flex-end;
-      gap: 12px;
-      margin-bottom: 2rem;
-      padding-bottom: 1rem;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.9rem;
-    }
-
-    .format-badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 4px 12px;
-      border-radius: 20px;
-      text-decoration: none;
-      font-weight: 500;
-      transition: all 0.2s ease;
-    }
-
-    .format-badge.active {
-      background-color: var(--primary);
-      color: white;
-    }
-
-    .format-badge.inactive {
-      background-color: #f1f5f9;
-      color: var(--text-muted);
-      border: 1px solid var(--border);
-    }
-
-    .format-badge.inactive:hover {
-      background-color: var(--note-bg);
-      color: var(--primary);
-    }
-
-    h1 {
-      font-size: 2rem;
-      font-weight: 700;
-      color: #0f172a;
-      margin-bottom: 1rem;
-      line-height: 1.25;
-    }
-
-    h2 {
-      font-size: 1.35rem;
-      font-weight: 600;
-      color: #1e293b;
-      margin-top: 2.25rem;
-      margin-bottom: 1rem;
-      padding-bottom: 0.4rem;
-      border-bottom: 2px solid #f1f5f9;
-    }
-
-    p {
-      margin-bottom: 1.15rem;
-      color: #334155;
-    }
-
-    hr {
-      border: none;
-      border-top: 1px solid var(--border);
-      margin: 2rem 0;
-    }
-
-    ol, ul {
-      margin-bottom: 1.25rem;
-      padding-left: 1.5rem;
-      color: #334155;
-    }
-
-    li {
-      margin-bottom: 0.5rem;
-    }
-
-    code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 0.9em;
-      background-color: #f1f5f9;
-      color: #0f172a;
-      padding: 0.2em 0.4em;
-      border-radius: 4px;
-      border: 1px solid #e2e8f0;
-    }
-
-    pre {
-      background-color: var(--code-bg);
-      color: var(--code-text);
-      padding: 1.1rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin-bottom: 1.25rem;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: 0.9rem;
-      line-height: 1.5;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1.5rem 0;
-      font-size: 0.95rem;
-    }
-
-    th, td {
-      text-align: left;
-      padding: 0.75rem 1rem;
-      border: 1px solid var(--border);
-    }
-
-    th {
-      background-color: #f1f5f9;
-      color: #0f172a;
-      font-weight: 600;
-    }
-
-    tr:nth-child(even) {
-      background-color: #f8fafc;
-    }
-
-    a {
-      color: var(--primary);
-      text-decoration: none;
-      font-weight: 500;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    .download-card {
-      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-      border: 1px solid #bfdbfe;
-      border-radius: 10px;
-      padding: 1.5rem;
-      margin: 1.5rem 0;
-    }
-
-    .download-card h3 {
-      margin-top: 0;
-      color: #1e40af;
-      font-size: 1.2rem;
-    }
-
-    .download-btn {
-      display: inline-block;
-      background-color: #2563eb;
-      color: white;
-      padding: 10px 20px;
-      border-radius: 6px;
-      font-weight: 600;
-      margin-top: 0.75rem;
-      text-decoration: none;
-    }
-
-    .download-btn:hover {
-      background-color: #1d4ed8;
-      text-decoration: none;
-    }
-
-    footer {
-      margin-top: 3rem;
-      text-align: center;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      border-top: 1px solid var(--border);
-      padding-top: 1.5rem;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity Desktop App Installation Guide</title>
+    <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 900px; margin: 0 auto; padding: 40px 20px; background-color: #f8fafc; }
+    h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; font-size: 2.2rem; }
+    h2 { color: #1e293b; margin-top: 30px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; font-size: 1.5rem; }
+    h3 { color: #334155; margin-top: 20px; font-size: 1.2rem; }
+    code { background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-family: Consolas, Monaco, monospace; font-size: 0.9em; }
+    pre { background: #0f172a; color: #f8fafc; padding: 16px; border-radius: 8px; overflow-x: auto; }
+    pre code { background: none; color: inherit; padding: 0; }
+    blockquote { border-left: 4px solid #3b82f6; background: #eff6ff; padding: 12px 16px; margin: 20px 0; border-radius: 0 8px 8px 0; color: #1e40af; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    th, td { padding: 12px 16px; border: 1px solid #e2e8f0; text-align: left; }
+    th { background: #f1f5f9; font-weight: 600; color: #334155; }
+    tr:nth-child(even) { background: #f8fafc; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    ul, ol { padding-left: 24px; }
+    li { margin-bottom: 6px; }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <div class="format-switcher">
-      <span class="format-badge active">🌐 HTML Version</span>
-      <a href="ANTIGRAVITY_INSTALLATION_GUIDE.md" class="format-badge inactive">📄 Markdown Version</a>
-    </div>
-
-    <h1>Antigravity Desktop App Installation and Login Guide (Windows)</h1>
-
-    <p>This guide walks Windows users through downloading, installing, and signing in to the <strong>Antigravity Desktop App</strong> using Google OAuth with the corporate Google Cloud Project ID: <code>geminienterpriseprod</code>.</p>
-
-    <hr>
-
-    <h2>1. Downloading &amp; Installing the Antigravity App</h2>
-
-    <p><strong>System Requirements</strong>: Windows 10 or Windows 11 (64-bit)</p>
-
-    <div class="download-card">
-      <h3>📥 Official Download Location</h3>
-      <p>Download the Windows Desktop App installer directly from the portal:</p>
-      <a href="https://antigravity.google/" target="_blank" class="download-btn">Go to https://antigravity.google/</a>
-    </div>
-
-    <h3>Installation Steps:</h3>
-    <ol>
-      <li>Visit <a href="https://antigravity.google/" target="_blank">https://antigravity.google/</a> and download <code>Antigravity Setup.exe</code>.</li>
-      <li>Locate the downloaded <code>Antigravity Setup.exe</code> file in your <code>Downloads</code> folder.</li>
-      <li>Double-click the file to start the installation wizard.</li>
-      <li>Follow the prompts on screen. Shortcuts will be placed on your Desktop and Start Menu.</li>
-    </ol>
-
-    <hr>
-
-    <h2>2. Step-by-Step Login Procedure</h2>
-
-    <ol>
-      <li><strong>Launch App</strong>: Open the <strong>Antigravity App</strong> from your Start Menu or Desktop shortcut.</li>
-      <li><strong>Start Sign-In</strong>: On the welcome screen, click <strong>Sign In</strong>.</li>
-      <li><strong>Select Login Method</strong>: Choose <strong>Option 2: Use a Google Cloud Project</strong>.</li>
-      <li><strong>Browser Authentication</strong>: A web browser window will open automatically. Sign in using your corporate <strong>Avaya email</strong> (<code>@avaya.com</code>).</li>
-      <li><strong>Enter Project ID</strong>: After browser authentication succeeds, enter the project ID exactly as:
-        <pre><code>geminienterpriseprod</code></pre>
-      </li>
-      <li><strong>Complete Setup</strong>: Click <strong>Confirm</strong> to finish signing in and open the Antigravity main workspace.</li>
-    </ol>
-
-    <hr>
-
-    <h2>3. Quick Reference Table</h2>
-
-    <table>
-      <thead>
-        <tr>
-          <th>Step</th>
-          <th>Detail / What to Select</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Target OS</strong></td>
-          <td>Windows 10 / Windows 11 (64-bit)</td>
-        </tr>
-        <tr>
-          <td><strong>Download Portal</strong></td>
-          <td><a href="https://antigravity.google/" target="_blank">https://antigravity.google/</a></td>
-        </tr>
-        <tr>
-          <td><strong>Installer File</strong></td>
-          <td><code>Antigravity Setup.exe</code></td>
-        </tr>
-        <tr>
-          <td><strong>Login Method</strong></td>
-          <td>Google OAuth</td>
-        </tr>
-        <tr>
-          <td><strong>Project Selection Option</strong></td>
-          <td><strong>Option 2: Use a Google Cloud Project</strong></td>
-        </tr>
-        <tr>
-          <td><strong>Account</strong></td>
-          <td>Your Avaya email (<code>@avaya.com</code>)</td>
-        </tr>
-        <tr>
-          <td><strong>Project ID</strong></td>
-          <td><code>geminienterpriseprod</code></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <hr>
-
-    <h2>4. Validation Checklist</h2>
-
-    <ul>
-      <li>[x] Downloaded <code>Antigravity Setup.exe</code> from portal.</li>
-      <li>[x] Installed and launched Antigravity Desktop App.</li>
-      <li>[x] Completed browser sign-in with `@avaya.com` email.</li>
-      <li>[x] Selected **Option 2: Use a Google Cloud Project**.</li>
-      <li>[x] Entered Project ID <code>geminienterpriseprod</code>.</li>
-    </ul>
-
-    <hr>
-
-    <h2>5. Troubleshooting</h2>
-
-    <h3>Q1: App does not launch after installation.</h3>
-    <ul>
-      <li><strong>Fix</strong>: Check Windows Security or corporate antivirus settings to ensure the application is permitted.</li>
-    </ul>
-
-    <h3>Q2: Wrong account selected or authentication error.</h3>
-    <ul>
-      <li><strong>Fix</strong>: Make sure you select <strong>Option 2: Use a Google Cloud Project</strong> and sign in using your <code>@avaya.com</code> email address.</li>
-    </ul>
-
-    <h3>Q3: Invalid Project ID.</h3>
-    <ul>
-      <li><strong>Fix</strong>: Re-enter the project ID exactly as <code>geminienterpriseprod</code>.</li>
-    </ul>
-
-    <footer>
-      Avaya Engineering &bull; Antigravity App Windows Documentation
-    </footer>
-  </div>
+<h1>Antigravity App Installation and Login Guide (Windows)</h1>
+<blockquote>
+<p>[!NOTE]<br />
+🌐 <strong>HTML Version Available</strong>: If you do not have a Markdown reader, open <strong><a href="file:///e:/case/avaya-case-review-pack/ANTIGRAVITY_INSTALLATION_GUIDE.html">ANTIGRAVITY_INSTALLATION_GUIDE.html</a></strong> directly in your web browser.</p>
+</blockquote>
+<p>This guide walks Windows users through downloading, installing, and signing in to the <strong>Antigravity Desktop App</strong> using Google OAuth with the dedicated corporate Google Cloud Project ID: <strong><code>geminienterpriseprod</code></strong>.</p>
+<hr />
+<h2>1. Downloading and Installing the Antigravity App</h2>
+<h3>📌 System Requirements</h3>
+<ul>
+<li><strong>Operating System</strong>: Windows 10 / Windows 11 (64-bit)</li>
+</ul>
+<h3>📥 Where to Download</h3>
+<ol>
+<li>Open your web browser and visit the download portal: <strong><a href="https://antigravity.google/">https://antigravity.google/</a></strong></li>
+<li>Download the <strong>Antigravity App Windows Installer</strong> (<code>Antigravity Setup.exe</code>).</li>
+</ol>
+<h3>💻 Installation Steps</h3>
+<ol>
+<li>Locate the downloaded file (<code>Antigravity Setup.exe</code>) in your <code>Downloads</code> folder.</li>
+<li>Double-click the file to launch the setup wizard.</li>
+<li>Follow the on-screen instructions to complete installation.</li>
+<li>Shortcuts will be created on your <strong>Desktop</strong> and in your <strong>Start Menu</strong>.</li>
+</ol>
+<hr />
+<h2>2. Step-by-Step Login Procedure</h2>
+<ol>
+<li><strong>Launch App</strong>: Open the <strong>Antigravity App</strong> from your Windows Start Menu or Desktop shortcut.</li>
+<li><strong>Start Sign-In</strong>: On the app welcome screen, click <strong>Sign In</strong>.</li>
+<li><strong>Select Login Method</strong>: Choose <strong>Option 2: Use a Google Cloud Project</strong>.</li>
+<li><strong>Browser Authentication</strong>: A web browser window will open automatically. Sign in using your corporate <strong>Avaya email</strong> (<code>@avaya.com</code>).</li>
+<li><strong>Enter Project ID</strong>: After browser authentication succeeds, enter the project ID exactly as:<br />
+<code>text
+   geminienterpriseprod</code></li>
+<li><strong>Complete Setup</strong>: Click <strong>Confirm</strong> to complete the login process and open the main app interface.</li>
+</ol>
+<hr />
+<h2>3. Quick Reference Table</h2>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Detail / What to Select</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Target OS</strong></td>
+<td>Windows 10 / Windows 11 (64-bit)</td>
+</tr>
+<tr>
+<td><strong>Download Portal</strong></td>
+<td><a href="https://antigravity.google/">https://antigravity.google/</a></td>
+</tr>
+<tr>
+<td><strong>Installer File</strong></td>
+<td><code>Antigravity Setup.exe</code></td>
+</tr>
+<tr>
+<td><strong>Login Method</strong></td>
+<td>Google OAuth</td>
+</tr>
+<tr>
+<td><strong>Project Selection</strong></td>
+<td><strong>Option 2: Use a Google Cloud Project</strong></td>
+</tr>
+<tr>
+<td><strong>Account</strong></td>
+<td>Your Avaya e-mail (<code>@avaya.com</code>)</td>
+</tr>
+<tr>
+<td><strong>Project ID</strong></td>
+<td><code>geminienterpriseprod</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>4. Validation Checklist</h2>
+<ul>
+<li>[ ] Downloaded <code>Antigravity Setup.exe</code> from <a href="https://antigravity.google/">https://antigravity.google/</a>.</li>
+<li>[ ] Antigravity Desktop App installed and launched from Start Menu.</li>
+<li>[ ] Signed in via browser using your <code>@avaya.com</code> email.</li>
+<li>[ ] Selected <strong>Option 2: Use a Google Cloud Project</strong>.</li>
+<li>[ ] Entered Project ID <code>geminienterpriseprod</code> successfully.</li>
+</ul>
+<hr />
+<h2>5. Troubleshooting &amp; FAQs</h2>
+<h3>Q1: Antigravity App does not launch after installation.</h3>
+<ul>
+<li><strong>Fix</strong>: Check if Windows Security / Antivirus blocked the application, and select "Allow" if prompted.</li>
+</ul>
+<h3>Q2: Authentication error or permission issue.</h3>
+<ul>
+<li><strong>Fix</strong>: Ensure you selected <strong>Option 2: Use a Google Cloud Project</strong> during login and signed in with your <code>@avaya.com</code> email.</li>
+</ul>
+<h3>Q3: Project ID error.</h3>
+<ul>
+<li><strong>Fix</strong>: Double check that the project ID is entered as <code>geminienterpriseprod</code> without spaces.</li>
+</ul>
 </body>
 </html>

@@ -2,7 +2,7 @@
 
 > 🌐 **HTML Version Available**: If you do not have a Markdown reader, open **[README.html](file:///e:/case/avaya-case-review-pack/README.html)** directly in your browser.
 
-This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and embedded **Avaya support domain rules** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs.
+This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and the **Embedded 10-Domain Avaya Debugger Knowledge Base** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with automated technical direction sanity checks and risk detection.
 
 ---
 
@@ -33,7 +33,6 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 
 - **`setup_env.ps1`**: Automated environment installer script.
 - **`MANAGER_ONBOARDING_GUIDE.html` / `MANAGER_ONBOARDING_GUIDE.md`**: Full setup and usage documentation for managers.
-- **`plugins/avaya-case-review/`**: The Case Review plugin containing the `case-review` and `gmail-capability` skills.
+- **`plugins/avaya-case-review/`**: The Case Review plugin containing the `case-review` skill, `gmail-capability` skill, and **10 embedded Avaya product domain reference guides** (`aes-cti-jtapi.md`, `contact-center.md`, `recording-wfo.md`, `analytics-kubernetes.md`, `security-vulnerability.md`, `sip-voice-quality.md`, `certificates-login-outage.md`, `digital-channels.md`, `ip-office.md`, `log-collection.md`).
 - **`tools/casetomd/`**: Python bridge for the CaseToMD server (`https://192.168.67.160:8000/mcp`).
 - **`tools/gmail/`**: Playwright-based Gmail MCP server for inbox search and email reading.
-
