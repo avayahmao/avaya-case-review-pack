@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Antigravity App Installation and Login Guide</title>
+  <title>Antigravity App Installation and Login Guide (Windows)</title>
   <style>
     :root {
       --primary: #2563eb;
@@ -99,6 +99,14 @@
       border-bottom: 2px solid #f1f5f9;
     }
 
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
     p {
       margin-bottom: 1.15rem;
       color: #334155;
@@ -140,6 +148,12 @@
       background-color: var(--note-bg);
       border-color: var(--note-border);
       color: #1e40af;
+    }
+
+    .alert-tip {
+      background-color: var(--tip-bg);
+      border-color: var(--tip-border);
+      color: #166534;
     }
 
     code {
@@ -190,10 +204,24 @@
     a {
       color: var(--primary);
       text-decoration: none;
+      font-weight: 500;
     }
 
     a:hover {
       text-decoration: underline;
+    }
+
+    .download-box {
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin: 1.5rem 0;
+    }
+
+    .download-box h3 {
+      margin-top: 0;
+      color: #1e40af;
     }
 
     footer {
@@ -213,55 +241,41 @@
       <a href="ANTIGRAVITY_INSTALLATION_GUIDE.md" class="format-badge inactive">📄 Markdown Version</a>
     </div>
 
-    <h1>Antigravity App Installation and Login Guide</h1>
+    <h1>Antigravity App Installation and Login Guide (Windows)</h1>
 
     <div class="alert alert-note">
       <div class="alert-title">📌 NOTE</div>
       Source: <a href="https://avaya.atlassian.net/wiki/spaces/DLBBEWIKI/pages/2476572765/Antigravity+CLI+Installation+and+Login+Guide" target="_blank">Avaya Confluence Wiki — Antigravity Installation and Login Guide</a>
     </div>
 
-    <p>This guide walks you through installing the <strong>Antigravity Desktop App</strong> and signing in using Google OAuth with the dedicated corporate Google Cloud Project ID: <code>geminienterpriseprod</code>.</p>
+    <p>This guide walks Windows users through downloading, installing, and signing in to the <strong>Antigravity App</strong> using Google OAuth with the dedicated corporate Google Cloud Project ID: <code>geminienterpriseprod</code>.</p>
 
     <hr>
 
-    <h2>1. Installing the Antigravity App</h2>
+    <h2>1. Where to Download &amp; How to Install (Windows)</h2>
 
-    <p>Download and run the installer for your operating system:</p>
+    <p><strong>System Requirements</strong>: Windows 10 or Windows 11 (64-bit)</p>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Operating System</th>
-          <th>Installer Format</th>
-          <th>Installation Steps</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td><strong>Windows</strong></td>
-          <td><code>.exe</code> / <code>.msi</code> Installer</td>
-          <td>Download the Windows installer (<code>Antigravity Setup.exe</code>) and double-click to launch the setup wizard. Follow on-screen prompts to complete installation.</td>
-        </tr>
-        <tr>
-          <td><strong>macOS</strong></td>
-          <td><code>.dmg</code> Package</td>
-          <td>Download the macOS disk image (<code>Antigravity.dmg</code>), open it, and drag the <strong>Antigravity</strong> icon into your <code>Applications</code> folder.</td>
-        </tr>
-        <tr>
-          <td><strong>Linux</strong></td>
-          <td><code>.deb</code> / <code>.rpm</code> / <code>.AppImage</code></td>
-          <td>Download the appropriate package for your distribution and install via your system package manager or run the AppImage.</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="download-box">
+      <h3>🌐 Official Download Location</h3>
+      <p>Download the Antigravity Windows App directly from: <a href="https://antigravity.google/" target="_blank"><strong>https://antigravity.google/</strong></a></p>
+    </div>
+
+    <h3>Option A: PowerShell Automated Setup (Recommended)</h3>
+    <p>Open <strong>PowerShell</strong> and run the following command:</p>
+    <pre><code>irm https://antigravity.google/cli/install.ps1 | iex</code></pre>
+
+    <h3>Option B: Command Prompt (CMD) Setup</h3>
+    <p>If using standard Command Prompt (CMD), run:</p>
+    <pre><code>curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd</code></pre>
 
     <hr>
 
     <h2>2. Step-by-Step Login Procedure</h2>
 
     <ol>
-      <li><strong>Launch App</strong>: Open the <strong>Antigravity App</strong> from your Start Menu, Applications folder, or desktop shortcut.</li>
-      <li><strong>Start Sign-In</strong>: Click <strong>Sign In</strong> on the welcome screen.</li>
+      <li><strong>Launch App</strong>: Open the <strong>Antigravity App</strong> or open a fresh terminal window.</li>
+      <li><strong>Start Sign-In</strong>: Initiate sign-in (or run <code>agy</code> in terminal).</li>
       <li><strong>Select Login Method</strong>: When prompted, select <strong>Option 2: Use a Google Cloud Project</strong>.</li>
       <li><strong>Authenticate</strong>: Sign in via browser using your corporate <strong>Avaya email</strong> (<code>@avaya.com</code>).</li>
       <li><strong>Enter Project ID</strong>: After browser authentication completes, enter the project ID exactly as:
@@ -277,13 +291,21 @@
       <thead>
         <tr>
           <th>Step</th>
-          <th>What to Enter / Select</th>
+          <th>Detail / What to Enter</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td><strong>Application</strong></td>
-          <td><strong>Antigravity Desktop App</strong></td>
+          <td><strong>Target OS</strong></td>
+          <td>Windows 10 / Windows 11 (64-bit)</td>
+        </tr>
+        <tr>
+          <td><strong>Download Location</strong></td>
+          <td><a href="https://antigravity.google/" target="_blank">https://antigravity.google/</a></td>
+        </tr>
+        <tr>
+          <td><strong>Quick Install (PowerShell)</strong></td>
+          <td><code>irm https://antigravity.google/cli/install.ps1 | iex</code></td>
         </tr>
         <tr>
           <td><strong>Login Method</strong></td>
@@ -309,19 +331,19 @@
     <h2>4. Validation Checklist</h2>
 
     <ul>
-      <li>[x] Antigravity App installed and launches successfully.</li>
+      <li>[x] Antigravity App installed and launches successfully on Windows.</li>
       <li>[x] Google OAuth login completed in browser with your Avaya email.</li>
       <li>[x] Project ID <code>geminienterpriseprod</code> entered successfully.</li>
-      <li>[x] Antigravity App main interface is active.</li>
+      <li>[x] Antigravity is active and ready for use.</li>
     </ul>
 
     <hr>
 
     <h2>5. Troubleshooting</h2>
 
-    <h3>Q1: Antigravity App fails to launch or closes immediately.</h3>
+    <h3>Q1: Command not found or App shortcut missing after installation.</h3>
     <ul>
-      <li><strong>Fix</strong>: Verify system requirements and check if antivirus / corporate security software is blocking the application.</li>
+      <li><strong>Fix</strong>: Close and reopen PowerShell / CMD or restart your workstation so Windows refreshes its system PATH environment variables.</li>
     </ul>
 
     <h3>Q2: Wrong account selected or authentication error.</h3>
@@ -335,7 +357,7 @@
     </ul>
 
     <footer>
-      Avaya Engineering &bull; Antigravity App Installation Documentation
+      Avaya Engineering &bull; Antigravity App Windows Documentation
     </footer>
   </div>
 </body>
