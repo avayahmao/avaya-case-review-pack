@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Avaya Case Review Suite - README</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --code-bg: #0f172a;
+      --code-text: #f8fafc;
+      --accent-bg: #eff6ff;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 2.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border);
+    }
+
+    .format-switcher {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .format-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 20px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .format-badge.active {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .format-badge.inactive {
+      background-color: #f1f5f9;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .format-badge.inactive:hover {
+      background-color: var(--accent-bg);
+      color: var(--primary);
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 1rem;
+      line-height: 1.25;
+    }
+
+    h2 {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #1e293b;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #f1f5f9;
+    }
+
+    p {
+      margin-bottom: 1.25rem;
+      color: #334155;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2rem 0;
+    }
+
+    ol, ul {
+      margin-bottom: 1.25rem;
+      padding-left: 1.5rem;
+      color: #334155;
+    }
+
+    li {
+      margin-bottom: 0.5rem;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9em;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+    }
+
+    pre {
+      background-color: var(--code-bg);
+      color: var(--code-text);
+      padding: 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: 1.5rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    pre code {
+      background-color: transparent;
+      color: inherit;
+      padding: 0;
+      border: none;
+    }
+
+    .guide-card {
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.5rem 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .guide-card-content {
+      font-weight: 500;
+      color: #1e40af;
+    }
+
+    .btn {
+      display: inline-block;
+      background-color: var(--primary);
+      color: white;
+      text-decoration: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: background-color 0.2s ease;
+    }
+
+    .btn:hover {
+      background-color: var(--primary-hover);
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: 3rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="format-switcher">
+      <span class="format-badge active">🌐 HTML Version</span>
+      <a href="README.md" class="format-badge inactive">📄 Markdown Version (README.md)</a>
+    </div>
+
+    <h1>Avaya Case Review Suite for Support Managers</h1>
+
+    <p>This package provides an automated <strong>Case Review Suite</strong> for Avaya Support &amp; Operations Managers. It integrates <strong>Antigravity</strong>, <strong>CaseToMD</strong>, <strong>Gmail</strong>, and embedded <strong>Avaya Tier 4 domain rules</strong> to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs.</p>
+
+    <hr>
+
+    <h2>🚀 Quick Setup (1-Click)</h2>
+
+    <ol>
+      <li>Open <strong>PowerShell</strong>.</li>
+      <li>Navigate to this directory:
+        <pre><code>cd Path\To\avaya-case-review-pack</code></pre>
+      </li>
+      <li>Run the setup script:
+        <pre><code>.\setup_env.ps1</code></pre>
+      </li>
+      <li>A Chrome browser window will open to initialize Google SSO for <code>@avaya.com</code>. Complete sign-in/MFA if prompted, then close the browser window.</li>
+      <li>Restart <strong>Antigravity</strong>.</li>
+    </ol>
+
+    <hr>
+
+    <h2>📖 Complete Onboarding &amp; Usage Guide</h2>
+
+    <p>For detailed instructions, troubleshooting, and sample prompts, see:</p>
+
+    <div class="guide-card">
+      <div class="guide-card-content">
+        📖 MANAGER_ONBOARDING_GUIDE (HTML &amp; Markdown Available)
+      </div>
+      <div>
+        <a href="MANAGER_ONBOARDING_GUIDE.html" class="btn">Open HTML Guide</a>
+      </div>
+    </div>
+
+    <hr>
+
+    <h2>🛠️ Package Contents</h2>
+
+    <ul>
+      <li><code>setup_env.ps1</code>: Automated environment installer script.</li>
+      <li><code>MANAGER_ONBOARDING_GUIDE.html</code> / <code>MANAGER_ONBOARDING_GUIDE.md</code>: Full setup and usage documentation for managers.</li>
+      <li><code>plugins/avaya-case-review/</code>: The Case Review plugin containing the <code>case-review</code> and <code>gmail-capability</code> skills.</li>
+      <li><code>tools/casetomd/</code>: Python bridge for the CaseToMD server (<code>https://192.168.67.160:8000/mcp</code>).</li>
+      <li><code>tools/gmail/</code>: Playwright-based Gmail MCP server for inbox search and email reading.</li>
+    </ul>
+
+    <footer>
+      Avaya Case Review Pack &bull; Operations &amp; Support Tooling
+    </footer>
+  </div>
+</body>
+</html>
