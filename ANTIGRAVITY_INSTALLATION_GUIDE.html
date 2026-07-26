@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity CLI Installation and Login Guide</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --code-bg: #0f172a;
+      --code-text: #f8fafc;
+      --note-bg: #eff6ff;
+      --note-border: #3b82f6;
+      --tip-bg: #f0fdf4;
+      --tip-border: #22c55e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 2.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border);
+    }
+
+    .format-switcher {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+
+    .format-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 20px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .format-badge.active {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .format-badge.inactive {
+      background-color: #f1f5f9;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .format-badge.inactive:hover {
+      background-color: var(--note-bg);
+      color: var(--primary);
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 1rem;
+      line-height: 1.25;
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      color: #1e293b;
+      margin-top: 2.25rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 2px solid #f1f5f9;
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    p {
+      margin-bottom: 1.15rem;
+      color: #334155;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2rem 0;
+    }
+
+    ol, ul {
+      margin-bottom: 1.25rem;
+      padding-left: 1.5rem;
+      color: #334155;
+    }
+
+    li {
+      margin-bottom: 0.5rem;
+    }
+
+    .alert {
+      padding: 1rem 1.25rem;
+      border-left: 4px solid;
+      border-radius: 0 8px 8px 0;
+      margin: 1.5rem 0;
+    }
+
+    .alert-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .alert-note {
+      background-color: var(--note-bg);
+      border-color: var(--note-border);
+      color: #1e40af;
+    }
+
+    .alert-tip {
+      background-color: var(--tip-bg);
+      border-color: var(--tip-border);
+      color: #166534;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9em;
+      background-color: #f1f5f9;
+      color: #0f172a;
+      padding: 0.2em 0.4em;
+      border-radius: 4px;
+      border: 1px solid #e2e8f0;
+    }
+
+    pre {
+      background-color: var(--code-bg);
+      color: var(--code-text);
+      padding: 1.1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    pre code {
+      background-color: transparent;
+      color: inherit;
+      padding: 0;
+      border: none;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      font-size: 0.95rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--border);
+    }
+
+    th {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 600;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f8fafc;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: 3rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="format-switcher">
+      <span class="format-badge active">🌐 HTML Version</span>
+      <a href="ANTIGRAVITY_INSTALLATION_GUIDE.md" class="format-badge inactive">📄 Markdown Version</a>
+    </div>
+
+    <h1>Antigravity CLI Installation and Login Guide</h1>
+
+    <div class="alert alert-note">
+      <div class="alert-title">📌 NOTE</div>
+      Source: <a href="https://avaya.atlassian.net/wiki/spaces/DLBBEWIKI/pages/2476572765/Antigravity+CLI+Installation+and+Login+Guide" target="_blank">Avaya Confluence Wiki — Antigravity CLI Installation and Login Guide</a>
+    </div>
+
+    <p>This guide walks you through installing the <strong>Antigravity CLI</strong> (<code>agy</code>) and signing in using Google OAuth with the dedicated corporate Google Cloud Project ID: <code>geminienterpriseprod</code>.</p>
+
+    <hr>
+
+    <h2>1. Installation Commands</h2>
+
+    <p>Select the command for your operating system and shell environment:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Operating System</th>
+          <th>Terminal / Shell</th>
+          <th>Installation Command</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>macOS</strong></td>
+          <td>Terminal</td>
+          <td><code>curl -fsSL https://antigravity.google/cli/install.sh | bash</code></td>
+        </tr>
+        <tr>
+          <td><strong>Linux</strong></td>
+          <td>Terminal</td>
+          <td><code>curl -fsSL https://antigravity.google/cli/install.sh | bash</code></td>
+        </tr>
+        <tr>
+          <td><strong>Windows</strong></td>
+          <td><strong>PowerShell</strong> <em>(Recommended)</em></td>
+          <td><code>irm https://antigravity.google/cli/install.ps1 | iex</code></td>
+        </tr>
+        <tr>
+          <td><strong>Windows</strong></td>
+          <td>Command Prompt (CMD)</td>
+          <td><code>curl -fsSL https://antigravity.google/cli/install.cmd -o install.cmd &amp;&amp; install.cmd &amp;&amp; del install.cmd</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="alert alert-tip">
+      <div class="alert-title">💡 TIP</div>
+      If you are unsure which terminal to use on Windows, <strong>PowerShell</strong> is the simplest and recommended option.
+    </div>
+
+    <hr>
+
+    <h2>2. Step-by-Step Login Procedure</h2>
+
+    <ol>
+      <li><strong>Open Terminal</strong>: Close and reopen your terminal after installation completes.</li>
+      <li><strong>Start CLI</strong>: Run <code>agy</code> in your terminal.</li>
+      <li><strong>Select Login Method</strong>: When prompted, select <strong>Option 2: Use a Google Cloud Project</strong>.</li>
+      <li><strong>Authenticate</strong>: Sign in using your corporate <strong>Avaya email</strong> (<code>@avaya.com</code>).</li>
+      <li><strong>Enter Project ID</strong>: After browser authentication completes, enter the project ID exactly as:
+        <pre><code>geminienterpriseprod</code></pre>
+      </li>
+    </ol>
+
+    <hr>
+
+    <h2>3. Quick Reference</h2>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Step</th>
+          <th>What to Enter / Select</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Start Login</strong></td>
+          <td><code>agy</code></td>
+        </tr>
+        <tr>
+          <td><strong>Login Method</strong></td>
+          <td>Google OAuth</td>
+        </tr>
+        <tr>
+          <td><strong>Project Selection Option</strong></td>
+          <td><strong>Option 2: Use a Google Cloud Project</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Account</strong></td>
+          <td>Your Avaya email (<code>@avaya.com</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>Project ID</strong></td>
+          <td><code>geminienterpriseprod</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <hr>
+
+    <h2>4. Validation Checklist</h2>
+
+    <ul>
+      <li>[x] Antigravity CLI installation command completed successfully.</li>
+      <li>[x] <code>agy</code> launches from the terminal.</li>
+      <li>[x] Google OAuth login completed with your Avaya email.</li>
+      <li>[x] Project ID <code>geminienterpriseprod</code> entered successfully.</li>
+    </ul>
+
+    <hr>
+
+    <h2>5. Troubleshooting</h2>
+
+    <h3>Q1: <code>agy: command not found</code> after installation.</h3>
+    <ul>
+      <li><strong>Fix</strong>: Close and reopen your terminal window so the updated system <code>PATH</code> is loaded.</li>
+    </ul>
+
+    <h3>Q2: Wrong account selected or authentication error.</h3>
+    <ul>
+      <li><strong>Fix</strong>: Confirm that you selected Google OAuth and <strong>Option 2: Use a Google Cloud Project</strong>, and ensure you signed in with your <code>@avaya.com</code> email.</li>
+    </ul>
+
+    <h3>Q3: Project ID error.</h3>
+    <ul>
+      <li><strong>Fix</strong>: Re-enter the project ID exactly as <code>geminienterpriseprod</code>.</li>
+    </ul>
+
+    <footer>
+      Avaya Engineering &bull; Antigravity CLI Installation Documentation
+    </footer>
+  </div>
+</body>
+</html>
