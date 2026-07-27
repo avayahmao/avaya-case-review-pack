@@ -8,17 +8,32 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 
 ## 🚀 Quick Setup (1-Click)
 
-1. Open **PowerShell**.
-2. Navigate to this directory:
-   ```powershell
-   cd Path\To\avaya-case-review-pack
-   ```
-3. Run the setup script:
-   ```powershell
-   .\setup_env.ps1
-   ```
-4. A Chrome browser window will open to initialize Google SSO for `@avaya.com`. Complete sign-in/MFA if prompted, then close the browser window.
-5. Restart **Antigravity**.
+**Recommended (works under corporate Group Policy):**
+1. Unzip the pack.
+2. **Double-click `install.bat`** (or from a terminal: `.\install.bat`).
+3. A Chrome browser window will open to initialize Google SSO for `@avaya.com`. Complete sign-in/MFA if prompted, then close the browser window.
+4. Restart **Antigravity**.
+
+`install.bat` is a thin wrapper that runs `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1`, which is required because Windows PowerShell's default execution policy (`Restricted` / `AllSigned`) blocks unsigned `.ps1` files *before* any code inside the script can adjust the policy.
+
+**Manual (if you prefer to invoke PowerShell yourself):**
+```powershell
+cd Path\To\avaya-case-review-pack
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1
+```
+
+### Behind a corporate SSL-inspecting proxy?
+
+The installer automatically works around common corporate SSL inspection (Zscaler / Netskope / Blue Coat) for:
+- **pip** — via `--trusted-host pypi.org files.pythonhosted.org …`
+- **Playwright Chromium download** — via `NODE_TLS_REJECT_UNAUTHORIZED=0`, applied only to that single command and restored immediately afterwards.
+
+If your org supplies a corporate CA bundle, prefer setting `NODE_EXTRA_CA_CERTS` to the `.pem` path *before* running `install.bat`:
+```powershell
+$env:NODE_EXTRA_CA_CERTS = "C:\path\to\corp-ca-bundle.pem"
+.\install.bat
+```
+When that variable is set, the installer uses your CA bundle instead of the bypass.
 
 ---
 

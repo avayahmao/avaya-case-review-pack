@@ -38,18 +38,45 @@ Write-Host "  Found: $PythonVersion" -ForegroundColor Green
 Write-Host ""
 Write-Host "[2/6] Installing required Python libraries (mcp, playwright)..." -ForegroundColor Yellow
 $env:PYTHONIOENCODING = "utf-8"
-python -m pip install --upgrade pip --quiet
-python -m pip install mcp playwright --quiet
+
+# Corporate SSL bypass for pip (many enterprise proxies MITM PyPI TLS).
+# --trusted-host disables cert validation ONLY for these hosts; other traffic is untouched.
+$PipTrustedHosts = @(
+    "--trusted-host", "pypi.org",
+    "--trusted-host", "pypi.python.org",
+    "--trusted-host", "files.pythonhosted.org"
+)
+
+python -m pip install --upgrade pip --quiet @PipTrustedHosts
+python -m pip install mcp playwright --quiet @PipTrustedHosts
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to install Python packages."
+    Write-Error "Failed to install Python packages. If your corporate proxy requires authentication, set HTTPS_PROXY / HTTP_PROXY before running this script."
     exit 1
 }
 Write-Host "  Python packages installed successfully." -ForegroundColor Green
 
 Write-Host "  Installing Playwright Chromium browser binary..." -ForegroundColor Yellow
+# Corporate MITM proxies (e.g. Zscaler, Netskope, Blue Coat) commonly break the
+# Playwright browser download because the bundled Node driver validates TLS strictly.
+# NODE_TLS_REJECT_UNAUTHORIZED=0 disables cert validation for THIS process only —
+# it does NOT persist after the script exits.
+# If your org supplies a corporate CA bundle, prefer setting NODE_EXTRA_CA_CERTS
+# to that PEM file INSTEAD of using this bypass.
+$OldNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
+if (-not $env:NODE_EXTRA_CA_CERTS) {
+    Write-Host "  (Applying NODE_TLS_REJECT_UNAUTHORIZED=0 to bypass corporate SSL inspection for this download.)" -ForegroundColor DarkGray
+    $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
+} else {
+    Write-Host "  (Using corporate CA bundle from NODE_EXTRA_CA_CERTS=$($env:NODE_EXTRA_CA_CERTS))" -ForegroundColor DarkGray
+}
 playwright install chromium
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning "Playwright browser installation returned non-zero code. Attempting to proceed."
+$PlaywrightExit = $LASTEXITCODE
+# Restore prior state (do not leak the bypass into later steps or the user's shell).
+$env:NODE_TLS_REJECT_UNAUTHORIZED = $OldNodeTls
+
+if ($PlaywrightExit -ne 0) {
+    Write-Warning "Playwright browser installation returned non-zero code ($PlaywrightExit). Attempting to proceed."
+    Write-Warning "If this failed due to corporate SSL, set NODE_EXTRA_CA_CERTS to your corporate CA .pem file and re-run install.bat."
 } else {
     Write-Host "  Playwright Chromium installed successfully." -ForegroundColor Green
 }

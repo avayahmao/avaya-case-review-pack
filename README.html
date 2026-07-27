@@ -107,17 +107,29 @@
     <p>This package provides an automated <strong>Case Review Suite</strong> for Avaya Support & Operations Managers. It integrates <strong>Antigravity</strong>, <strong>CaseToMD</strong>, <strong>Gmail</strong>, and the <strong>Embedded 10-Domain Avaya Debugger Knowledge Base</strong> to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with automated technical direction sanity checks and risk detection.</p>
 
     <h2>🚀 Quick Setup (1-Click)</h2>
+    <p><strong>Recommended (works under corporate Group Policy):</strong></p>
     <ol>
-        <li>Open <strong>PowerShell</strong>.</li>
-        <li>Navigate to this directory:
-<pre>cd Path\To\avaya-case-review-pack</pre>
-        </li>
-        <li>Run the setup script:
-<pre>.\setup_env.ps1</pre>
-        </li>
+        <li>Unzip the pack.</li>
+        <li><strong>Double-click <code>install.bat</code></strong> (or from a terminal: <code>.\install.bat</code>).</li>
         <li>A Chrome browser window will open to initialize Google SSO for <code>@avaya.com</code>. Complete sign-in/MFA if prompted, then close the browser window.</li>
         <li>Restart <strong>Antigravity</strong>.</li>
     </ol>
+    <p><code>install.bat</code> is a thin wrapper that runs <code>powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</code>, which is required because Windows PowerShell's default execution policy (<code>Restricted</code> / <code>AllSigned</code>) blocks unsigned <code>.ps1</code> files <em>before</em> any code inside the script can adjust the policy.</p>
+
+    <p><strong>Manual (if you prefer to invoke PowerShell yourself):</strong></p>
+<pre>cd Path\To\avaya-case-review-pack
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
+
+    <h3>Behind a corporate SSL-inspecting proxy?</h3>
+    <p>The installer automatically works around common corporate SSL inspection (Zscaler / Netskope / Blue Coat) for:</p>
+    <ul>
+        <li><strong>pip</strong> — via <code>--trusted-host pypi.org files.pythonhosted.org …</code></li>
+        <li><strong>Playwright Chromium download</strong> — via <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code>, applied only to that single command and restored immediately afterwards.</li>
+    </ul>
+    <p>If your org supplies a corporate CA bundle, prefer setting <code>NODE_EXTRA_CA_CERTS</code> to the <code>.pem</code> path <em>before</em> running <code>install.bat</code>:</p>
+<pre>$env:NODE_EXTRA_CA_CERTS = "C:\path\to\corp-ca-bundle.pem"
+.\install.bat</pre>
+    <p>When that variable is set, the installer uses your CA bundle instead of the bypass.</p>
 
     <h2>📖 Complete Documentation Suite (<code>docs/</code>)</h2>
     <p>All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the <strong><a href="docs/">docs/</a></strong> directory:</p>
