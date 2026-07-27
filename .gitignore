@@ -24,3 +24,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Distribution zips — publish via GitHub Releases, not in-repo.
+avaya-case-review-pack-v*.zip
