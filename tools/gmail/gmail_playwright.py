@@ -32,12 +32,26 @@ def setup_login():
             input(">>> Press ENTER in this terminal after you finish signing in: ")
         except KeyboardInterrupt:
             print("\nSetup cancelled.")
-            context.close()
+            try:
+                context.close()
+            except Exception:
+                pass
             return
-            
-        body_text = page.text_content("body")
+
+        # Defensive: if the user closed the browser window / SSO tab BEFORE pressing
+        # ENTER, the page target is gone and page.text_content("body") raises
+        # TargetClosedError, which aborts the script before context.close() runs and
+        # loses the freshly-saved SSO cookies. Guard both the inspection and the close.
+        try:
+            if not page.is_closed():
+                body_text = page.text_content("body")
+        except Exception:
+            pass
         print("\nLogin saved successfully! Session active.")
-        context.close()
+        try:
+            context.close()
+        except Exception:
+            pass
 
 def query_apps_script(action, extra_params=""):
     url = f"{APPS_SCRIPT_URL}?action={action}{extra_params}"

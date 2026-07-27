@@ -26,11 +26,20 @@ async def query_apps_script(action, extra_params=""):
             headless=True,
             args=["--disable-blink-features=AutomationControlled"]
         )
-        page = context.pages[0] if context.pages else await context.new_page()
-        await page.goto(url)
-        await page.wait_for_load_state("networkidle")
-        body_text = await page.text_content("body")
-        await context.close()
+        body_text = ""
+        try:
+            page = context.pages[0] if context.pages else await context.new_page()
+            await page.goto(url)
+            await page.wait_for_load_state("networkidle")
+            if not page.is_closed():
+                body_text = await page.text_content("body") or ""
+        finally:
+            # Same defensive close as in gmail_playwright.setup_login — never let a
+            # torn-down browser target crash the caller before session state is flushed.
+            try:
+                await context.close()
+            except Exception:
+                pass
         return body_text
 
 @app.list_tools()
