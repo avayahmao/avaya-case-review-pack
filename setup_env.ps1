@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Avaya Case Review Suite — Automated Setup Script for Support Managers
 # ==============================================================================
 # This script sets up Antigravity Plugins, MCP Servers, Python dependencies,
