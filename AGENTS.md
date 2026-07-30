@@ -133,7 +133,9 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
-- **v1.2.3** — Gmail SSO robustness (early-close guard)
+- **v1.3.0** — Technical & Incident Assessment and Bi-Level Recommendations
+- v1.2.4 — Agent default context (`AGENTS.md`)
+- v1.2.3 — Gmail SSO robustness (early-close guard)
 - v1.2.2 — Corporate installer (install.bat + SSL bypass)  *(superseded)*
 - v1.2.1 — Encoding hotfix (CRLF + BOM)  *(superseded)*
 - v1.2.0 — Original release  *(superseded — installer would not run)*

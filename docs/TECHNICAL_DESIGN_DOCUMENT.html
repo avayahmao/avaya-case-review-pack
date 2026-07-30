@@ -299,7 +299,25 @@
         </tbody>
     </table>
 
+    <h4>Output Brief Schema</h4>
+    <ul>
+        <li><strong>Executive Verdict &amp; Overall Health</strong>: Bottom-line indicator (<code>🟢 Healthy</code>, <code>🟡 At Risk</code>, <code>🔴 Stalled</code>).</li>
+        <li><strong>Technical &amp; Incident Assessment</strong>:
+            <ul>
+                <li><strong>Incidents &amp; Technical Progress Summary</strong>: Fault mechanism, involved products, diagnostic trajectory.</li>
+                <li><strong>Root Cause Analysis (RCA)</strong>: Identified / Suspected / <code>🔍 Under Investigation (Pending: [specific logs/traces/checks])</code>.</li>
+                <li><strong>Mitigation Steps</strong>: Active Workaround / <code>⚠️ None Active / Workaround Pending (Impact: [statement])</code>.</li>
+            </ul>
+        </li>
+        <li><strong>Unified Progress Summary</strong>: Milestone updates from Siebel/ServiceNow and related Gmail threads.</li>
+        <li><strong>Full Chronological Timeline</strong>: Unified activity and email chronicle table.</li>
+        <li><strong>Risk Flags &amp; Misdirection Audits</strong>: Explicit callouts for staleness, PEAs, unassignable dispatches, technical direction risks, and misdirected vendor escalations.</li>
+        <li><strong>Ownership &amp; Next Actions</strong>: Named assignee, last concrete action, next-step owner, due date.</li>
+        <li><strong>Targeted Recommendations</strong>: Bi-level actionable directives (1. Manager &amp; Escalation Actions, 2. Technical &amp; Diagnostic Actions) with assigned Owners &amp; Priorities.</li>
+    </ul>
+
     <h4>Vendor Escalation Handoff Verification Rules</h4>
+
     <ul>
         <li><strong>CM / AES Core Software Bugs</strong> &rarr; Assign to <span class="badge">[BBE PEA]</span> (CM ASAI, AES service crash, crossID exhaustion).</li>
         <li><strong>POM / AEP Product Code</strong> &rarr; Assign to <span class="badge">[CPE PEA]</span> (POM campaign engine, AEP application server, REST driver).</li>

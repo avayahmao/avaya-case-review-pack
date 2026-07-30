@@ -99,6 +99,10 @@ Apply these checks to the parsed case, loaded domain reference files, and email 
    - Flag as `🔴 MISDIRECTED ESCALATION` if a ticket/PEA was opened against the wrong vendor or product group.
 10. **Log Sufficiency Check**:
     Cross-check whether the required diagnostic logs listed in [log-collection.md](references/log-collection.md) (e.g. `getlogs`, `csta_trace`, `g3trace`, `spi.log`, `acr.log`, `tcpdump`) have been requested or attached. Flag if key traces are missing.
+11. **Technical Synthesis (RCA & Mitigation)**:
+    - **Incident & Technical Summary**: Synthesize the core fault mechanism, affected products/components, and current diagnostic status.
+    - **Root Cause Analysis (RCA)**: Determine if the root cause is Identified, Suspected, or Under Investigation. If under investigation, explicitly state what specific diagnostic logs/traces or tests are pending to isolate it.
+    - **Mitigation Steps**: Identify any temporary workaround or interim patch applied or available to restore service. If no workaround exists, explicitly state the current operational impact and pending mitigation prerequisites.
 
 ### Step 5 — Produce the review report
 
@@ -114,6 +118,21 @@ Output in exactly this structure:
 ## Verdict
 <One or two sentences: is this case on track, at risk, or stalled? Lead with the bottom line.>
 Overall health: 🟢 Healthy / 🟡 At Risk / 🔴 Stalled
+
+## Technical & Incident Assessment
+
+### Incidents & Technical Progress Summary
+- **Symptom / Fault:** <Summary of observed technical failure or incident>
+- **Affected Components:** <Avaya products/components involved, e.g. AES JTAPI, CM, Session Manager>
+- **Current Technical Trajectory:** <Summary of technical diagnostic progress and current focus>
+
+### Root Cause Analysis (RCA)
+- **Status:** Identified / Suspected / 🔍 Under Investigation
+- **Findings:** <Detailed root cause description, OR if under investigation: "🔍 Under Investigation (Pending: [specific logs/traces/config checks required to isolate root cause])">
+
+### Mitigation Steps
+- **Status:** Active Workaround / Pending / ⚠️ None Active
+- **Details:** <Workaround steps applied or available to restore service/minimize impact, OR if none: "⚠️ None Active / Workaround Pending (Impact: [statement])">
 
 ## Progress Summary
 <Bullet list of the 3-5 most important milestones/updates from the timeline (including Gmail email findings), newest first. Each = date + what changed. Omit routine pings.>
@@ -141,9 +160,16 @@ Overall health: 🟢 Healthy / 🟡 At Risk / 🔴 Stalled
 - **Next-step owner:** <name or "unassigned">
 - **Next update due:** <date or "not specified">
 
-## Recommended Manager Actions
-<2-4 specific, actionable items the manager should do. Tie each to an identified flag.>
-1. ...
+## Targeted Recommendations
+
+### 1. Manager & Escalation Actions
+<Action items for management, SDM alignment, vendor escalation, or SLA/customer communication. Include Priority & Owner.>
+1. **[Priority] Action:** <Description> | **Owner:** <Name/Role>
+2. ...
+
+### 2. Technical & Diagnostic Actions
+<Concrete technical items for engineers, such as CM SA9114/SA9124 verification, collecting getlogs/csta_trace, or checking vector wait-time. Include Priority & Owner.>
+1. **[Priority] Action:** <Description> | **Owner:** <Name/Role>
 2. ...
 ```
 
@@ -153,7 +179,10 @@ Overall health: 🟢 Healthy / 🟡 At Risk / 🔴 Stalled
 - **Load Domain References.** Read the matching product reference file from `references/` whenever analyzing technical claims.
 - **Search Gmail by default.** Always run `gmail_search` for the case ID to incorporate off-system emails, executive notices, and OCD unassignable task alerts into the review.
 - **Validate Technical Directions.** Leverage Avaya domain principles (SA9114/SA9124, vendor escalation routes, CSTA event boundaries) to detect misdirected troubleshooting efforts.
+- **Explicit Technical RCA/Mitigation Tracking.** Always provide clear RCA and Mitigation status. If unknown, explicitly note what diagnostic logs/traces are blocking RCA determination rather than giving generic placeholders.
+- **Bi-Level Targeted Recommendations.** Categorize all recommendations into Manager/Escalation Actions and Technical/Diagnostic Actions with clear Owners and Priorities.
 - **Quote the customer's impact wording verbatim** when discussing impact.
 - **Timeline is exhaustive but terse.** Include all activities and key emails in the table.
 - **Verdict first.** A manager reading the top 3 lines should know whether to worry.
 - **Currency**: compute "days ago" relative to today's date.
+

@@ -96,12 +96,19 @@ To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigra
 The case review will automatically produce a structured executive report:
 
 1. **Top-Level Verdict**: Bottom-line assessment (`🟢 Healthy`, `🟡 At Risk`, or `🔴 Stalled`).
-2. **Progress Summary**: Recent milestone updates from Siebel/ServiceNow and related Gmail threads.
-3. **Full Timeline Table**: Consolidated chronicle of activity logs, SDM updates, and email threads.
-4. **Risk Flags**: Explicit callouts for staleness (>7/30 days), PEA escalations, unassignable dispatch alerts, missing next steps, **`⚠️ TECHNICAL DIRECTION RISK`**, or **`🔴 MISDIRECTED ESCALATION`**.
-5. **Technical Direction Sanity Validation**: Embedded Avaya platform intelligence that automatically cross-checks engineer workarounds against known platform behaviors (e.g. SA9114/SA9124 attributes vs JTAPI PEA requests, ACRA recording boundaries, vendor escalation target accuracy).
-6. **Ownership & Next Actions**: Named assignee, last concrete action, next step owner, and due date.
-7. **Recommended Manager Actions**: 2-4 concrete, prioritized actions for the support manager to resolve stalls, redirect invalid technical paths, or assign clear ownership.
+2. **Technical & Incident Assessment**:
+   - **Incidents & Technical Progress Summary**: Core fault mechanism, affected Avaya components, and diagnostic progress trajectory.
+   - **Root Cause Analysis (RCA)**: Identified / Suspected / `🔍 Under Investigation (Pending: [specific logs/traces/checks])`.
+   - **Mitigation Steps**: Active Workaround / `⚠️ None Active / Workaround Pending (Impact: [statement])`.
+3. **Progress Summary**: Recent milestone updates from Siebel/ServiceNow and related Gmail threads.
+4. **Full Timeline Table**: Consolidated chronicle of activity logs, SDM updates, and email threads.
+5. **Risk Flags**: Explicit callouts for staleness (>7/30 days), PEA escalations, unassignable dispatch alerts, missing next steps, **`⚠️ TECHNICAL DIRECTION RISK`**, or **`🔴 MISDIRECTED ESCALATION`**.
+6. **Technical Direction Sanity Validation**: Embedded Avaya platform intelligence that automatically cross-checks engineer workarounds against known platform behaviors (e.g. SA9114/SA9124 attributes vs JTAPI PEA requests, ACRA recording boundaries, vendor escalation target accuracy).
+7. **Ownership & Next Actions**: Named assignee, last concrete action, next step owner, and due date.
+8. **Targeted Recommendations**: Bi-level actionable directives with assigned Owners & Priorities:
+   - **1. Manager & Escalation Actions**: SDM alignment, PEA acceleration, SLA/customer communication.
+   - **2. Technical & Diagnostic Actions**: Platform parameter checks (e.g. SA9114/SA9124), log/trace requests, vendor routing fixes.
+
 
 ---
 

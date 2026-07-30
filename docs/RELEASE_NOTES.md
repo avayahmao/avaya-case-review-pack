@@ -4,6 +4,43 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
+## [v1.3.0] — 2026-07-30: Technical & Incident Assessment & Bi-Level Recommendations
+
+### 🎯 Technical & Incident Review Enhancements
+* **`Technical & Incident Assessment` Module**:
+  * Added dedicated technical section to `case-review` skill output brief.
+  * **Incidents & Technical Progress Summary**: Detailed fault mechanism, affected products/components, and diagnostic trajectory.
+  * **Root Cause Analysis (RCA)**: Structured status classification (`Identified`, `Suspected`, or `🔍 Under Investigation (Pending: [specific logs/traces/checks])`).
+  * **Mitigation Steps**: Workaround status tracking (`Active Workaround` or `⚠️ None Active / Workaround Pending (Impact: [statement])`).
+* **Bi-Level `Targeted Recommendations`**:
+  * **Manager & Escalation Actions**: High-level SDM alignment, PEA tracking, SLA & customer communications with assigned Owners & Priorities.
+  * **Technical & Diagnostic Actions**: Concrete technical steps (CM SA9114/SA9124 checks, log collection, trace boundary analysis) with assigned Owners & Priorities.
+* **Documentation & Technical Design Parity**:
+  * Updated **[`docs/MANAGER_ONBOARDING_GUIDE.md`](file:///e:/case/avaya-case-review-pack/docs/MANAGER_ONBOARDING_GUIDE.md)** / **[`docs/MANAGER_ONBOARDING_GUIDE.html`](file:///e:/case/avaya-case-review-pack/docs/MANAGER_ONBOARDING_GUIDE.html)**.
+  * Updated **[`docs/TECHNICAL_DESIGN_DOCUMENT.md`](file:///e:/case/avaya-case-review-pack/docs/TECHNICAL_DESIGN_DOCUMENT.md)** / **[`docs/TECHNICAL_DESIGN_DOCUMENT.html`](file:///e:/case/avaya-case-review-pack/docs/TECHNICAL_DESIGN_DOCUMENT.html)**.
+
+---
+
+## [v1.2.4] — 2026-07-27: Agent Default Context (`AGENTS.md`)
+* **Agent Context Specification**: Added `AGENTS.md` at root directory to provide default context, runtime layout mapping, and non-negotiable conventions for AI coding agents.
+
+---
+
+## [v1.2.3] — 2026-07-27: Gmail SSO Playwright Robustness
+* **Early-Close Guard**: Added `page.is_closed()` guards and `try/except` context cleanup to ensure Gmail Playwright automation survives early browser-window closure during SSO MFA authentication.
+
+---
+
+## [v1.2.2] — 2026-07-27: Corporate-Friendly Installer
+* **SSL & Proxy Compatibility**: Enhanced `install.bat` and `setup_env.ps1` with temporary, scoped `NODE_TLS_REJECT_UNAUTHORIZED=0` during Chromium downloads to support corporate proxy environments.
+
+---
+
+## [v1.2.1] — 2026-07-27: PowerShell Encoding Normalization
+* **Encoding Hotfix**: Enforced CRLF + UTF-8 BOM on `*.ps1`, `*.bat`, and `*.cmd` scripts via `.gitattributes` to resolve Windows PowerShell 5.1 here-string parsing issues.
+
+---
+
 ## [v1.2.0] — 2026-07-26: Complete Governance & Technical Specifications Release
 
 ### 🚀 New Features & Modules

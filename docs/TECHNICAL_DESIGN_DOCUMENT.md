@@ -124,6 +124,18 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 3. **API Method Compliance**: Verifies that engineers use official Javadoc methods (`LucentV5CallInfo.getUCID()`) rather than deprecated or zeroed fields (`originalCallInfo.ucid`).
 4. **Log Sufficiency**: Cross-checks case logs against `log-collection.md` to ensure `getlogs`, `csta_trace`, and `g3trace` were requested before escalating.
 
+#### Output Brief Schema
+1. **Executive Verdict & Overall Health**: Bottom-line indicator (`🟢 Healthy`, `🟡 At Risk`, `🔴 Stalled`).
+2. **Technical & Incident Assessment**:
+   - **Incidents & Technical Progress Summary**: Fault mechanism, involved products, diagnostic trajectory.
+   - **Root Cause Analysis (RCA)**: Identified / Suspected / `🔍 Under Investigation (Pending: [specific logs/traces/checks])`.
+   - **Mitigation Steps**: Active Workaround / `⚠️ None Active / Workaround Pending (Impact: [statement])`.
+3. **Unified Progress Summary**: Milestone updates from Siebel/ServiceNow and related Gmail threads.
+4. **Full Chronological Timeline**: Unified activity and email chronicle table.
+5. **Risk Flags & Misdirection Audits**: Explicit callouts for staleness, PEAs, unassignable dispatches, technical direction risks, and misdirected vendor escalations.
+6. **Ownership & Next Actions**: Named assignee, last concrete action, next-step owner, due date.
+7. **Targeted Recommendations**: Bi-level actionable directives (1. Manager & Escalation Actions, 2. Technical & Diagnostic Actions) with assigned Owners & Priorities.
+
 #### Vendor Escalation Handoff Matrix
 - **CM / AES Core Software Bugs** ➔ Assign to **[BBE PEA]** (CM ASAI, AES service crash, crossID exhaustion).
 - **POM / AEP Product Code** ➔ Assign to **[CPE PEA]** (POM campaign engine, AEP application server, REST driver).
@@ -132,6 +144,7 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 - **Customer Infrastructure** ➔ Assign to **[Customer / MSP Action]** (LDAP auth, SQL database, firewall ports).
 
 *A risk flag is automatically triggered if an SR/INC or PEA is assigned to an incorrect vendor/team.*
+
 
 ---
 

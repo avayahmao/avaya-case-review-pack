@@ -119,13 +119,26 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <p>The case review will automatically produce a structured executive report:</p>
 <ol>
 <li><strong>Top-Level Verdict</strong>: Bottom-line assessment (<code>🟢 Healthy</code>, <code>🟡 At Risk</code>, or <code>🔴 Stalled</code>).</li>
+<li><strong>Technical &amp; Incident Assessment</strong>:
+<ul>
+<li><strong>Incidents &amp; Technical Progress Summary</strong>: Core fault mechanism, affected Avaya components, and diagnostic progress trajectory.</li>
+<li><strong>Root Cause Analysis (RCA)</strong>: Identified / Suspected / <code>🔍 Under Investigation (Pending: [specific logs/traces/checks])</code>.</li>
+<li><strong>Mitigation Steps</strong>: Active Workaround / <code>⚠️ None Active / Workaround Pending (Impact: [statement])</code>.</li>
+</ul>
+</li>
 <li><strong>Progress Summary</strong>: Recent milestone updates from Siebel/ServiceNow and related Gmail threads.</li>
 <li><strong>Full Timeline Table</strong>: Consolidated chronicle of activity logs, SDM updates, and email threads.</li>
 <li><strong>Risk Flags</strong>: Explicit callouts for staleness (&gt;7/30 days), PEA escalations, unassignable dispatch alerts, missing next steps, <strong><code>⚠️ TECHNICAL DIRECTION RISK</code></strong>, or <strong><code>🔴 MISDIRECTED ESCALATION</code></strong>.</li>
 <li><strong>Technical Direction Sanity Validation</strong>: Embedded Avaya platform intelligence that automatically cross-checks engineer workarounds against known platform behaviors (e.g. SA9114/SA9124 attributes vs JTAPI PEA requests, ACRA recording boundaries, vendor escalation target accuracy).</li>
 <li><strong>Ownership &amp; Next Actions</strong>: Named assignee, last concrete action, next step owner, and due date.</li>
-<li><strong>Recommended Manager Actions</strong>: 2-4 concrete, prioritized actions for the support manager to resolve stalls, redirect invalid technical paths, or assign clear ownership.</li>
+<li><strong>Targeted Recommendations</strong>: Bi-level actionable directives with assigned Owners &amp; Priorities:
+<ul>
+<li><strong>1. Manager &amp; Escalation Actions</strong>: SDM alignment, PEA acceleration, SLA/customer communication.</li>
+<li><strong>2. Technical &amp; Diagnostic Actions</strong>: Platform parameter checks (e.g. SA9114/SA9124), log/trace requests, vendor routing fixes.</li>
+</ul>
+</li>
 </ol>
+
 <hr />
 <h2>6. Troubleshooting &amp; FAQs</h2>
 <h3>Q1: Antigravity says <code>get_case_markdown</code> is not available or CaseToMD connection failed.</h3>

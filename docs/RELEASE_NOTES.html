@@ -111,8 +111,73 @@
 
 <div class="main-container">
 
-    <!-- VERSION 1.2.0 -->
+    <!-- VERSION 1.3.0 -->
     <div>
+        <span class="version-tag">v1.3.0</span>
+        <span class="version-date">2026-07-30 — Technical & Incident Assessment & Bi-Level Recommendations</span>
+        
+        <h3>🎯 Technical & Incident Review Enhancements</h3>
+        <ul>
+            <li><strong><code>Technical & Incident Assessment</code> Module</strong>:
+                <ul>
+                    <li>Added dedicated technical section to <code>case-review</code> skill output brief.</li>
+                    <li><strong>Incidents & Technical Progress Summary</strong>: Detailed fault mechanism, affected products/components, and diagnostic trajectory.</li>
+                    <li><strong>Root Cause Analysis (RCA)</strong>: Structured status classification (<code>Identified</code>, <code>Suspected</code>, or <code>🔍 Under Investigation (Pending: [specific logs/traces/checks])</code>).</li>
+                    <li><strong>Mitigation Steps</strong>: Workaround status tracking (<code>Active Workaround</code> or <code>⚠️ None Active / Workaround Pending (Impact: [statement])</code>).</li>
+                </ul>
+            </li>
+            <li><strong>Bi-Level <code>Targeted Recommendations</code></strong>:
+                <ul>
+                    <li><strong>Manager & Escalation Actions</strong>: High-level SDM alignment, PEA tracking, SLA & customer communications with assigned Owners & Priorities.</li>
+                    <li><strong>Technical & Diagnostic Actions</strong>: Concrete technical steps (CM SA9114/SA9124 checks, log collection, trace boundary analysis) with assigned Owners & Priorities.</li>
+                </ul>
+            </li>
+            <li><strong>Documentation Parity</strong>:
+                <ul>
+                    <li>Updated <a href="MANAGER_ONBOARDING_GUIDE.html">docs/MANAGER_ONBOARDING_GUIDE.html</a> and <a href="TECHNICAL_DESIGN_DOCUMENT.html">docs/TECHNICAL_DESIGN_DOCUMENT.html</a>.</li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.2.4 -->
+    <div style="margin-top: 40px;">
+        <span class="version-tag">v1.2.4</span>
+        <span class="version-date">2026-07-27 — Agent Default Context (AGENTS.md)</span>
+        <ul>
+            <li><strong>Agent Context Specification</strong>: Added <code>AGENTS.md</code> at root directory to provide default context, runtime layout mapping, and non-negotiable conventions for AI coding agents.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.2.3 -->
+    <div style="margin-top: 40px;">
+        <span class="version-tag">v1.2.3</span>
+        <span class="version-date">2026-07-27 — Gmail SSO Playwright Robustness</span>
+        <ul>
+            <li><strong>Early-Close Guard</strong>: Added <code>page.is_closed()</code> guards and <code>try/except</code> context cleanup to ensure Gmail Playwright automation survives early browser-window closure during SSO MFA authentication.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.2.2 -->
+    <div style="margin-top: 40px;">
+        <span class="version-tag">v1.2.2</span>
+        <span class="version-date">2026-07-27 — Corporate-Friendly Installer</span>
+        <ul>
+            <li><strong>SSL & Proxy Compatibility</strong>: Enhanced <code>install.bat</code> and <code>setup_env.ps1</code> with temporary, scoped <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> during Chromium downloads to support corporate proxy environments.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.2.1 -->
+    <div style="margin-top: 40px;">
+        <span class="version-tag">v1.2.1</span>
+        <span class="version-date">2026-07-27 — PowerShell Encoding Normalization</span>
+        <ul>
+            <li><strong>Encoding Hotfix</strong>: Enforced CRLF + UTF-8 BOM on <code>*.ps1</code>, <code>*.bat</code>, and <code>*.cmd</code> scripts via <code>.gitattributes</code> to resolve Windows PowerShell 5.1 here-string parsing issues.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.2.0 -->
+    <div style="margin-top: 40px;">
         <span class="version-tag">v1.2.0</span>
         <span class="version-date">2026-07-26 — Complete Governance & Technical Specifications Release</span>
         
