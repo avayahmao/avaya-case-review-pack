@@ -227,7 +227,7 @@
         <li><strong>Tools Exposed</strong>:
             <ol>
                 <li><code>gmail_search(query)</code>: Queries inbox for case IDs, sub-task IDs (<code>TASK0614855</code>), customer names, or SDM thread keywords.</li>
-                <li><code>gmail_read_thread(thread_id)</code>: Extracts full message body, sender, recipient, and timestamps.</li>
+                <li><code>gmail_read(message_id)</code>: Extracts the full message body, sender, recipient, and timestamps.</li>
                 <li><code>gmail_send(to, subject, body)</code>: Sends executive digest or escalation email from user's authenticated handle.</li>
             </ol>
         </li>
@@ -300,21 +300,32 @@
     </table>
 
     <h4>Output Brief Schema</h4>
-    <ul>
-        <li><strong>Executive Verdict &amp; Overall Health</strong>: Bottom-line indicator (<code>🟢 Healthy</code>, <code>🟡 At Risk</code>, <code>🔴 Stalled</code>).</li>
-        <li><strong>Technical &amp; Incident Assessment</strong>:
+    <ol>
+        <li><strong>Evidence Gate</strong>: Dynamic <code>Evidence 1..N</code> entries containing Source, Date, Verbatim evidence / data, and Supports. Zero case-specific evidence produces exactly <code>不知道</code>.</li>
+        <li><strong>Executive Verdict &amp; Overall Health</strong>: Evidence-cited Healthy, At Risk, Stalled, or <code>不知道</code>.</li>
+        <li><strong>Freshness Model</strong>:
             <ul>
-                <li><strong>Incidents &amp; Technical Progress Summary</strong>: Fault mechanism, involved products, diagnostic trajectory.</li>
-                <li><strong>Root Cause Analysis (RCA)</strong>: Identified / Suspected / <code>🔍 Under Investigation (Pending: [specific logs/traces/checks])</code>.</li>
-                <li><strong>Mitigation Steps</strong>: Active Workaround / <code>⚠️ None Active / Workaround Pending (Impact: [statement])</code>.</li>
+                <li><strong>Case record freshness</strong> measures the age of the official record update.</li>
+                <li><strong>Last substantive progress age</strong> measures the age of the latest concrete technical or operational change.</li>
+                <li>Closed/Resolved records are excluded from age-only staleness flags.</li>
             </ul>
         </li>
-        <li><strong>Unified Progress Summary</strong>: Milestone updates from Siebel/ServiceNow and related Gmail threads.</li>
-        <li><strong>Full Chronological Timeline</strong>: Unified activity and email chronicle table.</li>
-        <li><strong>Risk Flags &amp; Misdirection Audits</strong>: Explicit callouts for staleness, PEAs, unassignable dispatches, technical direction risks, and misdirected vendor escalations.</li>
-        <li><strong>Ownership &amp; Next Actions</strong>: Named assignee, last concrete action, next-step owner, due date.</li>
-        <li><strong>Targeted Recommendations</strong>: Bi-level actionable directives (1. Manager &amp; Escalation Actions, 2. Technical &amp; Diagnostic Actions) with assigned Owners &amp; Priorities.</li>
-    </ul>
+        <li><strong>Conditional Technical Assessment</strong>: Exactly one multi-problem <code>Problem Statement</code> or single-issue <code>Incident &amp; RCA Summary</code>. Telemetry remains inline with its sourced problem.</li>
+        <li><strong>Mitigation Maturity</strong>: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.</li>
+        <li><strong>Unified Progress and Timeline</strong>: Status pings remain available for stall analysis but are omitted from the displayed timeline when non-substantive.</li>
+        <li><strong>Risk Flags &amp; Conditional Domain Audits</strong>: Every flag cites case evidence; reference rules cannot establish case facts.</li>
+        <li><strong>Ownership &amp; Next Actions</strong>: Assignee, last concrete action, next action, owner, and due date, with unsupported values explicitly unknown.</li>
+        <li><strong>Targeted Recommendations</strong>: The exclusive action-item location, separated into Manager &amp; Escalation Actions and Technical &amp; Diagnostic Actions. Every action carries an Owner and Evidence IDs.</li>
+    </ol>
+
+    <h4>Evidence Processing Contract</h4>
+    <ol>
+        <li><strong>Evidentiary authority</strong> is evaluated independently from management display priority.</li>
+        <li>Direct logs and official record facts outrank summaries for factual conclusions.</li>
+        <li>Source conflicts remain visible and disputed conclusions remain <code>不知道</code> until resolved.</li>
+        <li>Evidence entries are never split, duplicated, or invented to reach a target count.</li>
+        <li>A reference guide may explain case evidence but cannot replace it.</li>
+    </ol>
 
     <h4>Vendor Escalation Handoff Verification Rules</h4>
 
@@ -366,6 +377,15 @@ playwright install chromium
 # 4. Plugin & MCP Deployment
 # Copies plugins/avaya-case-review to %USERPROFILE%\.gemini\config\plugins\
 # Configures %USERPROFILE%\.gemini\config\mcp.json for CaseToMD & Gmail MCP servers</pre>
+
+    <h2>6. Verification &amp; Validation Framework</h2>
+    <ol>
+        <li><strong>Unit Testing</strong>: Python MCP bridge validation through the existing STDIO checks.</li>
+        <li><strong>Contract Regression Matrix</strong>: <code>tests/case_review_scenarios.json</code> covers closed/resolved age handling, single-issue and multi-problem structures, Gmail no-result behavior, status-only activity, lab-versus-production mitigation, missing required tools, conflicting sources, and zero evidence.</li>
+        <li><strong>Contract Validator</strong>: <code>python -m unittest tests.test_case_review_contract -v</code> verifies the runtime skill, MD/HTML parity, release state, and portable links.</li>
+        <li><strong>Google Apps Script Validation</strong>: Execute the <code>doGet()</code> health check and a controlled <code>doPost()</code> test payload.</li>
+        <li><strong>Presentation &amp; Doc Generation</strong>: Validate the PowerPoint and interactive HTML artifacts when those files change.</li>
+    </ol>
 
 </div>
 

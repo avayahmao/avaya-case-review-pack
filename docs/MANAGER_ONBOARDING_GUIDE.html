@@ -27,7 +27,7 @@
 <h1>Avaya Case Review Suite — Support Manager Setup &amp; Onboarding Guide</h1>
 <blockquote>
 <p>[!NOTE]<br />
-🌐 <strong>HTML Version Available</strong>: If you do not have a Markdown reader, open <strong><a href="file:///e:/case/avaya-case-review-pack/MANAGER_ONBOARDING_GUIDE.html">MANAGER_ONBOARDING_GUIDE.html</a></strong> directly in any web browser.</p>
+🌐 <strong>HTML Version Available</strong>: If you do not have a Markdown reader, open <strong><a href="MANAGER_ONBOARDING_GUIDE.html">MANAGER_ONBOARDING_GUIDE.html</a></strong> directly in any web browser.</p>
 <p>This guide is designed for <strong>Avaya Operations &amp; Support Managers</strong>. It walks you through setting up <strong>Antigravity</strong>, the <strong>Case Review Plugin</strong>, and <strong>Gmail / CaseToMD MCP Servers</strong> to generate automated, executive-ready reviews for Siebel SRs and ServiceNow INCs.</p>
 </blockquote>
 <hr />
@@ -116,25 +116,27 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 </li>
 </ul>
 <h3>What the Generated Case Review Contains</h3>
-<p>The case review will automatically produce a structured executive report:</p>
+<p>The case review produces a structured, evidence-grounded executive report:</p>
 <ol>
-<li><strong>Top-Level Verdict</strong>: Bottom-line assessment (<code>🟢 Healthy</code>, <code>🟡 At Risk</code>, or <code>🔴 Stalled</code>).</li>
-<li><strong>Technical &amp; Incident Assessment</strong>:
+<li><strong>Evidence Gate</strong>: A dynamic <code>Evidence 1..N</code> section. Each item includes Source, Date, Verbatim evidence / data, and Supports. There is no three-item quota. If no verifiable case-specific evidence exists, the answer is exactly <code>不知道</code>.</li>
+<li><strong>Top-Level Verdict</strong>: Bottom-line assessment (<code>Healthy</code>, <code>At Risk</code>, <code>Stalled</code>, or <code>不知道</code>) with Evidence IDs.</li>
+<li><strong>Two Freshness Clocks</strong>:
 <ul>
-<li><strong>Incidents &amp; Technical Progress Summary</strong>: Core fault mechanism, affected Avaya components, and diagnostic progress trajectory.</li>
-<li><strong>Root Cause Analysis (RCA)</strong>: Identified / Suspected / <code>🔍 Under Investigation (Pending: [specific logs/traces/checks])</code>.</li>
-<li><strong>Mitigation Steps</strong>: Active Workaround / <code>⚠️ None Active / Workaround Pending (Impact: [statement])</code>.</li>
+<li><strong>Case record freshness</strong>: age of the official record's latest update.</li>
+<li><strong>Last substantive progress age</strong>: age of the latest concrete technical, mitigation, decision, or impact change.</li>
+<li>Closed/Resolved records are not marked stale solely because they are old.</li>
 </ul>
 </li>
-<li><strong>Progress Summary</strong>: Recent milestone updates from Siebel/ServiceNow and related Gmail threads.</li>
-<li><strong>Full Timeline Table</strong>: Consolidated chronicle of activity logs, SDM updates, and email threads.</li>
-<li><strong>Risk Flags</strong>: Explicit callouts for staleness (&gt;7/30 days), PEA escalations, unassignable dispatch alerts, missing next steps, <strong><code>⚠️ TECHNICAL DIRECTION RISK</code></strong>, or <strong><code>🔴 MISDIRECTED ESCALATION</code></strong>.</li>
-<li><strong>Technical Direction Sanity Validation</strong>: Embedded Avaya platform intelligence that automatically cross-checks engineer workarounds against known platform behaviors (e.g. SA9114/SA9124 attributes vs JTAPI PEA requests, ACRA recording boundaries, vendor escalation target accuracy).</li>
-<li><strong>Ownership &amp; Next Actions</strong>: Named assignee, last concrete action, next step owner, and due date.</li>
-<li><strong>Targeted Recommendations</strong>: Bi-level actionable directives with assigned Owners &amp; Priorities:
+<li><strong>Conditional Technical &amp; Incident Assessment</strong>: Exactly one of a multi-problem <code>Problem Statement</code> or a single-issue <code>Incident &amp; RCA Summary</code>. Telemetry calculations stay inside the relevant problem.</li>
+<li><strong>Mitigation Maturity</strong>: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.</li>
+<li><strong>Progress and Timeline</strong>: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from the displayed timeline.</li>
+<li><strong>Risk Flags and Technical Sanity Checks</strong>: Only evidence-backed flags. Domain rules are activated only when matching case evidence exists.</li>
+<li><strong>Ownership &amp; Next Step</strong>: Assignee, last concrete action, next action, next-action owner, and due date; unsupported fields are <code>unassigned</code>, <code>not stated</code>, or <code>不知道</code>.</li>
+<li><strong>Targeted Recommendations</strong>: The single location for all actions:
 <ul>
-<li><strong>1. Manager &amp; Escalation Actions</strong>: SDM alignment, PEA acceleration, SLA/customer communication.</li>
-<li><strong>2. Technical &amp; Diagnostic Actions</strong>: Platform parameter checks (e.g. SA9114/SA9124), log/trace requests, vendor routing fixes.</li>
+<li><strong>Manager &amp; Escalation Actions</strong></li>
+<li><strong>Technical &amp; Diagnostic Actions</strong></li>
+<li>Every action includes an Owner and supporting Evidence IDs.</li>
 </ul>
 </li>
 </ol>

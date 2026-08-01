@@ -1,8 +1,18 @@
 # Avaya Case Review Suite for Support Managers
 
-> 🌐 **HTML Version Available**: Open **[README.html](file:///e:/case/avaya-case-review-pack/README.html)** directly in your browser.
+> 🌐 **HTML Version Available**: Open **[README.html](README.html)** directly in your browser.
 
 This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and the **Embedded 10-Domain Avaya Debugger Knowledge Base** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with automated technical direction sanity checks and risk detection.
+
+---
+
+## Evidence-Grounded Review Contract
+
+- Every factual review includes dynamic `Evidence 1..N` entries with Source, Date, Verbatim evidence / data, and Supports.
+- The agent answers only what case-specific evidence supports. With zero verifiable case evidence, it outputs exactly `不知道`.
+- **Case record freshness** and **Last substantive progress age** are reported separately; Closed/Resolved records are not stale solely because they are old.
+- Mitigation maturity is one of Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
+- All actions appear only under `Targeted Recommendations` and cite supporting Evidence IDs.
 
 ---
 
@@ -39,19 +49,19 @@ When that variable is set, the installer uses your CA bundle instead of the bypa
 
 ## 📖 Complete Documentation Suite (`docs/`)
 
-All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](file:///e:/case/avaya-case-review-pack/docs)** directory:
+All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](docs/)** directory:
 
 - 📝 **Release Notes & Version Track**:
-  - 🌐 **[docs/RELEASE_NOTES.html](file:///e:/case/avaya-case-review-pack/docs/RELEASE_NOTES.html)** / 📄 **[docs/RELEASE_NOTES.md](file:///e:/case/avaya-case-review-pack/docs/RELEASE_NOTES.md)** — Version Changelog (v1.0.0, v1.1.0, v1.2.0)
+  - 🌐 **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / 📄 **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** — v1.4.0 release candidate; published latest remains v1.3.0
 - 📊 **Executive Presentation**:
-  - 🌐 **[docs/PRESENTATION.html](file:///e:/case/avaya-case-review-pack/docs/PRESENTATION.html)** — Interactive Browser Slide Deck
-  - 📄 **[docs/Avaya_Case_Review_Suite_Presentation.pptx](file:///e:/case/avaya-case-review-pack/docs/Avaya_Case_Review_Suite_Presentation.pptx)** — PowerPoint Presentation Deck
+  - 🌐 **[docs/PRESENTATION.html](docs/PRESENTATION.html)** — Interactive Browser Slide Deck
+  - 📄 **[docs/Avaya_Case_Review_Suite_Presentation.pptx](docs/Avaya_Case_Review_Suite_Presentation.pptx)** — PowerPoint Presentation Deck
 - 📐 **Technical Architecture & Design**:
-  - 🌐 **[docs/TECHNICAL_DESIGN_DOCUMENT.html](file:///e:/case/avaya-case-review-pack/docs/TECHNICAL_DESIGN_DOCUMENT.html)** / 📄 **[docs/TECHNICAL_DESIGN_DOCUMENT.md](file:///e:/case/avaya-case-review-pack/docs/TECHNICAL_DESIGN_DOCUMENT.md)** — Complete Technical Design Document (TDD)
+  - 🌐 **[docs/TECHNICAL_DESIGN_DOCUMENT.html](docs/TECHNICAL_DESIGN_DOCUMENT.html)** / 📄 **[docs/TECHNICAL_DESIGN_DOCUMENT.md](docs/TECHNICAL_DESIGN_DOCUMENT.md)** — Complete Technical Design Document (TDD)
 - 📖 **Manager Onboarding & Operational Usage**:
-  - 🌐 **[docs/MANAGER_ONBOARDING_GUIDE.html](file:///e:/case/avaya-case-review-pack/docs/MANAGER_ONBOARDING_GUIDE.html)** / 📄 **[docs/MANAGER_ONBOARDING_GUIDE.md](file:///e:/case/avaya-case-review-pack/docs/MANAGER_ONBOARDING_GUIDE.md)** — Support Manager Setup & Usage Guide
+  - 🌐 **[docs/MANAGER_ONBOARDING_GUIDE.html](docs/MANAGER_ONBOARDING_GUIDE.html)** / 📄 **[docs/MANAGER_ONBOARDING_GUIDE.md](docs/MANAGER_ONBOARDING_GUIDE.md)** — Support Manager Setup & Usage Guide
 - 💻 **Desktop App Installation**:
-  - 🌐 **[docs/ANTIGRAVITY_INSTALLATION_GUIDE.html](file:///e:/case/avaya-case-review-pack/docs/ANTIGRAVITY_INSTALLATION_GUIDE.html)** / 📄 **[docs/ANTIGRAVITY_INSTALLATION_GUIDE.md](file:///e:/case/avaya-case-review-pack/docs/ANTIGRAVITY_INSTALLATION_GUIDE.md)** — Antigravity App Installation & Login Guide
+  - 🌐 **[docs/ANTIGRAVITY_INSTALLATION_GUIDE.html](docs/ANTIGRAVITY_INSTALLATION_GUIDE.html)** / 📄 **[docs/ANTIGRAVITY_INSTALLATION_GUIDE.md](docs/ANTIGRAVITY_INSTALLATION_GUIDE.md)** — Antigravity App Installation & Login Guide
 
 ---
 

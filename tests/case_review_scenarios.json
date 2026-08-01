@@ -1,0 +1,56 @@
+[
+  {
+    "id": "closed_resolved_old_record",
+    "input": "A Closed or Resolved case whose record was last updated more than 30 days ago.",
+    "expected": "Report record age, but do not flag STALE or CRITICAL STALL solely because of age.",
+    "contract_markers": ["Closed/Resolved", "do not flag STALE or CRITICAL STALL solely"]
+  },
+  {
+    "id": "single_issue_with_evidence",
+    "input": "One incident supported by one case activity entry.",
+    "expected": "Use the single-issue structure, emit Evidence 1 only, and limit the answer to the supported facts.",
+    "contract_markers": ["single-issue assessment", "Evidence 1..N", "Answer only the portion supported by evidence"]
+  },
+  {
+    "id": "multi_problem_case",
+    "input": "One review contains two independently evidenced problems or related records.",
+    "expected": "Use the multi-problem structure and keep every action only in Targeted Recommendations.",
+    "contract_markers": ["multi-problem assessment", "all action items must live exclusively"]
+  },
+  {
+    "id": "gmail_no_results",
+    "input": "Gmail search runs successfully but returns no relevant messages.",
+    "expected": "Continue with CaseToMD evidence and disclose that Gmail supplied no additional evidence.",
+    "contract_markers": ["Gmail search succeeds but returns no relevant messages", "Gmail: no additional relevant evidence found"]
+  },
+  {
+    "id": "status_pings_only",
+    "input": "Recent activity contains only follow-up promises with no technical change.",
+    "expected": "Retain the pings for stall analysis, calculate age from the last substantive progress, and omit the pings from the displayed timeline.",
+    "contract_markers": ["Do not discard status pings before analysis", "Last substantive progress age"]
+  },
+  {
+    "id": "lab_success_not_production_confirmed",
+    "input": "A workaround succeeded in a lab or one controlled test, but production deployment or outcome is unverified.",
+    "expected": "Label the mitigation Lab Validated and explicitly state that production resolution is not confirmed.",
+    "contract_markers": ["Lab Validated", "must not be described as production resolution"]
+  },
+  {
+    "id": "required_tool_missing",
+    "input": "CaseToMD or Gmail MCP is not configured or cannot be called.",
+    "expected": "Stop, identify the missing required server, and do not fabricate a review.",
+    "contract_markers": ["CaseToMD tool is missing", "Gmail tool is missing or the search call fails"]
+  },
+  {
+    "id": "conflicting_sources",
+    "input": "The official case record and a Gmail message disagree on status, ownership, or outcome.",
+    "expected": "Show both sourced claims, mark the conflict unresolved, and answer unknown for the disputed conclusion.",
+    "contract_markers": ["unresolved source conflict", "answer `不知道` for the disputed conclusion"]
+  },
+  {
+    "id": "zero_case_evidence",
+    "input": "No verifiable case-specific evidence was retrieved.",
+    "expected": "Output exactly: 不知道",
+    "contract_markers": ["output exactly `不知道`", "Do not emit the report template"]
+  }
+]

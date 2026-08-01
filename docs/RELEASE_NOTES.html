@@ -111,8 +111,45 @@
 
 <div class="main-container">
 
-    <!-- VERSION 1.3.0 -->
+    <!-- VERSION 1.4.0 -->
     <div>
+        <span class="version-tag">v1.4.0</span>
+        <span class="version-date">2026-08-02 - Evidence-Grounded Workflow Hardening</span>
+
+        <h3>Evidence-Grounded Workflow Hardening</h3>
+        <ul>
+            <li><strong>Dynamic Evidence Gate</strong>:
+                <ul>
+                    <li>Adds <code>Evidence 1..N</code> entries with Source, Date, Verbatim evidence / data, and Supports.</li>
+                    <li>Answers only evidence-supported questions; zero case-specific evidence outputs exactly <code>不知道</code>.</li>
+                    <li>Prevents evidence splitting, duplication, or invention.</li>
+                </ul>
+            </li>
+            <li><strong>Source Retrieval &amp; Conflict Handling</strong>:
+                <ul>
+                    <li>Restores raw Case ID handling and explicit CaseToMD/Gmail failure behavior.</li>
+                    <li>Separates evidentiary authority from management display priority.</li>
+                    <li>Preserves unresolved source conflicts instead of guessing.</li>
+                </ul>
+            </li>
+            <li><strong>Freshness &amp; Mitigation Accuracy</strong>:
+                <ul>
+                    <li>Separates Case record freshness from Last substantive progress age.</li>
+                    <li>Excludes Closed/Resolved cases from age-only staleness flags.</li>
+                    <li>Distinguishes Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, and None Active.</li>
+                </ul>
+            </li>
+            <li><strong>Regression Coverage</strong>: Adds nine contract scenarios for evidence, source, freshness, structure, and mitigation boundaries.</li>
+            <li><strong>Documentation Parity</strong>:
+                <ul>
+                    <li>Synchronizes <a href="MANAGER_ONBOARDING_GUIDE.html">Manager Onboarding</a>, <a href="TECHNICAL_DESIGN_DOCUMENT.html">Technical Design</a>, their Markdown companions, and the top-level README.</li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.3.0 -->
+    <div style="margin-top: 40px;">
         <span class="version-tag">v1.3.0</span>
         <span class="version-date">2026-07-30 — Technical & Incident Assessment & Bi-Level Recommendations</span>
         

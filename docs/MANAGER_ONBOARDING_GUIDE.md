@@ -1,7 +1,7 @@
 # Avaya Case Review Suite — Support Manager Setup & Onboarding Guide
 
 > [!NOTE]
-> 🌐 **HTML Version Available**: If you do not have a Markdown reader, open **[MANAGER_ONBOARDING_GUIDE.html](file:///e:/case/avaya-case-review-pack/MANAGER_ONBOARDING_GUIDE.html)** directly in any web browser.
+> 🌐 **HTML Version Available**: If you do not have a Markdown reader, open **[MANAGER_ONBOARDING_GUIDE.html](MANAGER_ONBOARDING_GUIDE.html)** directly in any web browser.
 >
 > This guide is designed for **Avaya Operations & Support Managers**. It walks you through setting up **Antigravity**, the **Case Review Plugin**, and **Gmail / CaseToMD MCP Servers** to generate automated, executive-ready reviews for Siebel SRs and ServiceNow INCs.
 
@@ -93,21 +93,23 @@ To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigra
 
 ### What the Generated Case Review Contains
 
-The case review will automatically produce a structured executive report:
+The case review produces a structured, evidence-grounded executive report:
 
-1. **Top-Level Verdict**: Bottom-line assessment (`🟢 Healthy`, `🟡 At Risk`, or `🔴 Stalled`).
-2. **Technical & Incident Assessment**:
-   - **Incidents & Technical Progress Summary**: Core fault mechanism, affected Avaya components, and diagnostic progress trajectory.
-   - **Root Cause Analysis (RCA)**: Identified / Suspected / `🔍 Under Investigation (Pending: [specific logs/traces/checks])`.
-   - **Mitigation Steps**: Active Workaround / `⚠️ None Active / Workaround Pending (Impact: [statement])`.
-3. **Progress Summary**: Recent milestone updates from Siebel/ServiceNow and related Gmail threads.
-4. **Full Timeline Table**: Consolidated chronicle of activity logs, SDM updates, and email threads.
-5. **Risk Flags**: Explicit callouts for staleness (>7/30 days), PEA escalations, unassignable dispatch alerts, missing next steps, **`⚠️ TECHNICAL DIRECTION RISK`**, or **`🔴 MISDIRECTED ESCALATION`**.
-6. **Technical Direction Sanity Validation**: Embedded Avaya platform intelligence that automatically cross-checks engineer workarounds against known platform behaviors (e.g. SA9114/SA9124 attributes vs JTAPI PEA requests, ACRA recording boundaries, vendor escalation target accuracy).
-7. **Ownership & Next Actions**: Named assignee, last concrete action, next step owner, and due date.
-8. **Targeted Recommendations**: Bi-level actionable directives with assigned Owners & Priorities:
-   - **1. Manager & Escalation Actions**: SDM alignment, PEA acceleration, SLA/customer communication.
-   - **2. Technical & Diagnostic Actions**: Platform parameter checks (e.g. SA9114/SA9124), log/trace requests, vendor routing fixes.
+1. **Evidence Gate**: A dynamic `Evidence 1..N` section. Each item includes Source, Date, Verbatim evidence / data, and Supports. There is no three-item quota. If no verifiable case-specific evidence exists, the answer is exactly `不知道`.
+2. **Top-Level Verdict**: Bottom-line assessment (`Healthy`, `At Risk`, `Stalled`, or `不知道`) with Evidence IDs.
+3. **Two Freshness Clocks**:
+   - **Case record freshness**: age of the official record's latest update.
+   - **Last substantive progress age**: age of the latest concrete technical, mitigation, decision, or impact change.
+   - Closed/Resolved records are not marked stale solely because they are old.
+4. **Conditional Technical & Incident Assessment**: Exactly one of a multi-problem `Problem Statement` or a single-issue `Incident & RCA Summary`. Telemetry calculations stay inside the relevant problem.
+5. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.
+6. **Progress and Timeline**: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from the displayed timeline.
+7. **Risk Flags and Technical Sanity Checks**: Only evidence-backed flags. Domain rules are activated only when matching case evidence exists.
+8. **Ownership & Next Step**: Assignee, last concrete action, next action, next-action owner, and due date; unsupported fields are `unassigned`, `not stated`, or `不知道`.
+9. **Targeted Recommendations**: The single location for all actions:
+   - **Manager & Escalation Actions**
+   - **Technical & Diagnostic Actions**
+   - Every action includes an Owner and supporting Evidence IDs.
 
 
 ---

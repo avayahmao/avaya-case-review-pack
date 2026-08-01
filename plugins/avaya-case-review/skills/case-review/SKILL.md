@@ -1,19 +1,19 @@
 ---
 name: "case-review"
-description: "Generate an Operation Manager case review for Avaya Siebel SR or ServiceNow INC cases. Input a case ID (e.g. INC7386572, 1-23659220672, CHG..., CTASK..., PRJTASK...) to fetch the latest case status via the CaseToMD MCP tool and produce a management-oriented review: progress timeline, staleness/stall detection, owner accountability, risk flags, technical direction sanity validation, and next-step actions. Use when a manager asks to review/status-check/assess an Avaya case, wants a case summary or health check, needs to know 'where is this case stuck' or 'who owns the next step', or wants a digestible management brief from a raw Siebel/ServiceNow case."
+description: "Generate an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records. Accept raw IDs such as INC7386572, 1-23659220672, Activity IDs, CTASK..., CHG..., or PRJTASK... and use CaseToMD plus Gmail to assess progress, staleness, ownership, risk, technical direction, mitigation maturity, and next actions."
 ---
 
 # Case Review (Operation Manager)
 
-Produce management-oriented reviews of Avaya Siebel SR / ServiceNow INC cases by fetching the latest case state through the CaseToMD MCP tool and analyzing it for progress, stalls, ownership, technical direction validity, and risk.
+Produce an executive-ready case review whose factual conclusions are traceable to retrieved evidence. Never turn a domain rule, assumption, or plausible explanation into a case fact.
 
-This is a comprehensive management brief: status, trajectory, ownership, technical direction validity, risk, and what should happen next.
+This file is the canonical runtime output contract. User and technical documentation must describe the same contract.
 
 ---
 
 ## Progressive Domain Knowledge Loading
 
-When reviewing a case, identify the Avaya products and components mentioned in the case description or notes, and **read the corresponding reference file(s)** from `references/` to apply domain-specific troubleshooting rules and sanity checks:
+After retrieving the case, identify the products and symptoms actually present and read only the matching reference file(s):
 
 | Product / Topic | Reference File | Read When Case Mentions |
 |---|---|---|
@@ -28,161 +28,218 @@ When reviewing a case, identify the Avaya products and components mentioned in t
 | **IP Office (IPO, SSA, SysMonitor)** | [ip-office.md](references/ip-office.md) | IP Office, IPO, SSA, SysMonitor, IP Office Manager |
 | **Log Collection & Traces** | [log-collection.md](references/log-collection.md) | getlogs, spi.log, acr.log, csta_trace, g3trace, tcpdump |
 
+Reference guides support interpretation only. They are not proof that a condition exists in the reviewed case.
+
 ---
 
 ## Workflow
 
-### Step 1 — Fetch the case
+### Step 1 - Plan the Retrieval
 
-Call the `get_case_markdown` MCP tool with the case ID the user provided:
+1. Extract the primary identifier. Supported record types are **INC, SR, Activity, CTASK, CHG, or PRJTASK**.
+2. Plan the first two calls: CaseToMD for the official record, then Gmail for off-system context.
+3. After retrieval, scan for related record IDs, PEA IDs, customer identifiers, and named owners.
+4. Select domain references only after case symptoms and components are known.
+5. Reserve a final evidence-coverage and format review before producing the answer.
 
-```
-get_case_markdown(report_id: "<the case ID>")
-```
+### Step 2 - Retrieve Required Sources
 
-- The tool auto-detects type (SR / INC / Activity / CTASK / CHG / PRJTASK) — pass the raw ID, do NOT normalize.
-- Returns JSON: `{success, case_id, title, source, filename, markdown}`.
-- **If `success` is false**: report the error to the user and stop. Do not fabricate a review.
-- **If the CaseToMD MCP tool is unavailable** (not configured): tell the user to configure the CaseToMD MCP server at `https://192.168.67.160:8000/mcp`.
-- The `markdown` field contains the full formatted case — this is your primary evidence.
+#### CaseToMD
 
-### Step 2 — Search Gmail for latest email context (Default Step)
+1. Call `get_case_markdown(report_id: "<Case ID>")` and **pass the raw ID without normalization**.
+2. The expected response contains `success`, `case_id`, `title`, `source`, `filename`, and `markdown`.
+3. Treat `markdown` as the official case-record source, not as proof that every embedded hypothesis is correct.
+4. If the CaseToMD tool is missing, the call fails, or `success` is false, identify the CaseToMD failure and stop. Do not fabricate a review.
 
-Always search Gmail for supplementary email communications related to the case:
+#### Gmail
 
-1. Call `gmail_search` with the case ID (e.g. `query: "<Case ID>"`).
-2. If related task IDs (e.g., `TASK0614855`), customer names, or sub-tickets appear in the case markdown, also search for those terms if initial search is sparse.
-3. For key relevant messages returned (e.g., executive updates, unassignable activity alerts, customer email threads, or internal engineer discussions), call `gmail_read` to retrieve full message contents.
-4. Extract critical off-system management signals:
-   - **Executive Notices / SDM updates**: recent management briefings or customer commitments.
-   - **OCD / Auto-router alerts**: e.g., activities marked "UNASSIGNABLE" due to missing skills or schedules.
-   - **Technical thread discussions**: workarounds or root-cause details shared via email.
-5. If Gmail is unavailable or returns no results, proceed with the case markdown evidence and note "Gmail: No additional email threads found".
+1. Call `gmail_search(query: "<raw Case ID>")`.
+2. Read relevant messages with `gmail_read`, prioritizing commitments, unassignable dispatch alerts, and technical threads containing concrete results.
+3. Additional searches must remain case-bounded. Combine a related ID, customer term, or owner with the primary case context; do not run broad person-only searches.
+4. If the **Gmail tool is missing or the search call fails**, identify Gmail as the unavailable required server and stop.
+5. If the **Gmail search succeeds but returns no relevant messages**, continue with CaseToMD evidence and state: `Gmail: no additional relevant evidence found`.
+6. User-supplied documents may supplement these sources. Label them by filename and date; do not present a parsed shell, extraction artifact, or unsupported inference as a live case record.
 
-### Step 3 — Parse the case markdown & email context
+### Step 3 - Build the Evidence Ledger
 
-Extract these fields from the markdown and email findings:
+Create an internal ledger before analysis. Give every case-specific item a sequential identifier and record:
 
-- **Case ID, Title, Status, Priority, Assignee** (top of doc)
-- **Created date, Last Updated date** (Case Information)
-- **Customer / Account / Site / Contact** (Customer Information)
-- **Description** (the problem statement)
-- **Activity / History & Email entries** — these form the unified timeline.
+- **Evidence ID:** Evidence 1..N
+- **Source:** CaseToMD activity, Gmail subject/message, user-supplied document, or raw log/trace
+- **Date:** source timestamp, or `not stated`
+- **Verbatim evidence / data:** exact quote, error, measurement, or faithfully transcribed fact
+- **Supports:** the single factual claim this item supports
 
-### Step 4 — Analyze for management signals & technical direction validity
+Apply two separate orderings:
 
-Apply these checks to the parsed case, loaded domain reference files, and email evidence:
+1. **Evidentiary authority:** direct logs/measurements and official record facts; then concrete first-party email or supplied records; then management summaries; then domain-reference interpretation.
+2. **Management display priority:** customer impact, current blocker, ownership, ETA, escalation, and material technical progress.
 
-1. **Staleness** — compute days since `Last Updated` vs today. Flag:
-   - > 7 days, status not Closed/Resolved → ⚠️ STALE
-   - > 30 days → 🔴 CRITICAL STALL
-2. **Activity trend** — are recent activities (last 2-3) substantive updates or just status pings / "will follow up"? Vague updates with no new technical content signal a stuck case.
-3. **Ownership clarity** — who is the current Assignee? Is there a named owner for the next action, or is it bouncing between teams? Identify the last person who took a concrete action and who the stated next-action owner is.
-4. **Escalation status** — any open Product Escalation (PEA) / Management Escalation / cross-team handoff? Note its status and whether it is blocking.
-5. **Customer impact language** — quote the customer's own impact statement if present.
-6. **Repeated reopen / same-issue pattern** — does the case reference prior SRs with the same problem?
-7. **Next step explicitness** — is there a clearly stated next action + owner + timeline?
-8. **Technical Direction & Avaya Platform Sanity Audit**:
-   Cross-check the engineer's proposed root cause, technical hypotheses, and escalation paths against the loaded product reference files:
-   - **Trunk Number Loss / Park-Unpark / `T####` Placeholders**: Check if engineers are investigating CM `display system-features` SA9114 / SA9124 attributes. Flag if engineers are incorrectly blaming JTAPI SDK `null` returns (which are spec-compliant per Javadoc) or opening unsupported PEAs instead of enabling SA9114/SA9124 platform attributes.
-   - **UCID Extraction**: Ensure UCID is extracted from `LucentV5CallInfo.getUCID()`. Flag if engineers use `getOriginalCallInfo().getUCID()` which returns all zeros during EC_PARK.
-   - **Recording / ACRA Boundaries**: Verify if engineers check `CSTA_CALL_CLEARED` vs `CSTA_CONNECTION_CLEARED` event boundary correlation in CSTA traces.
-   - **Certificates & Web-Tier Changes**: Confirm if browser cache clearing, JKS keystore update, and full service restarts were performed after cert changes before declaring failure.
-   - **Vector Wait Time**: If vector race conditions or call dropping occurs, check if `wait-time` in vector is set to 0 (minimum safe value is 1 second).
-9. **Vendor Escalation Route Sanity**:
-   Verify whether open tickets or PEAs are routed to the correct vendor/component:
-   - CM / AES core bugs → **BBE PEA**
-   - POM / AEP product code → **CPE PEA**
-   - Verint / RIS / WebLogic / ACR code → **Verint Ticket**
-   - Nuance MRCP / ASR / TTS → **Nuance Ticket**
-   - Customer Infra (LDAP, SQL, Network/Firewall) → **Customer/MSP**
-   - Flag as `🔴 MISDIRECTED ESCALATION` if a ticket/PEA was opened against the wrong vendor or product group.
-10. **Log Sufficiency Check**:
-    Cross-check whether the required diagnostic logs listed in [log-collection.md](references/log-collection.md) (e.g. `getlogs`, `csta_trace`, `g3trace`, `spi.log`, `acr.log`, `tcpdump`) have been requested or attached. Flag if key traces are missing.
-11. **Technical Synthesis (RCA & Mitigation)**:
-    - **Incident & Technical Summary**: Synthesize the core fault mechanism, affected products/components, and current diagnostic status.
-    - **Root Cause Analysis (RCA)**: Determine if the root cause is Identified, Suspected, or Under Investigation. If under investigation, explicitly state what specific diagnostic logs/traces or tests are pending to isolate it.
-    - **Mitigation Steps**: Identify any temporary workaround or interim patch applied or available to restore service. If no workaround exists, explicitly state the current operational impact and pending mitigation prerequisites.
+Management display priority controls what the manager sees first. It must never override evidentiary authority.
 
-### Step 5 — Produce the review report
+If sources disagree, preserve both evidence items, describe an **unresolved source conflict**, and answer `不知道` for the disputed conclusion unless stronger evidence resolves it.
 
-Output in exactly this structure:
+**Do not discard status pings before analysis.** Retain them to detect activity without substantive progress, but omit them from the displayed timeline unless the ping creates a commitment, owner, deadline, or escalation.
+
+### Step 4 - Analyze Only What the Evidence Supports
+
+#### Freshness and activity
+
+Calculate two clocks:
+
+- **Case record freshness:** days since the official record's `Last Updated` timestamp.
+- **Last substantive progress age:** days since the newest dated evidence showing a technical finding, completed test, configuration change, decision, escalation movement, mitigation result, or customer-impact change.
+
+Apply staleness only to open work:
+
+- **Closed/Resolved:** report record age if useful, but do not flag STALE or CRITICAL STALL solely because the record is old.
+- Open and last substantive progress age > 7 days: `STALE`.
+- Open and last substantive progress age > 30 days: `CRITICAL STALL`.
+- A newer Gmail update than the official record is evidence of case-record synchronization risk, not permission to silently replace the official status.
+
+#### Ownership, impact, and escalation
+
+- Identify the current assignee, last concrete action taker, stated next action, next-action owner, and due date.
+- Use `unassigned`, `not stated`, or `不知道` when evidence does not provide a value. Never invent an owner or ETA.
+- Quote customer-impact wording verbatim when it exists.
+- Identify related/reopened records and open product or management escalations, including the evidence-backed blocker and ETA state.
+
+#### Technical direction and log sufficiency
+
+Run a domain sanity check only when matching case evidence activates it:
+
+- Park/unpark or trunk-identity evidence may activate SA9114/SA9124 and JTAPI checks.
+- UCID evidence may activate `LucentV5CallInfo.getUCID()` validation.
+- Recording evidence may activate `CSTA_CALL_CLEARED` versus `CSTA_CONNECTION_CLEARED` checks.
+- Certificate/web-tier evidence may activate cache, keystore, trust-chain, and restart checks.
+- Vector timing evidence may activate the non-zero `wait-time` check.
+
+Treat these as conditional diagnostic baselines, not universal causes. A reference rule can support a recommendation or hypothesis only when case-specific evidence matches its trigger.
+
+For logs, distinguish `requested`, `collected`, `attached`, and `analyzed`. Do not flag a log as missing merely because the retrieved summary does not mention it.
+
+Use the vendor handoff matrix only after the failing component is evidenced:
+
+- CM/AES core defect: BBE PEA
+- POM/AEP product code: CPE PEA
+- Verint/RIS/WebLogic/ACR: Verint ticket
+- Nuance MRCP/ASR/TTS: Nuance ticket
+- Customer infrastructure: Customer/MSP
+
+#### Problem, RCA, and mitigation
+
+- Use a single-issue assessment for one fault.
+- Use a multi-problem assessment when there are distinct failure modes or related records requiring separate conclusions.
+- Keep telemetry calculations inside the relevant problem description and show the source inputs.
+- Use RCA states: `Under Investigation`, `Suspected`, `Identified`, or `Validated`. Do not label a root cause Identified/Validated without supporting evidence.
+- Use exactly one mitigation maturity state:
+  - **Proposed**
+  - **Lab Validated**
+  - **Production Deployed**
+  - **Production Outcome Confirmed**
+  - **None Active**
+- A lab test, one repaired record, a scheduled rollout, or an engineer's success report without post-change production evidence **must not be described as production resolution**.
+
+### Step 5 - Enforce the Evidence Gate
+
+Every factual answer must contain a dynamic evidence section:
+
+- Output **Evidence 1..N**, where N is the number of verifiable case-specific evidence items. There is no minimum of three.
+- Each item must contain `Source`, `Date`, `Verbatim evidence / data`, and `Supports`.
+- Cite the evidence identifier beside every verdict, risk flag, RCA statement, mitigation state, ownership statement, and recommendation.
+- Answer only the portion supported by evidence. For an unsupported field or disputed conclusion, write `不知道`.
+- If no verifiable case-specific evidence exists, **output exactly `不知道`** and stop. Do not emit the report template.
+- **Do not split, duplicate, or invent evidence** to increase the evidence count.
+- Domain references may explain evidence but do not count as case-specific evidence by themselves.
+
+### Step 6 - Reflection and Coverage Review
+
+Before rendering:
+
+1. Map every factual claim to at least one Evidence ID.
+2. Confirm dates, IDs, names, quotes, calculations, owners, and ETA values against the ledger.
+3. Confirm unresolved conflicts remain visible and are not silently resolved.
+4. Confirm mitigation maturity does not overstate lab or planned work as production success.
+5. Confirm every risk has a supported action, and every action cites evidence.
+6. Confirm owners are evidence-backed or explicitly `unassigned`.
+7. Confirm **all action items must live exclusively** in `Targeted Recommendations`; do not duplicate them elsewhere.
+8. Confirm the zero-evidence response is exactly `不知道`.
+
+### Step 7 - Produce the Review
+
+After the evidence gate passes, use this common structure:
 
 ```markdown
-# Case Review — <Case ID>
-**Title:** <one-line>
-**Status:** <status> | **Priority:** <priority> | **Assignee:** <assignee>
-**Source:** <Avaya Siebel SR / ServiceNow INC> | **Last Updated:** <date> (<N> days ago)
-**Customer:** <account / site> — <contact>
+# Case Review - <Case ID>
+**Title:** <evidence-backed title or 不知道>
+**Status:** <status or 不知道> | **Priority:** <priority or 不知道> | **Assignee:** <assignee or 不知道>
+**Source:** <actual source system and record type>
+**Case record freshness:** <N days / date unavailable>
+**Last substantive progress age:** <N days / no substantive progress evidenced>
+**Customer:** <account/site/contact or 不知道>
+
+## Evidence
+
+### Evidence 1
+- **Source:** <CaseToMD activity / Gmail subject / document / raw log>
+- **Date:** <timestamp or not stated>
+- **Verbatim evidence / data:** <exact quote, error, or measurement>
+- **Supports:** <one factual claim>
+
+<Repeat sequentially through Evidence N; emit only real evidence items.>
 
 ## Verdict
-<One or two sentences: is this case on track, at risk, or stalled? Lead with the bottom line.>
-Overall health: 🟢 Healthy / 🟡 At Risk / 🔴 Stalled
+<On track, At Risk, or Stalled; cite Evidence IDs.>
+Overall health: Healthy / At Risk / Stalled / 不知道
 
 ## Technical & Incident Assessment
-
-### Incidents & Technical Progress Summary
-- **Symptom / Fault:** <Summary of observed technical failure or incident>
-- **Affected Components:** <Avaya products/components involved, e.g. AES JTAPI, CM, Session Manager>
-- **Current Technical Trajectory:** <Summary of technical diagnostic progress and current focus>
-
-### Root Cause Analysis (RCA)
-- **Status:** Identified / Suspected / 🔍 Under Investigation
-- **Findings:** <Detailed root cause description, OR if under investigation: "🔍 Under Investigation (Pending: [specific logs/traces/config checks required to isolate root cause])">
-
-### Mitigation Steps
-- **Status:** Active Workaround / Pending / ⚠️ None Active
-- **Details:** <Workaround steps applied or available to restore service/minimize impact, OR if none: "⚠️ None Active / Workaround Pending (Impact: [statement])">
+<Choose exactly one structure: multi-problem Problem Statement OR single-issue Incident & RCA Summary.>
 
 ## Progress Summary
-<Bullet list of the 3-5 most important milestones/updates from the timeline (including Gmail email findings), newest first. Each = date + what changed. Omit routine pings.>
+<Three to five substantive milestones, newest first, each citing Evidence IDs.>
 
-## Timeline (full)
-| Date | By | Type | What happened |
-|------|----|------|---------------|
-<all activity and email entries, newest first — keep "what happened" to one line each>
+## Timeline
+| Date | By | Source | What changed | Evidence |
+|---|---|---|---|---|
+<Substantive entries only. Status pings remain part of the activity-trend analysis.>
 
 ## Risk Flags
-<Each flag as a bullet with the evidence. Only include flags that actually apply.>
-- ⚠️ STALE — no update for N days (since <date>)
-- 🔴 Open escalation with no ETA — <PEA id>, status <...>
-- ⚠️ Recurring issue — references prior SR <id>
-- ⚠️ Unassignable Task / Dispatch Failure — <task id> marked unassignable
-- ⚠️ Vague next step — no named owner / timeline
-- ⚠️ TECHNICAL DIRECTION RISK — <Specific technical misdirection based on domain reference checks>
-- 🔴 MISDIRECTED ESCALATION — <Wrong vendor or team assigned>
-- ⚠️ MISSING DIAGNOSTIC LOGS — <Missing required trace, e.g., getlogs/csta_trace>
+<Only evidence-backed flags; cite Evidence IDs. Write "None evidenced" when applicable.>
 
 ## Ownership & Next Step
-- **Current assignee:** <name>
-- **Last concrete action by:** <name> on <date>
-- **Stated next step:** <quote or paraphrase from latest note or email; "none stated" if absent>
-- **Next-step owner:** <name or "unassigned">
-- **Next update due:** <date or "not specified">
+- **Current assignee:** <name / unassigned / 不知道> [Evidence N]
+- **Last concrete action:** <actor, action, date / 不知道> [Evidence N]
+- **Stated next action:** <action / not stated / 不知道> [Evidence N]
+- **Next-action owner:** <name/role / unassigned / 不知道> [Evidence N]
+- **Next SLA/update due:** <date / not stated / 不知道> [Evidence N]
 
 ## Targeted Recommendations
 
 ### 1. Manager & Escalation Actions
-<Action items for management, SDM alignment, vendor escalation, or SLA/customer communication. Include Priority & Owner.>
-1. **[Priority] Action:** <Description> | **Owner:** <Name/Role>
-2. ...
+1. **[Problem/Record] [Priority] Action:** <description> | **Owner:** <name/role or unassigned> | **Evidence:** <Evidence IDs>
 
 ### 2. Technical & Diagnostic Actions
-<Concrete technical items for engineers, such as CM SA9114/SA9124 verification, collecting getlogs/csta_trace, or checking vector wait-time. Include Priority & Owner.>
-1. **[Priority] Action:** <Description> | **Owner:** <Name/Role>
-2. ...
+1. **[Problem/Record] [Priority] Action:** <description> | **Owner:** <name/role or unassigned> | **Evidence:** <Evidence IDs>
 ```
 
-## Guidelines
+For the conditional technical section:
 
-- **Evidence over opinion.** Every risk flag and verdict must cite a specific date, activity entry, email, or quoted phrase. Never invent details.
-- **Load Domain References.** Read the matching product reference file from `references/` whenever analyzing technical claims.
-- **Search Gmail by default.** Always run `gmail_search` for the case ID to incorporate off-system emails, executive notices, and OCD unassignable task alerts into the review.
-- **Validate Technical Directions.** Leverage Avaya domain principles (SA9114/SA9124, vendor escalation routes, CSTA event boundaries) to detect misdirected troubleshooting efforts.
-- **Explicit Technical RCA/Mitigation Tracking.** Always provide clear RCA and Mitigation status. If unknown, explicitly note what diagnostic logs/traces are blocking RCA determination rather than giving generic placeholders.
-- **Bi-Level Targeted Recommendations.** Categorize all recommendations into Manager/Escalation Actions and Technical/Diagnostic Actions with clear Owners and Priorities.
-- **Quote the customer's impact wording verbatim** when discussing impact.
-- **Timeline is exhaustive but terse.** Include all activities and key emails in the table.
-- **Verdict first.** A manager reading the top 3 lines should know whether to worry.
-- **Currency**: compute "days ago" relative to today's date.
+- **Multi-problem:** use `Problem Statement`, then `Problem 1 - <Record ID>`, `Problem 2 - <Record ID>`, and include symptom, evidence-backed RCA state/finding, affected components, and mitigation maturity.
+- **Single issue:** use `Incident & RCA Summary` with symptom, affected components, RCA state/finding, mitigation maturity, and supporting Evidence IDs.
 
+Do not render both conditional structures. Do not create a standalone telemetry section.
+
+---
+
+## Non-Negotiable Rules
+
+- Evidence over opinion; unknown over invention.
+- Case-specific evidence is required for case-specific conclusions.
+- Evidence numbering is dynamic, not a three-item quota.
+- Evidentiary authority and Management display priority are separate.
+- Status pings inform stall detection even when omitted from the displayed timeline.
+- Closed/Resolved records are not stale merely because they are old.
+- Domain rules are conditionally activated and never substitute for case evidence.
+- Production success requires post-change production evidence.
+- All action items must live exclusively in `Targeted Recommendations`.
+- The manager should understand the verdict, evidence basis, owner, ETA state, risk, RCA state, and mitigation maturity without rereading the raw case.

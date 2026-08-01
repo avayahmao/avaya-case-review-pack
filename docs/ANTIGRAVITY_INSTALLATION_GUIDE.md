@@ -1,7 +1,7 @@
 # Antigravity App Installation and Login Guide (Windows)
 
 > [!NOTE]
-> 🌐 **HTML Version Available**: If you do not have a Markdown reader, open **[ANTIGRAVITY_INSTALLATION_GUIDE.html](file:///e:/case/avaya-case-review-pack/ANTIGRAVITY_INSTALLATION_GUIDE.html)** directly in your web browser.
+> 🌐 **HTML Version Available**: If you do not have a Markdown reader, open **[ANTIGRAVITY_INSTALLATION_GUIDE.html](ANTIGRAVITY_INSTALLATION_GUIDE.html)** directly in your web browser.
 
 This guide walks Windows users through downloading, installing, and signing in to the **Antigravity Desktop App** using Google OAuth with the dedicated corporate Google Cloud Project ID: **`geminienterpriseprod`**.
 

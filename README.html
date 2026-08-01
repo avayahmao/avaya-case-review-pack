@@ -106,6 +106,15 @@
 
     <p>This package provides an automated <strong>Case Review Suite</strong> for Avaya Support & Operations Managers. It integrates <strong>Antigravity</strong>, <strong>CaseToMD</strong>, <strong>Gmail</strong>, and the <strong>Embedded 10-Domain Avaya Debugger Knowledge Base</strong> to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with automated technical direction sanity checks and risk detection.</p>
 
+    <h2>Evidence-Grounded Review Contract</h2>
+    <ul>
+        <li>Every factual review includes dynamic <code>Evidence 1..N</code> entries with Source, Date, Verbatim evidence / data, and Supports.</li>
+        <li>The agent answers only what case-specific evidence supports. With zero verifiable case evidence, it outputs exactly <code>不知道</code>.</li>
+        <li><strong>Case record freshness</strong> and <strong>Last substantive progress age</strong> are reported separately; Closed/Resolved records are not stale solely because they are old.</li>
+        <li>Mitigation maturity is one of Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.</li>
+        <li>All actions appear only under <code>Targeted Recommendations</code> and cite supporting Evidence IDs.</li>
+    </ul>
+
     <h2>🚀 Quick Setup (1-Click)</h2>
     <p><strong>Recommended (works under corporate Group Policy):</strong></p>
     <ol>
@@ -138,7 +147,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
         <ul>
             <li>📝 <strong>Release Notes & Version Track</strong>:
                 <ul>
-                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> — Version Changelog (v1.0.0, v1.1.0, v1.2.0)</li>
+                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> — v1.4.0 release candidate; published latest remains v1.3.0</li>
                 </ul>
             </li>
             <li>📊 <strong>Executive Presentation</strong>:
