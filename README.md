@@ -52,7 +52,7 @@ When that variable is set, the installer uses your CA bundle instead of the bypa
 All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](docs/)** directory:
 
 - 📝 **Release Notes & Version Track**:
-  - 🌐 **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / 📄 **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** — v1.4.0 release candidate; published latest remains v1.3.0
+  - 🌐 **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / 📄 **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** — v1.4.0 - latest release
 - 📊 **Executive Presentation**:
   - 🌐 **[docs/PRESENTATION.html](docs/PRESENTATION.html)** — Interactive Browser Slide Deck
   - 📄 **[docs/Avaya_Case_Review_Suite_Presentation.pptx](docs/Avaya_Case_Review_Suite_Presentation.pptx)** — PowerPoint Presentation Deck

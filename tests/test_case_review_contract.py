@@ -126,11 +126,13 @@ class CaseReviewContractTests(unittest.TestCase):
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.4.0 release candidate", content)
-                self.assertIn("published latest remains v1.3.0", content)
+                self.assertIn("v1.4.0 - latest release", content)
+                self.assertNotIn("release candidate", content)
+                self.assertNotIn("published latest remains v1.3.0", content)
 
         agents = read(AGENTS_MD)
-        self.assertIn("Target release (not yet published): **v1.4.0**", agents)
+        self.assertIn("- **v1.4.0** — Evidence-Grounded Workflow Hardening", agents)
+        self.assertNotIn("Target release (not yet published)", agents)
 
     def test_distributable_docs_have_no_machine_specific_file_urls(self):
         docs = [README_MD, README_HTML]

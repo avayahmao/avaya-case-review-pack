@@ -133,9 +133,8 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
-Target release (not yet published): **v1.4.0** — Evidence-Grounded Workflow Hardening. The published latest remains **v1.3.0**.
-
-- **v1.3.0** — Technical & Incident Assessment and Bi-Level Recommendations
+- **v1.4.0** — Evidence-Grounded Workflow Hardening
+- v1.3.0 — Technical & Incident Assessment and Bi-Level Recommendations
 - v1.2.4 — Agent default context (`AGENTS.md`)
 - v1.2.3 — Gmail SSO robustness (early-close guard)
 - v1.2.2 — Corporate installer (install.bat + SSL bypass)  *(superseded)*
