@@ -2,17 +2,18 @@
 
 > 🌐 **HTML Version Available**: Open **[README.html](README.html)** directly in your browser.
 
-This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and the **Embedded 10-Domain Avaya Debugger Knowledge Base** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with automated technical direction sanity checks and risk detection.
+This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and the **Embedded 10-Domain Avaya Debugger Knowledge Base** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with evidence-grounded technical direction checks.
 
 ---
 
 ## Evidence-Grounded Review Contract
 
-- Every factual review includes dynamic `Evidence 1..N` entries with Source, Date, Verbatim evidence / data, and Supports.
+- The executive body is citation-free; all supporting material appears in the final **Appendix A — Evidence Register**.
+- The appendix table contains Ref, Date, Source, **Verbatim evidence / data**, and **Supports**. The Supports column reverse-maps each row to the body conclusion it validates.
 - The agent answers only what case-specific evidence supports. With zero verifiable case evidence, it outputs exactly `不知道`.
 - **Case record freshness** and **Last substantive progress age** are reported separately; Closed/Resolved records are not stale solely because they are old.
 - Mitigation maturity is one of Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
-- All actions appear only under `Targeted Recommendations` and cite supporting Evidence IDs.
+- Risk and action judgments remain with the Manager. Ownership fields only restate commitments already present in evidence.
 
 ---
 

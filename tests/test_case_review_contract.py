@@ -16,11 +16,19 @@ README_MD = ROOT / "README.md"
 README_HTML = ROOT / "README.html"
 PLUGIN_JSON = ROOT / "plugins/avaya-case-review/plugin.json"
 AGENTS_MD = ROOT / "AGENTS.md"
+APPS_SCRIPT = ROOT / "tools/appsscript/Code.gs"
 SCENARIOS = ROOT / "tests/case_review_scenarios.json"
 
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8-sig")
+
+
+def extract_report_template(skill: str) -> str:
+    match = re.search(r"```markdown\n(.*?)\n```", skill, re.DOTALL)
+    if not match:
+        raise AssertionError("Rendered report template not found")
+    return match.group(1)
 
 
 class CaseReviewContractTests(unittest.TestCase):
@@ -32,11 +40,13 @@ class CaseReviewContractTests(unittest.TestCase):
             "manager_html": read(MANAGER_HTML),
             "tdd_md": read(TDD_MD),
             "tdd_html": read(TDD_HTML),
+            "readme_md": read(README_MD),
+            "readme_html": read(README_HTML),
         }
 
     def test_dynamic_evidence_gate_is_explicit(self):
         required = [
-            "Evidence 1..N",
+            "E1..EN",
             "Source",
             "Date",
             "Verbatim evidence / data",
@@ -87,21 +97,55 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, self.skill)
 
-    def test_single_action_source_and_conditional_schema(self):
-        self.assertIn("All action items must live exclusively", self.skill)
+    def test_conditional_schema_and_manager_judgment_boundary(self):
         self.assertIn("Choose exactly one structure", self.skill)
+        self.assertIn("must never generate a new recommendation", self.skill)
+        self.assertNotIn("All action items must live exclusively", self.skill)
         self.assertNotIn("### [Structure A:", self.skill)
         self.assertNotIn("### [Structure B:", self.skill)
 
+    def test_appendix_is_last_and_body_has_no_evidence_markers(self):
+        template = extract_report_template(self.skill)
+        self.assertIn("## Appendix A — Evidence Register", template)
+        appendix = template.index("## Appendix A — Evidence Register")
+        order = [
+            template.index("## Verdict"),
+            template.index("## Technical & Incident Assessment"),
+            template.index("## Progress Summary"),
+            template.index("## Ownership & Next Step"),
+            template.index("## Timeline"),
+            appendix,
+        ]
+        self.assertEqual(order, sorted(order))
+        body = template[:appendix]
+        self.assertNotRegex(
+            body,
+            r"\[(?:Evidence\s+\d+|E\d+)\]|Evidence IDs?|Evidence N",
+        )
+        self.assertIn(
+            "| Ref | Date | Source | Verbatim evidence / data | Supports |",
+            template,
+        )
+        self.assertTrue(template.rstrip().endswith("<Evidence rows E1..EN>"))
+
+    def test_manager_judgment_sections_are_absent(self):
+        template = extract_report_template(self.skill)
+        self.assertNotIn("## Risk Flags", template)
+        self.assertNotIn("## Targeted Recommendations", template)
+        self.assertIn("must never generate a new recommendation", self.skill)
+
     def test_current_contract_docs_match_skill(self):
         required = [
-            "Evidence 1..N",
+            "Appendix A — Evidence Register",
+            "Verbatim evidence / data",
+            "Supports",
             "Case record freshness",
             "Last substantive progress age",
             "Production Outcome Confirmed",
-            "Targeted Recommendations",
         ]
         prohibited = [
+            "Risk Flags",
+            "Targeted Recommendations",
             "linked numbered `Action 1`",
             "Additional Datapoints & Customer Experience Metrics",
         ]
@@ -115,10 +159,10 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_release_metadata_targets_v1_4_0(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
+        self.assertIn("[Unreleased]", release_md)
+        self.assertIn(">Unreleased<", release_html)
         self.assertIn("[v1.4.0]", release_md)
         self.assertIn("v1.4.0", release_html)
-        self.assertNotIn("[Unreleased]", release_md)
-        self.assertNotIn(">Unreleased<", release_html)
 
         plugin = json.loads(read(PLUGIN_JSON))
         self.assertEqual("1.4.0", plugin["version"])
@@ -159,6 +203,24 @@ class CaseReviewContractTests(unittest.TestCase):
                 self.assertIn("gmail_read(", content)
                 self.assertNotIn("gmail_read_thread(", content)
 
+    def test_apps_script_uses_evidence_appendix_without_generated_judgment_sections(self):
+        code = read(APPS_SCRIPT)
+        for prohibited in [
+            "risk_flags",
+            "recommended_actions",
+            "Risk Flags",
+            "Recommended Manager Action",
+            "Risk Flags Count",
+        ]:
+            self.assertNotIn(prohibited, code)
+        for required in [
+            "data.evidence",
+            "Appendix A — Evidence Register",
+            '"Ref", "Date", "Source", "Verbatim evidence / data", "Supports"',
+            "sheet.deleteColumn(7)",
+        ]:
+            self.assertIn(required, code)
+
     def test_regression_matrix_covers_required_scenarios(self):
         scenarios = json.loads(read(SCENARIOS))
         ids = {scenario["id"] for scenario in scenarios}
@@ -172,6 +234,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "required_tool_missing",
             "conflicting_sources",
             "zero_case_evidence",
+            "appendix_reverse_mapping",
         }
         self.assertGreaterEqual(len(scenarios), 7)
         self.assertTrue(required.issubset(ids))

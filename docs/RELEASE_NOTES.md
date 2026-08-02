@@ -4,6 +4,17 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
+## [Unreleased]
+
+### Executive Report Readability Redesign
+
+* Moves all rendered evidence into a final reverse-mapped `Appendix A — Evidence Register`.
+* Removes inline Evidence annotations from the executive body.
+* Removes generated risk lists and recommended actions so Managers retain judgment ownership.
+* Keeps the internal evidence gate, source-conflict handling, and production-confirmation safeguards unchanged.
+
+---
+
 ## [v1.4.0] - 2026-08-02: Evidence-Grounded Workflow Hardening
 
 ### Evidence-Grounded Workflow Hardening

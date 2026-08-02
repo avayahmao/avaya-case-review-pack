@@ -1,6 +1,6 @@
 ---
 name: "case-review"
-description: "Generate an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records. Accept raw IDs such as INC7386572, 1-23659220672, Activity IDs, CTASK..., CHG..., or PRJTASK... and use CaseToMD plus Gmail to assess progress, staleness, ownership, risk, technical direction, mitigation maturity, and next actions."
+description: "Generate an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records. Accept raw IDs such as INC7386572, 1-23659220672, Activity IDs, CTASK..., CHG..., or PRJTASK... and use CaseToMD plus Gmail to assess progress, staleness, ownership, technical direction, and mitigation maturity."
 ---
 
 # Case Review (Operation Manager)
@@ -64,11 +64,11 @@ Reference guides support interpretation only. They are not proof that a conditio
 
 Create an internal ledger before analysis. Give every case-specific item a sequential identifier and record:
 
-- **Evidence ID:** Evidence 1..N
+- **Evidence ID:** E1..EN
 - **Source:** CaseToMD activity, Gmail subject/message, user-supplied document, or raw log/trace
 - **Date:** source timestamp, or `not stated`
 - **Verbatim evidence / data:** exact quote, error, measurement, or faithfully transcribed fact
-- **Supports:** the single factual claim this item supports
+- **Supports:** the exact body section and conclusion or field this item supports
 
 Apply two separate orderings:
 
@@ -114,7 +114,7 @@ Run a domain sanity check only when matching case evidence activates it:
 - Certificate/web-tier evidence may activate cache, keystore, trust-chain, and restart checks.
 - Vector timing evidence may activate the non-zero `wait-time` check.
 
-Treat these as conditional diagnostic baselines, not universal causes. A reference rule can support a recommendation or hypothesis only when case-specific evidence matches its trigger.
+Treat these as conditional diagnostic baselines, not universal causes. A reference rule can support a technical interpretation only when case-specific evidence matches its trigger.
 
 For logs, distinguish `requested`, `collected`, `attached`, and `analyzed`. Do not flag a log as missing merely because the retrieved summary does not mention it.
 
@@ -142,28 +142,32 @@ Use the vendor handoff matrix only after the failing component is evidenced:
 
 ### Step 5 - Enforce the Evidence Gate
 
-Every factual answer must contain a dynamic evidence section:
+Every factual answer must pass the internal evidence gate before rendering:
 
-- Output **Evidence 1..N**, where N is the number of verifiable case-specific evidence items. There is no minimum of three.
-- Each item must contain `Source`, `Date`, `Verbatim evidence / data`, and `Supports`.
-- Cite the evidence identifier beside every verdict, risk flag, RCA statement, mitigation state, ownership statement, and recommendation.
+- Build dynamic appendix rows **E1..EN**, where N is the number of verifiable case-specific evidence items. There is no minimum of three.
+- Each row must contain `Source`, `Date`, `Verbatim evidence / data`, and `Supports`.
+- Every factual body claim must map internally to at least one appendix row.
+- The `Supports` column performs reverse mapping from evidence to the exact body section and conclusion or field.
+- The rendered body must contain no Evidence IDs, footnotes, source suffixes, or citation brackets.
 - Answer only the portion supported by evidence. For an unsupported field or disputed conclusion, write `不知道`.
 - If no verifiable case-specific evidence exists, **output exactly `不知道`** and stop. Do not emit the report template.
 - **Do not split, duplicate, or invent evidence** to increase the evidence count.
 - Domain references may explain evidence but do not count as case-specific evidence by themselves.
+- `Appendix A — Evidence Register` is the final section of every rendered review.
 
 ### Step 6 - Reflection and Coverage Review
 
 Before rendering:
 
-1. Map every factual claim to at least one Evidence ID.
+1. Map every factual body claim to at least one appendix row.
 2. Confirm dates, IDs, names, quotes, calculations, owners, and ETA values against the ledger.
 3. Confirm unresolved conflicts remain visible and are not silently resolved.
 4. Confirm mitigation maturity does not overstate lab or planned work as production success.
-5. Confirm every risk has a supported action, and every action cites evidence.
-6. Confirm owners are evidence-backed or explicitly `unassigned`.
-7. Confirm **all action items must live exclusively** in `Targeted Recommendations`; do not duplicate them elsewhere.
-8. Confirm the zero-evidence response is exactly `不知道`.
+5. Confirm owners are evidence-backed or explicitly `unassigned`.
+6. Confirm `Ownership & Next Step` only restates actions, owners, and dates already present in evidence; it must never generate a new recommendation.
+7. Confirm the rendered body contains no Evidence ID or citation suffix.
+8. Confirm the appendix is last and reverse-maps every evidence row through `Supports`.
+9. Confirm the zero-evidence response is exactly `不知道`.
 
 ### Step 7 - Produce the Review
 
@@ -178,54 +182,38 @@ After the evidence gate passes, use this common structure:
 **Last substantive progress age:** <N days / no substantive progress evidenced>
 **Customer:** <account/site/contact or 不知道>
 
-## Evidence
-
-### Evidence 1
-- **Source:** <CaseToMD activity / Gmail subject / document / raw log>
-- **Date:** <timestamp or not stated>
-- **Verbatim evidence / data:** <exact quote, error, or measurement>
-- **Supports:** <one factual claim>
-
-<Repeat sequentially through Evidence N; emit only real evidence items.>
-
 ## Verdict
-<On track, At Risk, or Stalled; cite Evidence IDs.>
+<On track, At Risk, or Stalled, stated without citation markers.>
 Overall health: Healthy / At Risk / Stalled / 不知道
 
 ## Technical & Incident Assessment
 <Choose exactly one structure: multi-problem Problem Statement OR single-issue Incident & RCA Summary.>
 
 ## Progress Summary
-<Three to five substantive milestones, newest first, each citing Evidence IDs.>
-
-## Timeline
-| Date | By | Source | What changed | Evidence |
-|---|---|---|---|---|
-<Substantive entries only. Status pings remain part of the activity-trend analysis.>
-
-## Risk Flags
-<Only evidence-backed flags; cite Evidence IDs. Write "None evidenced" when applicable.>
+<Three to five substantive milestones, newest first, without citation markers.>
 
 ## Ownership & Next Step
-- **Current assignee:** <name / unassigned / 不知道> [Evidence N]
-- **Last concrete action:** <actor, action, date / 不知道> [Evidence N]
-- **Stated next action:** <action / not stated / 不知道> [Evidence N]
-- **Next-action owner:** <name/role / unassigned / 不知道> [Evidence N]
-- **Next SLA/update due:** <date / not stated / 不知道> [Evidence N]
+- **Current assignee:** <name / unassigned / 不知道>
+- **Last concrete action:** <actor, action, date / 不知道>
+- **Stated next action:** <evidence-stated action / not stated / 不知道>
+- **Next-action owner:** <name/role / unassigned / 不知道>
+- **Next SLA/update due:** <date / not stated / 不知道>
 
-## Targeted Recommendations
+## Timeline
+| Date | By | Source | What changed |
+|---|---|---|---|
+<Substantive entries only. Status pings remain part of the activity-trend analysis.>
 
-### 1. Manager & Escalation Actions
-1. **[Problem/Record] [Priority] Action:** <description> | **Owner:** <name/role or unassigned> | **Evidence:** <Evidence IDs>
-
-### 2. Technical & Diagnostic Actions
-1. **[Problem/Record] [Priority] Action:** <description> | **Owner:** <name/role or unassigned> | **Evidence:** <Evidence IDs>
+## Appendix A — Evidence Register
+| Ref | Date | Source | Verbatim evidence / data | Supports |
+|---|---|---|---|---|
+<Evidence rows E1..EN>
 ```
 
 For the conditional technical section:
 
 - **Multi-problem:** use `Problem Statement`, then `Problem 1 - <Record ID>`, `Problem 2 - <Record ID>`, and include symptom, evidence-backed RCA state/finding, affected components, and mitigation maturity.
-- **Single issue:** use `Incident & RCA Summary` with symptom, affected components, RCA state/finding, mitigation maturity, and supporting Evidence IDs.
+- **Single issue:** use `Incident & RCA Summary` with symptom, affected components, RCA state/finding, and mitigation maturity.
 
 Do not render both conditional structures. Do not create a standalone telemetry section.
 
@@ -241,5 +229,6 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 - Closed/Resolved records are not stale merely because they are old.
 - Domain rules are conditionally activated and never substitute for case evidence.
 - Production success requires post-change production evidence.
-- All action items must live exclusively in `Targeted Recommendations`.
-- The manager should understand the verdict, evidence basis, owner, ETA state, risk, RCA state, and mitigation maturity without rereading the raw case.
+- The report must not generate risk lists, risk scores, manager directives, or recommended actions.
+- The main body stays citation-free; the final appendix preserves the audit chain.
+- The manager should understand the verdict, evidence basis, owner, ETA state, RCA state, and mitigation maturity without rereading the raw case.

@@ -125,18 +125,16 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 4. **Log Sufficiency**: Cross-checks case logs against `log-collection.md` to ensure `getlogs`, `csta_trace`, and `g3trace` were requested before escalating.
 
 #### Output Brief Schema
-1. **Evidence Gate**: Dynamic `Evidence 1..N` entries containing Source, Date, Verbatim evidence / data, and Supports. Zero case-specific evidence produces exactly `不知道`.
-2. **Executive Verdict & Overall Health**: Evidence-cited Healthy, At Risk, Stalled, or `不知道`.
-3. **Freshness Model**:
+1. **Executive Verdict & Overall Health**: Citation-free Healthy, At Risk, Stalled, or `不知道`.
+2. **Freshness Model**:
    - **Case record freshness** measures the age of the official record update.
    - **Last substantive progress age** measures the age of the latest concrete technical or operational change.
    - Closed/Resolved records are excluded from age-only staleness flags.
-4. **Conditional Technical Assessment**: Exactly one multi-problem `Problem Statement` or single-issue `Incident & RCA Summary`. Telemetry remains inline with its sourced problem.
-5. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
-6. **Unified Progress and Timeline**: Status pings remain available for stall analysis but are omitted from the displayed timeline when non-substantive.
-7. **Risk Flags & Conditional Domain Audits**: Every flag cites case evidence; reference rules cannot establish case facts.
-8. **Ownership & Next Actions**: Assignee, last concrete action, next action, owner, and due date, with unsupported values explicitly unknown.
-9. **Targeted Recommendations**: The exclusive action-item location, separated into Manager & Escalation Actions and Technical & Diagnostic Actions. Every action carries an Owner and Evidence IDs.
+3. **Conditional Technical Assessment**: Exactly one multi-problem `Problem Statement` or single-issue `Incident & RCA Summary`. Telemetry remains inline with its sourced problem.
+4. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
+5. **Unified Progress and Timeline**: Status pings remain available for stall analysis but are omitted from display when non-substantive.
+6. **Ownership & Next Step**: Assignee, last concrete action, stated next action, owner, and due date. It only restates evidence-backed commitments.
+7. **Appendix A — Evidence Register**: The final section, using `Ref | Date | Source | Verbatim evidence / data | Supports`.
 
 #### Evidence Processing Contract
 1. **Evidentiary authority** is evaluated independently from management display priority.
@@ -144,6 +142,8 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 3. Source conflicts remain visible and disputed conclusions remain `不知道` until resolved.
 4. Evidence entries are never split, duplicated, or invented to reach a target count.
 5. A reference guide may explain case evidence but cannot replace it.
+6. The body contains no Evidence IDs; `Supports` reverse-maps each appendix row to exact body conclusions.
+7. The agent does not generate risk lists, scores, directives, or recommended actions.
 
 #### Vendor Escalation Handoff Matrix
 - **CM / AES Core Software Bugs** ➔ Assign to **[BBE PEA]** (CM ASAI, AES service crash, crossID exhaustion).
@@ -152,7 +152,7 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 - **Nuance MRCP / ASR / TTS** ➔ Assign to **[Nuance Support Ticket]** (Speech recognition grammar errors, MRCP v2 timeout).
 - **Customer Infrastructure** ➔ Assign to **[Customer / MSP Action]** (LDAP auth, SQL database, firewall ports).
 
-*A risk flag is automatically triggered if an SR/INC or PEA is assigned to an incorrect vendor/team.*
+*The handoff matrix informs the technical assessment only; the Manager retains risk judgment.*
 
 
 ---
@@ -178,7 +178,7 @@ function updateCaseTrackingSheet(caseData) { ... }
 
 /**
  * 3. createGoogleDocReport(caseData): Google Doc Brief Generator
- * Creates formatted Google Doc brief with Executive Verdict, Risk Flags, and Manager Directives.
+ * Creates a formatted Google Doc brief with the Executive Verdict and Evidence Appendix.
  */
 function createGoogleDocReport(caseData) { ... }
 
@@ -198,13 +198,14 @@ function sendDailyManagerDigest() { ... }
   "owner": "John Doe",
   "next_owner": "Jane Smith (Tier 3)",
   "summary": "Case stalled for 14 days waiting for unassigned PEA review.",
-  "risk_flags": [
-    "TECHNICAL DIRECTION RISK: Engineer blaming JTAPI SDK instead of CM SA9114",
-    "STALENESS RISK: No updates on PEA for >14 days"
-  ],
-  "recommended_actions": [
-    "Reassign PEA to Tier 3 Lead",
-    "Request customer enable CM SA9114/SA9124"
+  "evidence": [
+    {
+      "ref": "E1",
+      "date": "2026-08-01",
+      "source": "Case activity",
+      "verbatim": "PEA review remains pending with no ETA.",
+      "supports": "Verdict — Stalled; Ownership — Next owner"
+    }
   ]
 }
 ```
@@ -245,7 +246,7 @@ playwright install chromium
 ## 6. Verification & Validation Framework
 
 1. **Unit Testing**: Python MCP bridge validation via STDIO ping/pong test.
-2. **Contract Regression Matrix**: `tests/case_review_scenarios.json` covers closed/resolved age handling, single-issue and multi-problem structures, Gmail no-result behavior, status-only activity, lab-versus-production mitigation, missing required tools, conflicting sources, and zero evidence.
+2. **Contract Regression Matrix**: `tests/case_review_scenarios.json` covers closed/resolved age handling, single-issue and multi-problem structures, Gmail no-result behavior, status-only activity, lab-versus-production mitigation, missing required tools, conflicting sources, zero evidence, and appendix reverse mapping.
 3. **Contract Validator**: `python -m unittest tests.test_case_review_contract -v` verifies the runtime skill, MD/HTML parity, release state, and portable links.
 4. **Google Apps Script Validation**: Execute the `doGet()` health check and a controlled `doPost()` test payload.
 5. **Presentation & Doc Generation**: Validate the PowerPoint and interactive HTML artifacts when those files change.

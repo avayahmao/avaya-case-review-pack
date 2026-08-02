@@ -8,14 +8,14 @@
   {
     "id": "single_issue_with_evidence",
     "input": "One incident supported by one case activity entry.",
-    "expected": "Use the single-issue structure, emit Evidence 1 only, and limit the answer to the supported facts.",
-    "contract_markers": ["single-issue assessment", "Evidence 1..N", "Answer only the portion supported by evidence"]
+    "expected": "Use the single-issue structure, keep the body citation-free, and reverse-map the supporting row in the final appendix.",
+    "contract_markers": ["single-issue assessment", "E1..EN", "Answer only the portion supported by evidence"]
   },
   {
     "id": "multi_problem_case",
     "input": "One review contains two independently evidenced problems or related records.",
-    "expected": "Use the multi-problem structure and keep every action only in Targeted Recommendations.",
-    "contract_markers": ["multi-problem assessment", "all action items must live exclusively"]
+    "expected": "Use the multi-problem structure, make no recommendations, and reverse-map all supporting evidence in the final appendix.",
+    "contract_markers": ["multi-problem assessment", "Appendix A — Evidence Register", "must never generate a new recommendation"]
   },
   {
     "id": "gmail_no_results",
@@ -52,5 +52,11 @@
     "input": "No verifiable case-specific evidence was retrieved.",
     "expected": "Output exactly: 不知道",
     "contract_markers": ["output exactly `不知道`", "Do not emit the report template"]
+  },
+  {
+    "id": "appendix_reverse_mapping",
+    "input": "Several body conclusions are supported by overlapping case and Gmail evidence.",
+    "expected": "Keep the body citation-free and map each appendix row back through the Supports column.",
+    "contract_markers": ["body must contain no Evidence IDs", "Supports", "final section"]
   }
 ]

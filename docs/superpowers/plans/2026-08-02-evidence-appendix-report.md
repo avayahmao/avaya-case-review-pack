@@ -19,6 +19,7 @@
 - `docs/MANAGER_ONBOARDING_GUIDE.md` / `.html`: manager-facing report description.
 - `docs/TECHNICAL_DESIGN_DOCUMENT.md` / `.html`: technical contract and validation design.
 - `docs/RELEASE_NOTES.md` / `.html`: Unreleased behavioral change record.
+- `tools/appsscript/Code.gs`: Google Docs/Sheets output and webhook payload parity.
 
 ### Task 1: Lock the New Output Contract with Failing Tests
 
@@ -26,7 +27,7 @@
 - Modify: `tests/test_case_review_contract.py`
 - Modify: `tests/case_review_scenarios.json`
 
-- [ ] **Step 1: Replace the old inline-evidence assertions**
+- [x] **Step 1: Replace the old inline-evidence assertions**
 
 Add a helper that extracts the fenced rendered template:
 
@@ -49,7 +50,7 @@ required = [
 prohibited = ["Risk Flags", "Targeted Recommendations"]
 ```
 
-- [ ] **Step 2: Add body-cleanliness and section-order tests**
+- [x] **Step 2: Add body-cleanliness and section-order tests**
 
 ```python
 def test_appendix_is_last_and_body_has_no_evidence_markers(self):
@@ -75,7 +76,7 @@ def test_manager_judgment_sections_are_absent(self):
     self.assertIn("must never generate a new recommendation", self.skill)
 ```
 
-- [ ] **Step 3: Update scenario expectations**
+- [x] **Step 3: Update scenario expectations**
 
 Change the multi-problem scenario expectation to:
 
@@ -106,7 +107,7 @@ Add:
 }
 ```
 
-- [ ] **Step 4: Run tests and verify RED**
+- [x] **Step 4: Run tests and verify RED**
 
 Run:
 
@@ -124,7 +125,7 @@ Expected: failures for missing appendix-last layout, inline body Evidence IDs, a
 - Modify: `plugins/avaya-case-review/skills/case-review/SKILL.md`
 - Test: `tests/test_case_review_contract.py`
 
-- [ ] **Step 1: Keep the internal ledger but change rendered references**
+- [x] **Step 1: Keep the internal ledger but change rendered references**
 
 Change ledger IDs to `E1..EN` and retain Source, Date, Verbatim evidence/data, and Supports. Add these exact rules:
 
@@ -134,7 +135,7 @@ Change ledger IDs to `E1..EN` and retain Source, Date, Verbatim evidence/data, a
 - The Supports column performs reverse mapping from evidence to the exact body conclusion.
 ```
 
-- [ ] **Step 2: Remove recommendation and risk-generation logic**
+- [x] **Step 2: Remove recommendation and risk-generation logic**
 
 Delete:
 
@@ -150,7 +151,7 @@ Add:
 - It must never generate a new recommendation, owner, deadline, risk score, or risk list.
 ```
 
-- [ ] **Step 3: Replace the rendered template**
+- [x] **Step 3: Replace the rendered template**
 
 Use this exact section skeleton:
 
@@ -181,7 +182,7 @@ Use this exact section skeleton:
 <Evidence rows E1..EN>
 ```
 
-- [ ] **Step 4: Run targeted tests and verify GREEN**
+- [x] **Step 4: Run targeted tests and verify GREEN**
 
 Run:
 
@@ -204,21 +205,22 @@ Expected: both tests pass.
 - Modify: `docs/TECHNICAL_DESIGN_DOCUMENT.html`
 - Modify: `docs/RELEASE_NOTES.md`
 - Modify: `docs/RELEASE_NOTES.html`
+- Modify: `tools/appsscript/Code.gs`
 - Test: `tests/test_case_review_contract.py`
 
-- [ ] **Step 1: Update README contract summaries**
+- [x] **Step 1: Update README contract summaries**
 
 State that the main body is citation-free, Evidence appears only in the final Appendix A table, and Managers own risk/action judgment. Remove current claims that all actions appear in Targeted Recommendations.
 
-- [ ] **Step 2: Update Manager Onboarding MD and HTML**
+- [x] **Step 2: Update Manager Onboarding MD and HTML**
 
 Describe the seven-section order and the five-column appendix. Remove current Risk Flags and Targeted Recommendations entries.
 
-- [ ] **Step 3: Update Technical Design MD and HTML**
+- [x] **Step 3: Update Technical Design MD and HTML**
 
 Document internal claim mapping versus rendered reverse mapping. Remove Risk Flags and Targeted Recommendations from the current output schema while leaving historical release records intact.
 
-- [ ] **Step 4: Add an Unreleased Release Notes entry**
+- [x] **Step 4: Add an Unreleased Release Notes entry**
 
 Add above v1.4.0:
 
@@ -234,7 +236,26 @@ Add above v1.4.0:
 
 Add the equivalent HTML block.
 
-- [ ] **Step 5: Run documentation parity tests**
+- [x] **Step 5: Align Google Apps Script output**
+
+Remove `risk_flags`, `recommended_actions`, the risk-count Sheet column, and generated risk/action Doc sections. Accept `data.evidence` rows and render `Appendix A — Evidence Register` with:
+
+```javascript
+const evidence = Array.isArray(data.evidence) ? data.evidence : [];
+const tableData = [
+  ["Ref", "Date", "Source", "Verbatim evidence / data", "Supports"],
+  ...evidence.map(item => [
+    item.ref || "",
+    item.date || "not stated",
+    item.source || "",
+    item.verbatim || "",
+    item.supports || ""
+  ])
+];
+body.appendTable(tableData);
+```
+
+- [x] **Step 6: Run documentation parity tests**
 
 Run:
 
@@ -251,7 +272,7 @@ Expected: both tests pass.
 **Files:**
 - Verify: all modified files
 
-- [ ] **Step 1: Run the complete contract suite**
+- [x] **Step 1: Run the complete contract suite**
 
 ```powershell
 $env:PYTHONIOENCODING='utf-8'
@@ -261,7 +282,7 @@ python -m unittest tests.test_case_review_contract -v
 
 Expected: all tests pass.
 
-- [ ] **Step 2: Validate whitespace and links**
+- [x] **Step 2: Validate whitespace and links**
 
 ```powershell
 git diff --check
@@ -271,7 +292,7 @@ Expected: exit code 0.
 
 Run the existing Python local-link and HTML parsing validator used by the v1.4.0 release checks. Expected: zero broken local links and all HTML files parse.
 
-- [ ] **Step 3: Audit forbidden current-contract patterns**
+- [x] **Step 3: Audit forbidden current-contract patterns**
 
 ```powershell
 rg -n "## Risk Flags|## Targeted Recommendations|\[Evidence [0-9N]+\]|\[E[0-9]+\]" plugins/avaya-case-review/skills/case-review/SKILL.md README.md README.html docs/MANAGER_ONBOARDING_GUIDE.* docs/TECHNICAL_DESIGN_DOCUMENT.*
@@ -279,7 +300,7 @@ rg -n "## Risk Flags|## Targeted Recommendations|\[Evidence [0-9N]+\]|\[E[0-9]+\
 
 Expected: no matches in current output templates or current-contract documentation.
 
-- [ ] **Step 4: Review the final diff**
+- [x] **Step 4: Review the final diff**
 
 Confirm:
 
@@ -290,7 +311,7 @@ Confirm:
 - v1.4.0 historical notes remain unchanged;
 - new work is recorded under Unreleased.
 
-- [ ] **Step 5: Commit the implementation**
+- [x] **Step 5: Commit the implementation**
 
 ```powershell
 git add plugins/avaya-case-review/skills/case-review/SKILL.md tests/case_review_scenarios.json tests/test_case_review_contract.py README.md README.html docs/MANAGER_ONBOARDING_GUIDE.md docs/MANAGER_ONBOARDING_GUIDE.html docs/TECHNICAL_DESIGN_DOCUMENT.md docs/TECHNICAL_DESIGN_DOCUMENT.html docs/RELEASE_NOTES.md docs/RELEASE_NOTES.html docs/superpowers/plans/2026-08-02-evidence-appendix-report.md

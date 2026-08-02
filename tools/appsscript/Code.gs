@@ -61,17 +61,16 @@ function processCaseReviewPayload(data) {
   const owner = data.owner || "Unassigned";
   const nextOwner = data.next_owner || "Unassigned";
   const summary = data.summary || "";
-  const riskFlags = data.risk_flags || [];
-  const recommendedActions = data.recommended_actions || [];
+  const evidence = Array.isArray(data.evidence) ? data.evidence : [];
 
   // 1. Update Tracking Sheet
   const sheetUrl = updateCaseTrackingSheet({
-    caseId, title, healthStatus, owner, nextOwner, summary, riskFlags
+    caseId, title, healthStatus, owner, nextOwner, summary
   });
 
   // 2. Generate Google Doc Brief
   const docUrl = createGoogleDocReport({
-    caseId, title, healthStatus, owner, nextOwner, summary, riskFlags, recommendedActions
+    caseId, title, healthStatus, owner, nextOwner, summary, evidence
   });
 
   return {
@@ -98,18 +97,23 @@ function updateCaseTrackingSheet(caseData) {
     }
   }
 
+  const headers = [
+    "Timestamp", "Case ID", "Title", "Health Status", "Current Owner",
+    "Next Step Owner", "Summary Verdict"
+  ];
   let sheet = ss.getSheetByName("Case Tracker");
   if (!sheet) {
     sheet = ss.insertSheet("Case Tracker");
-    // Setup Headers
-    const headers = [
-      "Timestamp", "Case ID", "Title", "Health Status", "Current Owner",
-      "Next Step Owner", "Risk Flags Count", "Summary Verdict"
-    ];
-    sheet.appendRow(headers);
-    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#0B192C").setFontColor("#FFFFFF");
-    sheet.setFrozenRows(1);
+  } else if (
+    sheet.getLastColumn() === 8 &&
+    sheet.getRange(1, 8).getValue() === "Summary Verdict"
+  ) {
+    // Migrate the previous eight-column schema to the current seven columns.
+    sheet.deleteColumn(7);
   }
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#0B192C").setFontColor("#FFFFFF");
+  sheet.setFrozenRows(1);
 
   const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
   const rowData = [
@@ -119,7 +123,6 @@ function updateCaseTrackingSheet(caseData) {
     caseData.healthStatus,
     caseData.owner,
     caseData.nextOwner,
-    caseData.riskFlags.length,
     caseData.summary
   ];
 
@@ -164,26 +167,24 @@ function createGoogleDocReport(caseData) {
   h1.setHeading(DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph(caseData.summary);
 
-  // Risk Flags
-  const h2 = body.appendParagraph("2. Detected Risk Flags & Sanity Audit");
+  // Evidence Appendix
+  const h2 = body.appendParagraph("2. Appendix A — Evidence Register");
   h2.setHeading(DocumentApp.ParagraphHeading.HEADING1);
-  if (caseData.riskFlags.length === 0) {
-    body.appendParagraph("No active technical or operational risk flags detected.");
-  } else {
-    caseData.riskFlags.forEach(flag => {
-      body.appendListItem(flag);
-    });
-  }
-
-  // Recommended Manager Actions
-  const h3 = body.appendParagraph("3. Recommended Manager Action Directives");
-  h3.setHeading(DocumentApp.ParagraphHeading.HEADING1);
-  if (caseData.recommendedActions.length === 0) {
-    body.appendParagraph("Continue monitoring standard SLA progress.");
-  } else {
-    caseData.recommendedActions.forEach(action => {
-      body.appendListItem(action);
-    });
+  const tableData = [
+    ["Ref", "Date", "Source", "Verbatim evidence / data", "Supports"],
+    ...caseData.evidence.map(item => [
+      item.ref || "",
+      item.date || "not stated",
+      item.source || "",
+      item.verbatim || "",
+      item.supports || ""
+    ])
+  ];
+  const evidenceTable = body.appendTable(tableData);
+  const headerRow = evidenceTable.getRow(0);
+  for (let i = 0; i < headerRow.getNumCells(); i++) {
+    headerRow.getCell(i).setBackgroundColor("#0B192C");
+    headerRow.getCell(i).editAsText().setForegroundColor("#FFFFFF").setBold(true);
   }
 
   doc.saveAndClose();
@@ -242,7 +243,7 @@ function sendDailyManagerDigest() {
   if (stalledCount > 0 || riskCount > 0) {
     const htmlBody = `
       <h2>Avaya Operations Manager Daily Stalled Case Alert</h2>
-      <p>The automated case review engine detected <b>${stalledCount} Stalled</b> and <b>${riskCount} At Risk</b> cases requiring manager intervention.</p>
+      <p>The case tracker contains <b>${stalledCount} Stalled</b> and <b>${riskCount} At Risk</b> cases for manager review.</p>
       <table style="border-collapse: collapse; width: 100%;">
         <thead>
           <tr style="background-color: #0B192C; color: white;">
@@ -262,7 +263,7 @@ function sendDailyManagerDigest() {
 
     MailApp.sendEmail({
       to: CONFIG.NOTIFICATION_EMAIL,
-      subject: `[ACTION REQUIRED] Avaya Case Alert: ${stalledCount} Stalled / ${riskCount} At-Risk Cases`,
+      subject: `[CASE REVIEW] ${stalledCount} Stalled / ${riskCount} At-Risk Cases`,
       htmlBody: htmlBody
     });
   }

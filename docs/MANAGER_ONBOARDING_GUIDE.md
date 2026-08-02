@@ -95,21 +95,18 @@ To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigra
 
 The case review produces a structured, evidence-grounded executive report:
 
-1. **Evidence Gate**: A dynamic `Evidence 1..N` section. Each item includes Source, Date, Verbatim evidence / data, and Supports. There is no three-item quota. If no verifiable case-specific evidence exists, the answer is exactly `不知道`.
-2. **Top-Level Verdict**: Bottom-line assessment (`Healthy`, `At Risk`, `Stalled`, or `不知道`) with Evidence IDs.
-3. **Two Freshness Clocks**:
+1. **Top-Level Verdict**: Bottom-line assessment (`Healthy`, `At Risk`, `Stalled`, or `不知道`) without citation markers.
+2. **Two Freshness Clocks**:
    - **Case record freshness**: age of the official record's latest update.
    - **Last substantive progress age**: age of the latest concrete technical, mitigation, decision, or impact change.
    - Closed/Resolved records are not marked stale solely because they are old.
-4. **Conditional Technical & Incident Assessment**: Exactly one of a multi-problem `Problem Statement` or a single-issue `Incident & RCA Summary`. Telemetry calculations stay inside the relevant problem.
-5. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.
-6. **Progress and Timeline**: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from the displayed timeline.
-7. **Risk Flags and Technical Sanity Checks**: Only evidence-backed flags. Domain rules are activated only when matching case evidence exists.
-8. **Ownership & Next Step**: Assignee, last concrete action, next action, next-action owner, and due date; unsupported fields are `unassigned`, `not stated`, or `不知道`.
-9. **Targeted Recommendations**: The single location for all actions:
-   - **Manager & Escalation Actions**
-   - **Technical & Diagnostic Actions**
-   - Every action includes an Owner and supporting Evidence IDs.
+3. **Conditional Technical & Incident Assessment**: Exactly one of a multi-problem `Problem Statement` or a single-issue `Incident & RCA Summary`. Telemetry calculations stay inside the relevant problem.
+4. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.
+5. **Progress Summary and Timeline**: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from display.
+6. **Ownership & Next Step**: Assignee, last concrete action, stated next action, next-action owner, and due date. This section only restates evidence-backed commitments and does not generate advice.
+7. **Appendix A — Evidence Register**: The final report section. Its table contains Ref, Date, Source, **Verbatim evidence / data**, and **Supports**; Supports reverse-maps each row to the exact body conclusion.
+
+The main body contains no Evidence IDs. Risk and action judgments remain with the Manager. If no verifiable case-specific evidence exists, the answer is exactly `不知道`.
 
 
 ---
