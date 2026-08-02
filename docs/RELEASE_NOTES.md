@@ -4,7 +4,7 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
-## [Unreleased]
+## [v1.5.0] - 2026-08-02: Executive Report Readability Redesign
 
 ### Executive Report Readability Redesign
 
@@ -12,6 +12,7 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 * Removes inline Evidence annotations from the executive body.
 * Removes generated risk lists and recommended actions so Managers retain judgment ownership.
 * Keeps the internal evidence gate, source-conflict handling, and production-confirmation safeguards unchanged.
+* Aligns Google Docs/Sheets integration with the appendix contract and migrates the previous eight-column tracker schema.
 
 ---
 
