@@ -1,6 +1,6 @@
 {
   "name": "avaya-case-review",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Avaya Case Review Manager Suite — Automated Siebel SR & ServiceNow INC status reviews, email correlation, and executive risk analysis.",
   "author": {
     "name": "Avaya Support Management"

@@ -4,7 +4,13 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
-## [Unreleased] - 2026-08-03: Single Managed Edge Gmail Broker
+## [Unreleased]
+
+No unreleased changes.
+
+---
+
+## [v1.6.0] - 2026-08-03: Single Managed Edge Gmail Broker
 
 ### Gmail Authentication and Multi-MCP Reliability
 
@@ -12,6 +18,7 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 * Adds lazy startup, lifetime cross-session ownership locking, two-hour idle shutdown, structured authentication errors, sanitized diagnostics, and explicit `status`, `diagnostics`, `start`, `login`, and `stop` controls.
 * Keeps `gmail_search`, `gmail_read`, and `gmail_send` schemas unchanged. The default backend is `GMAIL_BACKEND=edge_broker`; `GMAIL_BACKEND=legacy_playwright` remains an explicit one-release rollback with no automatic fallback.
 * Retains Chromium installation and `chrome_profile` only for rollback; broker logs never contain queries, message content, recipients, cookies, or tokens.
+* Treats a closed login window as recoverable when SSO has already persisted, restoring the headless context and running one safe verification probe before reporting success.
 
 ## [v1.5.0] - 2026-08-02: Executive Report Readability Redesign
 

@@ -114,6 +114,12 @@
     <!-- UNRELEASED -->
     <div>
         <span class="version-tag">Unreleased</span>
+        <p>No unreleased changes.</p>
+    </div>
+
+    <!-- VERSION 1.6.0 -->
+    <div>
+        <span class="version-tag">v1.6.0</span>
         <span class="version-date">2026-08-03 - Single Managed Edge Gmail Broker</span>
         <h3>Gmail Authentication and Multi-MCP Reliability</h3>
         <ul>
@@ -121,6 +127,7 @@
             <li>Adds lazy startup, lifetime cross-session ownership locking, two-hour idle shutdown, structured authentication errors, sanitized diagnostics, and <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> controls.</li>
             <li>Keeps <code>gmail_search</code>, <code>gmail_read</code>, and <code>gmail_send</code> schemas unchanged. The default is <code>GMAIL_BACKEND=edge_broker</code>; <code>GMAIL_BACKEND=legacy_playwright</code> remains an explicit one-release rollback with no automatic fallback.</li>
             <li>Retains Chromium installation and <code>chrome_profile</code> only for rollback; broker logs never contain queries, message content, recipients, cookies, or tokens.</li>
+            <li>Treats a closed login window as recoverable when SSO has already persisted, restoring the headless context and running one safe verification probe before reporting success.</li>
         </ul>
     </div>
 

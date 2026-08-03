@@ -134,6 +134,7 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
+- **v1.6.0** — Single Managed Edge Gmail Broker
 - **v1.5.0** — Executive Report Readability Redesign
 - v1.4.0 — Evidence-Grounded Workflow Hardening
 - v1.3.0 — Technical & Incident Assessment and Bi-Level Recommendations

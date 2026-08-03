@@ -156,9 +156,11 @@ class CaseReviewContractTests(unittest.TestCase):
                 for marker in prohibited:
                     self.assertNotIn(marker, content)
 
-    def test_release_metadata_targets_v1_5_0(self):
+    def test_release_metadata_targets_v1_6_0(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
+        self.assertIn("[v1.6.0]", release_md)
+        self.assertIn("v1.6.0", release_html)
         self.assertIn("[v1.5.0]", release_md)
         self.assertIn("v1.5.0", release_html)
         self.assertIn("[v1.4.0]", release_md)
@@ -169,16 +171,17 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("Single Managed Edge Gmail Broker", release_html)
 
         plugin = json.loads(read(PLUGIN_JSON))
-        self.assertEqual("1.5.0", plugin["version"])
+        self.assertEqual("1.6.0", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.5.0 - latest release", content)
+                self.assertIn("v1.6.0 - latest release", content)
                 self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
         agents = read(AGENTS_MD)
+        self.assertIn("- **v1.6.0** — Single Managed Edge Gmail Broker", agents)
         self.assertIn("- **v1.5.0** — Executive Report Readability Redesign", agents)
         self.assertNotIn("Target release (not yet published)", agents)
 
