@@ -76,3 +76,10 @@ The migration is considered ready only when four MCP clients can complete a
 20-request read-only soak with one broker PID, one Edge root process using the
 dedicated profile, and `max_browser_concurrency: 1`; a broker restart retains
 authentication; and the explicit legacy smoke test remains available.
+
+The repository soak test (`tests/test_gmail_broker_soak.py`) exercises the
+four-client/20-request path, one adapter start, serialized concurrency, timeout
+and application-error mapping, and sentinel-free logs. A real workstation
+deployment must additionally record the broker PID, exact Edge profile command
+line, restart persistence, and read-only legacy rollback result without
+capturing message content or query text.
