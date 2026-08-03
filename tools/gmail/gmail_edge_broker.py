@@ -119,6 +119,10 @@ class BrowserAdapterError(RuntimeError):
 class BrowserLoginError(BrowserAdapterError):
     """Interactive login failed after headless Edge was restored successfully."""
 
+    def __init__(self, message: str, *, can_verify: bool = False) -> None:
+        self.can_verify = can_verify
+        super().__init__(message)
+
 
 class BrowserApplicationError(RuntimeError):
     """The Apps Script application returned an unusable response."""
@@ -295,8 +299,10 @@ class ManagedEdgeAdapter:
 
         if pending_error is not None:
             if headless_restored and isinstance(pending_error, BrowserAdapterError):
+                can_verify = "login window was closed" in str(pending_error).lower()
                 raise BrowserLoginError(
-                    "Managed Edge interactive login failed after headless restore"
+                    "Managed Edge interactive login failed after headless restore",
+                    can_verify=can_verify,
                 ) from pending_error
             raise pending_error
         if result is not AuthState.AUTHENTICATED:
@@ -984,6 +990,8 @@ class GmailEdgeBroker:
                 "Interactive Gmail login could not be verified",
             ) from exc
         except BrowserLoginError as exc:
+            if exc.can_verify:
+                return await self._verify_login()
             self._browser_crash_count += 1
             self._edge_state = AuthState.BROWSER_ERROR.value
             raise _RequestFailure(
@@ -1030,11 +1038,11 @@ class GmailEdgeBroker:
                 "Interactive Gmail login could not be verified",
             )
 
+        return await self._verify_login()
+
+    async def _verify_login(self) -> dict[str, str]:
         try:
-            await self.adapter.execute(
-                "gmail_search",
-                {"query": LOGIN_VERIFY_QUERY},
-            )
+            await self.adapter.execute("gmail_search", {"query": LOGIN_VERIFY_QUERY})
         except BrowserAuthRequired as exc:
             self._edge_state = exc.state.value
             raise _RequestFailure(
@@ -1064,7 +1072,7 @@ class GmailEdgeBroker:
                 "Interactive Gmail login verification failed",
             ) from exc
         self._edge_state = AuthState.AUTHENTICATED.value
-        return {"state": state.value}
+        return {"state": AuthState.AUTHENTICATED.value}
 
     async def _ensure_browser_started(self) -> None:
         if self._browser_started:

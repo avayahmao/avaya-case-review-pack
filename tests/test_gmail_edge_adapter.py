@@ -12,6 +12,7 @@ from tools.gmail.gmail_edge_broker import (
     BrowserAdapterError,
     BrowserApplicationError,
     BrowserAuthRequired,
+    BrowserLoginError,
     GmailEdgeBroker,
     ManagedEdgeAdapter,
 )
@@ -533,6 +534,36 @@ class LoginVerificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[2][0:2], ("verify", "gmail_search"))
         self.assertEqual(set(events[2][2]), {"query"})
 
+    async def test_recoverable_login_window_close_verifies_restored_headless_context(self):
+        events = []
+
+        class RecoverableAdapter:
+            async def start(self):
+                events.append("start")
+
+            async def close(self):
+                events.append("close")
+
+            async def interactive_login(self):
+                events.append("login")
+                raise BrowserLoginError(
+                    "Managed Edge interactive login window was closed",
+                    can_verify=True,
+                )
+
+            async def execute(self, method, params):
+                events.append(("verify", method, params))
+                return '{"status":"success"}'
+
+        broker = GmailEdgeBroker(RecoverableAdapter())
+
+        result = await broker._perform_login()
+
+        self.assertEqual(result, {"state": "AUTHENTICATED"})
+        self.assertEqual(events[0:2], ["start", "login"])
+        self.assertEqual(events[2][0:2], ("verify", "gmail_search"))
+        self.assertEqual(set(events[2][2]), {"query"})
+
 
 class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -566,9 +597,17 @@ class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
             params=params,
         )
 
-    async def assert_restored_headless_survives_login_error(self, login_page):
+    async def assert_restored_headless_survives_login_error(
+        self,
+        login_page,
+        *,
+        expect_login_success=False,
+    ):
         restored_page = FakePage(body='{"status":"success","messages":[]}')
-        restored = FakeContext(restored_page)
+        restored_pages = [restored_page]
+        if expect_login_success:
+            restored_pages.append(FakePage(body='{"status":"success","messages":[]}'))
+        restored = FakeContext(*restored_pages)
         broker, adapter, starter, playwright = self.make_broker(
             FakeContext(),
             FakeContext(login_page),
@@ -577,8 +616,12 @@ class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
         try:
             login = await broker._dispatch(self.request("auth_login", "login-id"))
 
-            self.assertFalse(login.ok)
-            self.assertIs(login.error.code, BrokerErrorCode.BROWSER_ERROR)
+            if expect_login_success:
+                self.assertTrue(login.ok)
+                self.assertEqual(login.result, {"state": "AUTHENTICATED"})
+            else:
+                self.assertFalse(login.ok)
+                self.assertIs(login.error.code, BrokerErrorCode.BROWSER_ERROR)
             self.assertTrue(broker._browser_started)
             self.assertEqual(restored.close_calls, 0)
 
@@ -609,7 +652,10 @@ class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
             close_after_waits=1,
             on_wait=clock.advance_ms,
         )
-        await self.assert_restored_headless_survives_login_error(page)
+        await self.assert_restored_headless_survives_login_error(
+            page,
+            expect_login_success=True,
+        )
 
     async def test_headful_browser_error_keeps_restored_headless_owned(self):
         page = FakePage(goto_error=RuntimeError("headful browser crashed"))
