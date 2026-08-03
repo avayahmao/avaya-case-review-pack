@@ -144,6 +144,7 @@ Files:
 - `state.json` — current endpoint and process metadata;
 - `broker.log` — sanitized lifecycle/health log with rotation;
 - `startup.lock` — short-lived client startup coordination.
+- `broker.lock` — lifetime cross-session exclusive owner lock.
 
 The Edge profile remains separate:
 
@@ -154,6 +155,8 @@ The Edge profile remains separate:
 ```json
 {
   "protocol_version": 1,
+  "build_id": "source-or-release-build-id",
+  "instance_id": "random-instance-uuid",
   "pid": 12345,
   "host": "127.0.0.1",
   "port": 49152,
@@ -166,19 +169,25 @@ The state file is written to a temporary file and atomically replaced only after
 
 ## Single-Instance Control
 
-Use a Windows named mutex scoped to the current user session:
+The authoritative owner boundary is a lifetime exclusive lock on
+`broker.lock` in the per-user state directory. Hold a non-blocking
+`msvcrt.locking` byte-range lock until broker shutdown. Unlike a
+session-local mutex, the file lock prevents the same Windows profile from
+opening two brokers through RDP or Fast User Switching.
 
-`Local\AvayaCaseReview.GmailEdgeBroker.v1`
+A session-local mutex may be used only as a startup optimization:
+`Local\AvayaCaseReview.GmailEdgeBroker.v1`.
 
 Rules:
 
-1. The broker must acquire the mutex before opening the state file or Edge.
-2. A second broker exits without touching the profile.
-3. Multiple clients may race to start the broker; only the mutex owner continues.
+1. The broker must acquire the lifetime file lock before opening state or Edge.
+2. A second broker exits without touching state or profile.
+3. Multiple clients may race to start the broker; only the file-lock owner continues.
 4. Clients poll the health method until one broker publishes valid state.
 5. Stale state is ignored when the PID is absent or health/token validation fails.
 
-The startup lock reduces redundant process launches; the named mutex remains the authoritative singleton boundary.
+An exiting broker removes `state.json` only when its `instance_id` still
+matches published state. An old process must never delete replacement state.
 
 ## Transport and Protocol
 
@@ -237,7 +246,9 @@ Security limits:
 - reject non-loopback connections;
 - constant-time token comparison;
 - 8 MiB request/response limit;
-- 60-second Gmail request timeout;
+- 300-second queue-wait timeout;
+- 60-second browser-execution timeout after dequeuing;
+- 370-second client timeout covering queue, execution, and transport margin;
 - 330-second interactive login timeout;
 - reject unknown fields, versions, and methods;
 - never include token or params in logs.
@@ -268,6 +279,12 @@ Each operation:
 
 The lock guarantees a maximum browser-operation concurrency of one even when many clients submit requests concurrently.
 
+Broker health/diagnostics expose `current_browser_concurrency`,
+`max_browser_concurrency`, `browser_start_count`,
+`browser_crash_count`, `request_count`, queue depth, `build_id`, and
+`instance_id`. These counters make the concurrency and upgrade acceptance
+criteria observable.
+
 ## Authentication State Machine
 
 States:
@@ -292,15 +309,17 @@ States:
 
 The broker:
 
-1. acquires the operation lock;
-2. stops accepting new Gmail work into execution while requests remain queued;
-3. closes the headless context;
-4. opens a headful Edge context with the same broker profile;
-5. waits for an authenticated Apps Script response;
-6. closes the headful context;
-7. reopens the headless context;
-8. runs one verification probe;
-9. returns success only if verification is authenticated.
+1. sets `LOGIN_IN_PROGRESS`;
+2. makes new Gmail calls fail fast with `LOGIN_IN_PROGRESS`;
+3. acquires the operation lock after the active operation completes;
+4. closes the headless context;
+5. opens a headful Edge context with the same broker profile;
+6. waits for an authenticated Apps Script response;
+7. closes the headful context;
+8. reopens the headless context in a `finally` block after success, timeout,
+   early window close, cancellation, or browser error;
+9. runs one verification probe;
+10. returns success only if verification is authenticated.
 
 Only the broker opens the profile, so no profile lock conflict occurs during login.
 
@@ -312,7 +331,9 @@ On the first MCP request:
 
 1. client reads broker state;
 2. health check fails or state is absent;
-3. client starts `pythonw.exe gmail_edge_broker.py serve` hidden;
+3. client starts the broker with an absolute script path and
+   `sys.executable`; on Windows use `CREATE_NO_WINDOW` as the single
+   hidden-launch strategy and set an explicit working directory;
 4. broker singleton wins the mutex and publishes state;
 5. client waits up to 15 seconds for health;
 6. request proceeds.
@@ -330,6 +351,16 @@ On the first MCP request:
 - Do not automatically retry `gmail_send`, because delivery status may be ambiguous.
 - If the broker process dies, the next client ignores stale state and starts a replacement.
 - Browser crash counters and last error code are visible in diagnostics.
+
+### Upgrade handoff
+
+The broker publishes `build_id` in state and health. Before replacing files,
+the installer gracefully stops the running broker and waits for both broker and
+Edge owner processes to exit. It then deploys the new allowlisted scripts,
+starts a broker, and verifies that health reports the expected build ID.
+
+State cleanup remains instance-owned, so an exiting old process cannot delete
+the replacement broker's state.
 
 ## Client and MCP Error Contract
 
@@ -355,13 +386,21 @@ The migration release:
 
 1. installs Python `mcp` and `playwright`;
 2. keeps the Chromium binary installation for one-release legacy rollback;
-3. deploys broker, client, control, common, and legacy modules;
-4. creates the broker state directory;
-5. restricts the directory ACL to the current user;
-6. sets `GMAIL_BACKEND=edge_broker` in MCP configuration;
-7. runs broker `status`;
-8. opens interactive login only when status returns `AUTH_REQUIRED`;
-9. never starts a second browser owner.
+3. stops and verifies any older broker before deployment;
+4. deploys broker, client, control, common, legacy, and MCP modules from an
+   explicit allowlist; wildcard directory copy is forbidden;
+5. hashes legacy and Edge profile baselines before/after deployment and
+   requires them to remain unchanged;
+6. creates the broker state directory;
+7. restricts the directory ACL to the current user and SYSTEM;
+8. preserves unrelated MCP servers and existing keys with a Windows
+   PowerShell 5.1-compatible JSON update; `ConvertFrom-Json -AsHashtable`
+   is forbidden;
+9. sets `GMAIL_BACKEND=edge_broker` in MCP configuration;
+10. runs broker `status`;
+11. opens interactive login only when status returns `AUTH_REQUIRED`;
+12. verifies the running broker build matches the installed source;
+13. never starts a second browser owner.
 
 The existing `chrome_profile` remains untouched for rollback.
 
@@ -399,6 +438,10 @@ Forbidden log fields:
 - send retry prohibition;
 - stale-state detection;
 - profile path isolation.
+- real two-subprocess lifetime-lock exclusion;
+- Windows PowerShell 5.1 MCP-config migration preserving unrelated servers;
+- absolute-path autostart from an unrelated working directory/interpreter;
+- login timeout, cancellation, browser crash, and early-window-close recovery.
 
 ### Integration tests
 
@@ -413,6 +456,9 @@ Use a fake browser adapter and real loopback broker:
 - unauthorized and malformed requests are rejected;
 - broker restart recovers stale state;
 - idle shutdown waits for active requests.
+- representative serialized latency fits the separate queue, execution, and
+  client deadlines;
+- sentinel secrets never appear in logs on success, error, or timeout paths.
 
 ### Live tests
 
@@ -420,6 +466,8 @@ Use a fake browser adapter and real loopback broker:
 - four actual MCP processes;
 - concurrent case-bounded queries;
 - broker and Edge PID count;
+- exact Edge root-process filtering by
+  `--user-data-dir=edge_broker_profile`;
 - authentication persistence across broker restart;
 - explicit `AUTH_REQUIRED` after controlled session invalidation when feasible;
 - legacy rollback smoke test.
@@ -433,7 +481,10 @@ Use a fake browser adapter and real loopback broker:
 5. Run four-process/20-request live soak.
 6. Set broker mode as default for the migration release.
 7. Preserve `legacy_playwright` as an explicit rollback mode for one release.
-8. Remove legacy mode only after production observation and user approval.
+8. Add a tracked release manifest containing every broker module and operator
+   guide; build releases from that manifest rather than the prior ZIP list.
+9. Verify a clean extracted ZIP can import and start broker/client/MCP help.
+10. Remove legacy mode only after production observation and user approval.
 
 ## Rollback
 
@@ -459,4 +510,6 @@ The production migration is complete when:
 - logs contain no sensitive request or email data;
 - installer only prompts for login when required;
 - legacy rollback works;
+- broker build matches installed source after upgrade;
+- clean release ZIP contains and imports every broker module;
 - all unit, integration, contract, installer, syntax, and whitespace checks pass.
