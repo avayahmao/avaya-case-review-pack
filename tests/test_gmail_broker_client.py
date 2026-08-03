@@ -304,49 +304,73 @@ class ClientErrorContractTests(unittest.TestCase):
 
 
 class LazyStartupTests(unittest.TestCase):
-    def test_default_broker_script_imports_from_unrelated_state_cwd(self):
-        completed = []
+    def test_default_launcher_starts_real_broker_health_then_shutdown(self):
+        launched = []
 
-        def respond(request):
-            if request.method == "health":
-                return BrokerResponse.success(request.id, make_health_result())
-            return BrokerResponse.success(request.id, "ok")
+        def launcher(command, **kwargs):
+            process = subprocess.Popen(command, **kwargs)
+            launched.append(process)
+            return process
 
-        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
-            state_directory = Path(tmp) / "state"
-            store = BrokerStateStore(state_directory, acl_applier=None)
-
-            def launcher(command, **kwargs):
-                run = subprocess.run(
-                    command,
-                    cwd=kwargs["cwd"],
-                    env=kwargs.get("env"),
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                    check=False,
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_app_data = root / "local-app-data"
+            user_home = root / "user-home"
+            environment = {
+                "LOCALAPPDATA": str(local_app_data),
+                "USERPROFILE": str(user_home),
+            }
+            with patch.dict(os.environ, environment):
+                store = BrokerStateStore(acl_applier=None)
+                client = BrokerClient(
+                    state_store=store,
+                    launcher=launcher,
+                    executable=sys.executable,
+                    startup_lock_factory=lambda: StartupFileLock(
+                        store.directory,
+                        acl_applier=None,
+                    ),
+                    startup_timeout=10,
+                    poll_interval=0.05,
+                    request_timeout=10,
                 )
-                completed.append(run)
-                if run.returncode:
-                    raise OSError("broker script import failed")
-                write_state(store, broker)
-                return FakeProcess()
+                try:
+                    health = client.request("health", {})
+                    state = store.read()
+                    shutdown = client.request("shutdown", {})
+                    launched[0].wait(timeout=10)
+                finally:
+                    for process in launched:
+                        if process.poll() is None:
+                            process.terminate()
+                            process.wait(timeout=10)
 
-            client = BrokerClient(
-                state_store=store,
-                process_exists=lambda _pid: True,
-                launcher=launcher,
-                executable=sys.executable,
-                startup_lock_factory=lambda: StartupFileLock(
-                    state_directory,
-                    acl_applier=None,
-                ),
+        self.assertEqual(len(launched), 1)
+        self.assertEqual(health["protocol_version"], PROTOCOL_VERSION)
+        self.assertEqual(health["pid"], state.pid)
+        self.assertEqual(health["edge_state"], "STARTING")
+        self.assertEqual(health["browser_start_count"], 0)
+        self.assertEqual(shutdown, {"stopping": True})
+        self.assertEqual(launched[0].returncode, 0)
+        self.assertFalse(store.state_file.exists())
+
+    def test_broker_cli_help_works_as_direct_script_from_unrelated_directory(self):
+        script = Path(__file__).resolve().parents[1] / "tools/gmail/gmail_edge_broker.py"
+        with TemporaryDirectory() as tmp:
+            environment = os.environ.copy()
+            environment.pop("PYTHONPATH", None)
+            completed = subprocess.run(
+                [sys.executable, str(script), "--help"],
+                cwd=tmp,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
             )
-            result = client.request("gmail_search", {"query": "case"})
 
-        self.assertEqual(result, "ok")
-        self.assertEqual(len(completed), 1)
-        self.assertEqual(completed[0].returncode, 0, completed[0].stderr)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("serve", completed.stdout)
 
     def test_launch_uses_absolute_script_injected_interpreter_and_explicit_state_cwd(self):
         sentinel = "PARAM_SENTINEL_MUST_NOT_REACH_COMMAND_LINE"

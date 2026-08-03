@@ -2,35 +2,78 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import contextlib
 from datetime import datetime, timezone
 import ipaddress
 import os
+from pathlib import Path
 import re
 import secrets
+import sys
 import time
 import uuid
 from typing import Any, Callable, Protocol
 
-from tools.gmail.gmail_broker_protocol import (
-    MAX_FRAME_BYTES,
-    PROTOCOL_VERSION,
-    BrokerErrorCode,
-    BrokerRequest,
-    BrokerResponse,
-    ProtocolError,
-    decode_request,
-    encode_response,
-    validate_token,
+if __package__:
+    from .gmail_broker_protocol import (
+        MAX_FRAME_BYTES,
+        PROTOCOL_VERSION,
+        BrokerErrorCode,
+        BrokerRequest,
+        BrokerResponse,
+        ProtocolError,
+        decode_request,
+        encode_response,
+        validate_token,
+    )
+    from .gmail_broker_state import (
+        BrokerState,
+        BrokerStateStore,
+        LifetimeFileLock,
+        SanitizedRotatingLogger,
+        apply_windows_acl,
+        default_broker_paths,
+    )
+    from .gmail_edge_common import (
+        APP_SCRIPT_URL,
+        AuthState,
+        build_action_url,
+        classify_response,
+        validate_profile_path,
+    )
+else:
+    from gmail_broker_protocol import (
+        MAX_FRAME_BYTES,
+        PROTOCOL_VERSION,
+        BrokerErrorCode,
+        BrokerRequest,
+        BrokerResponse,
+        ProtocolError,
+        decode_request,
+        encode_response,
+        validate_token,
+    )
+    from gmail_broker_state import (
+        BrokerState,
+        BrokerStateStore,
+        LifetimeFileLock,
+        SanitizedRotatingLogger,
+        apply_windows_acl,
+        default_broker_paths,
+    )
+    from gmail_edge_common import (
+        APP_SCRIPT_URL,
+        AuthState,
+        build_action_url,
+        classify_response,
+        validate_profile_path,
+    )
+from playwright.async_api import (
+    TimeoutError as PlaywrightTimeoutError,
+    async_playwright,
 )
-from tools.gmail.gmail_broker_state import (
-    BrokerState,
-    BrokerStateStore,
-    LifetimeFileLock,
-    SanitizedRotatingLogger,
-)
-from tools.gmail.gmail_edge_common import AuthState
 
 
 QUEUE_WAIT_TIMEOUT_SECONDS = 300
@@ -40,6 +83,11 @@ FRAME_READ_TIMEOUT_SECONDS = 5
 LOGIN_TIMEOUT_SECONDS = 330
 CONNECTION_DRAIN_TIMEOUT_SECONDS = 370
 IDLE_TIMEOUT_SECONDS = 2 * 60 * 60
+NAVIGATION_TIMEOUT_MS = 30_000
+APP_RESPONSE_TIMEOUT_MS = 30_000
+INTERACTIVE_LOGIN_TIMEOUT_SECONDS = 300
+LOGIN_POLL_INTERVAL_MS = 1_000
+LOGIN_VERIFY_QUERY = "subject:__avaya_gmail_edge_broker_verify__"
 
 _SAFE_READ_METHODS = frozenset({"gmail_search", "gmail_read"})
 _GMAIL_METHODS = _SAFE_READ_METHODS | {"gmail_send"}
@@ -68,6 +116,10 @@ class BrowserAdapterError(RuntimeError):
     """The browser process or automation transport failed."""
 
 
+class BrowserLoginError(BrowserAdapterError):
+    """Interactive login failed after headless Edge was restored successfully."""
+
+
 class BrowserApplicationError(RuntimeError):
     """The Apps Script application returned an unusable response."""
 
@@ -80,6 +132,276 @@ class BrowserAuthRequired(RuntimeError):
             raise ValueError("state must be a supported authentication-required state")
         self.state = state
         super().__init__(message)
+
+
+class ManagedEdgeAdapter:
+    """Own one persistent Managed Edge context for broker browser operations."""
+
+    def __init__(
+        self,
+        profile_dir: Path | str | None = None,
+        *,
+        user_home: Path | str | None = None,
+        playwright_factory: Callable[[], Any] = async_playwright,
+        app_script_url: str = APP_SCRIPT_URL,
+        navigation_timeout_ms: int = NAVIGATION_TIMEOUT_MS,
+        response_timeout_ms: int = APP_RESPONSE_TIMEOUT_MS,
+        login_timeout_seconds: float = INTERACTIVE_LOGIN_TIMEOUT_SECONDS,
+        login_poll_interval_ms: int = LOGIN_POLL_INTERVAL_MS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        home = Path(
+            user_home
+            if user_home is not None
+            else os.environ.get("USERPROFILE", Path.home())
+        )
+        selected_profile = Path(
+            profile_dir
+            if profile_dir is not None
+            else home / ".gemini/tools/gmail/edge_broker_profile"
+        )
+        self.profile_dir = validate_profile_path(selected_profile, home)
+        if not callable(playwright_factory):
+            raise TypeError("playwright_factory must be callable")
+        if not isinstance(app_script_url, str) or not app_script_url:
+            raise ValueError("app_script_url must be a non-empty string")
+        if type(navigation_timeout_ms) is not int or navigation_timeout_ms <= 0:
+            raise ValueError("navigation_timeout_ms must be a positive integer")
+        if type(response_timeout_ms) is not int or response_timeout_ms <= 0:
+            raise ValueError("response_timeout_ms must be a positive integer")
+        if type(login_poll_interval_ms) is not int or login_poll_interval_ms <= 0:
+            raise ValueError("login_poll_interval_ms must be a positive integer")
+        if not callable(clock):
+            raise TypeError("clock must be callable")
+
+        self._playwright_factory = playwright_factory
+        self._app_script_url = app_script_url
+        self._navigation_timeout_ms = navigation_timeout_ms
+        self._response_timeout_ms = response_timeout_ms
+        self._login_timeout_seconds = _positive_timeout(
+            "login_timeout_seconds", login_timeout_seconds
+        )
+        self._login_poll_interval_ms = login_poll_interval_ms
+        self._clock = clock
+        self._playwright: Any | None = None
+        self._context: Any | None = None
+
+    async def start(self) -> None:
+        if self._context is not None:
+            return
+        self.profile_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self._playwright = await self._playwright_factory().start()
+            self._context = await self._launch_context(headless=True)
+        except asyncio.CancelledError:
+            await self._close_resources()
+            raise
+        except Exception as exc:
+            await self._close_resources()
+            raise BrowserAdapterError("Unable to start Managed Edge") from exc
+
+    async def close(self) -> None:
+        await self._close_resources()
+
+    async def execute(self, method: str, params: dict[str, str]) -> str:
+        context = self._context
+        if context is None:
+            raise BrowserAdapterError("Managed Edge is not started")
+        url = self._build_method_url(method, params)
+        page = None
+        try:
+            page = await context.new_page()
+            response = await page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=self._navigation_timeout_ms,
+            )
+            http_status = response.status if response is not None else None
+            early_state = classify_response(page.url, http_status, "")
+            self._raise_for_state(early_state)
+            try:
+                await page.wait_for_load_state(
+                    "networkidle",
+                    timeout=self._response_timeout_ms,
+                )
+            except PlaywrightTimeoutError:
+                pass
+            body = (await page.text_content("body") or "").strip()
+            state = classify_response(page.url, http_status, body)
+            self._raise_for_state(state)
+            if state is not AuthState.AUTHENTICATED:
+                raise BrowserApplicationError(
+                    "Apps Script returned an unrecognized response"
+                )
+            return body
+        except (BrowserAuthRequired, BrowserApplicationError):
+            raise
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            raise BrowserAdapterError("Managed Edge request failed") from exc
+        finally:
+            if page is not None:
+                with contextlib.suppress(Exception):
+                    await page.close()
+
+    async def interactive_login(self) -> AuthState:
+        if self._context is None or self._playwright is None:
+            raise BrowserAdapterError("Managed Edge is not started")
+
+        headless_context = self._context
+        self._context = None
+        with contextlib.suppress(Exception):
+            await headless_context.close()
+
+        headful_context = None
+        page = None
+        pending_error: BaseException | None = None
+        result: AuthState | None = None
+        headless_restored = False
+        try:
+            headful_context = await self._launch_context(headless=False)
+            page = await headful_context.new_page()
+            response = await page.goto(
+                self._verification_url(),
+                wait_until="domcontentloaded",
+                timeout=self._navigation_timeout_ms,
+            )
+            http_status = response.status if response is not None else None
+            result = await self._poll_interactive_login(page, http_status)
+        except asyncio.CancelledError as exc:
+            pending_error = exc
+        except (BrowserAuthRequired, BrowserApplicationError, BrowserAdapterError) as exc:
+            pending_error = exc
+        except Exception as exc:
+            pending_error = BrowserAdapterError(
+                "Managed Edge interactive login failed"
+            )
+            pending_error.__cause__ = exc
+        finally:
+            if headful_context is not None:
+                with contextlib.suppress(Exception):
+                    await headful_context.close()
+            try:
+                self._context = await self._launch_context(headless=True)
+                headless_restored = True
+            except asyncio.CancelledError as exc:
+                pending_error = exc
+            except Exception as exc:
+                pending_error = BrowserAdapterError(
+                    "Unable to restore headless Managed Edge"
+                )
+                pending_error.__cause__ = exc
+
+        if pending_error is not None:
+            if headless_restored and isinstance(pending_error, BrowserAdapterError):
+                raise BrowserLoginError(
+                    "Managed Edge interactive login failed after headless restore"
+                ) from pending_error
+            raise pending_error
+        if result is not AuthState.AUTHENTICATED:
+            raise BrowserApplicationError(
+                "Interactive Gmail login could not be verified"
+            )
+        return result
+
+    async def _poll_interactive_login(
+        self,
+        page: Any,
+        http_status: int | None,
+    ) -> AuthState:
+        deadline = float(self._clock()) + self._login_timeout_seconds
+        state = classify_response(page.url, http_status, "")
+        while float(self._clock()) < deadline:
+            if page.is_closed():
+                raise BrowserAdapterError("Managed Edge login window was closed")
+            try:
+                body = (await page.text_content("body") or "").strip()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                if page.is_closed():
+                    raise BrowserAdapterError(
+                        "Managed Edge login window was closed"
+                    ) from exc
+                await page.wait_for_timeout(self._login_poll_interval_ms)
+                continue
+            state = classify_response(page.url, http_status, body)
+            if state is AuthState.AUTHENTICATED:
+                return state
+            if state is AuthState.APP_ERROR:
+                raise BrowserApplicationError(
+                    "Apps Script could not verify interactive login"
+                )
+            await page.wait_for_timeout(self._login_poll_interval_ms)
+
+        if state in _AUTH_REQUIRED_STATES:
+            raise BrowserAuthRequired(state)
+        if page.is_closed():
+            raise BrowserAdapterError("Managed Edge login window was closed")
+        raise BrowserApplicationError("Interactive Gmail login timed out")
+
+    async def _launch_context(self, *, headless: bool) -> Any:
+        if self._playwright is None:
+            raise BrowserAdapterError("Playwright is not started")
+        return await self._playwright.chromium.launch_persistent_context(
+            channel="msedge",
+            user_data_dir=str(self.profile_dir),
+            headless=headless,
+        )
+
+    async def _close_resources(self) -> None:
+        context = self._context
+        playwright = self._playwright
+        self._context = None
+        self._playwright = None
+        if context is not None:
+            with contextlib.suppress(Exception):
+                await context.close()
+        if playwright is not None:
+            with contextlib.suppress(Exception):
+                await playwright.stop()
+
+    def _verification_url(self) -> str:
+        return build_action_url(
+            "search",
+            {"q": LOGIN_VERIFY_QUERY},
+            base_url=self._app_script_url,
+        )
+
+    def _build_method_url(self, method: str, params: dict[str, str]) -> str:
+        if not isinstance(params, dict):
+            raise BrowserApplicationError("Gmail request parameters are invalid")
+        if method == "gmail_search":
+            action = "search"
+            mapped = {"q": self._required_string(params, "query")}
+        elif method == "gmail_read":
+            action = "read"
+            mapped = {"id": self._required_string(params, "message_id")}
+        elif method == "gmail_send":
+            action = "send"
+            mapped = {
+                "to": self._required_string(params, "to"),
+                "subject": self._required_string(params, "subject"),
+                "body": self._required_string(params, "body"),
+            }
+        else:
+            raise BrowserApplicationError("Unsupported Gmail browser method")
+        return build_action_url(action, mapped, base_url=self._app_script_url)
+
+    @staticmethod
+    def _required_string(params: dict[str, str], name: str) -> str:
+        value = params.get(name)
+        if not isinstance(value, str):
+            raise BrowserApplicationError("Gmail request parameters are invalid")
+        return value
+
+    @staticmethod
+    def _raise_for_state(state: AuthState) -> None:
+        if state in _AUTH_REQUIRED_STATES:
+            raise BrowserAuthRequired(state)
+        if state is AuthState.APP_ERROR:
+            raise BrowserApplicationError("Apps Script returned an error")
 
 
 class _RequestFailure(RuntimeError):
@@ -112,6 +434,7 @@ class GmailEdgeBroker:
         state_store: BrokerStateStore | None = None,
         owner_lock: LifetimeFileLock | None = None,
         logger: SanitizedRotatingLogger | None = None,
+        logger_factory: Callable[[Path], SanitizedRotatingLogger] | None = None,
         build_id: str = "source",
         instance_id: str | None = None,
         token: str | None = None,
@@ -147,6 +470,7 @@ class GmailEdgeBroker:
             self.state_store.paths.broker_lock_file
         )
         self.logger = logger
+        self._logger_factory = logger_factory
         self.build_id = build_id
         self.instance_id = instance_id or str(uuid.uuid4())
         self.token = token or secrets.token_urlsafe(32)
@@ -221,9 +545,14 @@ class GmailEdgeBroker:
         try:
             self.owner_lock.acquire()
             if self.logger is None:
-                self.logger = SanitizedRotatingLogger(
-                    self.state_store.paths.log_file
-                )
+                if self._logger_factory is None:
+                    self.logger = SanitizedRotatingLogger(
+                        self.state_store.paths.log_file
+                    )
+                else:
+                    self.logger = self._logger_factory(
+                        self.state_store.paths.log_file
+                    )
             self._server = await asyncio.start_server(
                 self._handle_connection,
                 self.host,
@@ -642,6 +971,25 @@ class GmailEdgeBroker:
         try:
             await self._ensure_browser_started()
             state = await self.adapter.interactive_login()
+        except BrowserAuthRequired as exc:
+            self._edge_state = exc.state.value
+            raise _RequestFailure(
+                BrokerErrorCode.AUTH_REQUIRED,
+                "Interactive Gmail authentication is still required",
+            ) from exc
+        except BrowserApplicationError as exc:
+            self._edge_state = AuthState.APP_ERROR.value
+            raise _RequestFailure(
+                BrokerErrorCode.APP_ERROR,
+                "Interactive Gmail login could not be verified",
+            ) from exc
+        except BrowserLoginError as exc:
+            self._browser_crash_count += 1
+            self._edge_state = AuthState.BROWSER_ERROR.value
+            raise _RequestFailure(
+                BrokerErrorCode.BROWSER_ERROR,
+                "Managed Edge interactive login failed",
+            ) from exc
         except BrowserAdapterError as exc:
             self._browser_crash_count += 1
             self._edge_state = AuthState.BROWSER_ERROR.value
@@ -681,6 +1029,41 @@ class GmailEdgeBroker:
                 BrokerErrorCode.APP_ERROR,
                 "Interactive Gmail login could not be verified",
             )
+
+        try:
+            await self.adapter.execute(
+                "gmail_search",
+                {"query": LOGIN_VERIFY_QUERY},
+            )
+        except BrowserAuthRequired as exc:
+            self._edge_state = exc.state.value
+            raise _RequestFailure(
+                BrokerErrorCode.AUTH_REQUIRED,
+                "Interactive Gmail authentication is still required",
+            ) from exc
+        except BrowserApplicationError as exc:
+            self._edge_state = AuthState.APP_ERROR.value
+            raise _RequestFailure(
+                BrokerErrorCode.APP_ERROR,
+                "Interactive Gmail login verification failed",
+            ) from exc
+        except BrowserAdapterError as exc:
+            self._browser_crash_count += 1
+            self._edge_state = AuthState.BROWSER_ERROR.value
+            await self._discard_browser()
+            raise _RequestFailure(
+                BrokerErrorCode.BROWSER_ERROR,
+                "Managed Edge login verification failed",
+            ) from exc
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._edge_state = AuthState.APP_ERROR.value
+            raise _RequestFailure(
+                BrokerErrorCode.APP_ERROR,
+                "Interactive Gmail login verification failed",
+            ) from exc
+        self._edge_state = AuthState.AUTHENTICATED.value
         return {"state": state.value}
 
     async def _ensure_browser_started(self) -> None:
@@ -810,17 +1193,82 @@ class GmailEdgeBroker:
             return False
 
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run the per-user Managed Edge Gmail broker.",
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=("serve",),
+        default="serve",
+        help="serve authenticated loopback requests (default: serve)",
+    )
+    return parser
+
+
+async def _serve() -> int:
+    adapter = ManagedEdgeAdapter()
+    paths = default_broker_paths()
+    paths.directory.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        apply_windows_acl(paths.directory)
+    state_store = BrokerStateStore(paths.directory, acl_applier=None)
+    owner_lock = LifetimeFileLock(
+        paths.broker_lock_file,
+        acl_applier=None,
+    )
+    broker = GmailEdgeBroker(
+        adapter,
+        state_store=state_store,
+        owner_lock=owner_lock,
+        logger_factory=lambda path: SanitizedRotatingLogger(
+            path,
+            acl_applier=None,
+        ),
+    )
+    await broker.start()
+    try:
+        await broker.wait_stopped()
+    finally:
+        await broker.stop()
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.command != "serve":
+        raise AssertionError("unreachable broker command")
+    try:
+        return asyncio.run(_serve())
+    except KeyboardInterrupt:
+        return 130
+
+
 __all__ = [
+    "APP_RESPONSE_TIMEOUT_MS",
     "CLIENT_TIMEOUT_SECONDS",
     "CONNECTION_DRAIN_TIMEOUT_SECONDS",
     "EXECUTION_TIMEOUT_SECONDS",
     "FRAME_READ_TIMEOUT_SECONDS",
     "IDLE_TIMEOUT_SECONDS",
+    "INTERACTIVE_LOGIN_TIMEOUT_SECONDS",
+    "LOGIN_POLL_INTERVAL_MS",
     "LOGIN_TIMEOUT_SECONDS",
+    "LOGIN_VERIFY_QUERY",
+    "NAVIGATION_TIMEOUT_MS",
     "QUEUE_WAIT_TIMEOUT_SECONDS",
     "BrowserAdapter",
     "BrowserAdapterError",
     "BrowserApplicationError",
     "BrowserAuthRequired",
+    "BrowserLoginError",
     "GmailEdgeBroker",
+    "ManagedEdgeAdapter",
+    "build_parser",
+    "main",
 ]
+
+
+if __name__ == "__main__":
+    sys.exit(main())
