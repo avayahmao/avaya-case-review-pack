@@ -12,10 +12,27 @@ import json
 import os
 import sys
 import time
-from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
+
+if __package__:
+    from .gmail_edge_common import (
+        APP_SCRIPT_URL,
+        AuthState,
+        ProbeResult,
+        build_action_url,
+        classify_response,
+        validate_profile_path,
+    )
+else:
+    from gmail_edge_common import (
+        APP_SCRIPT_URL,
+        AuthState,
+        ProbeResult,
+        build_action_url,
+        classify_response,
+        validate_profile_path,
+    )
 
 from playwright.async_api import (
     BrowserContext,
@@ -26,78 +43,6 @@ from playwright.async_api import (
 
 
 PROBE_QUERY = "subject:__avaya_gmail_edge_poc__"
-APP_SCRIPT_URL = (
-    "https://script.google.com/a/macros/avaya.com/s/"
-    "AKfycbwfqUGLMBppaPEtdzAC74_TeT34shpYkIVv5FMY1JjhqPDH0MXEp-"
-    "WdeTOp8zmCDL0F/exec"
-)
-
-
-class AuthState(str, Enum):
-    AUTHENTICATED = "AUTHENTICATED"
-    AUTH_REQUIRED_MICROSOFT = "AUTH_REQUIRED_MICROSOFT"
-    AUTH_REQUIRED_GOOGLE = "AUTH_REQUIRED_GOOGLE"
-    APP_ERROR = "APP_ERROR"
-    BROWSER_ERROR = "BROWSER_ERROR"
-    UNKNOWN = "UNKNOWN"
-
-
-@dataclass(frozen=True)
-class ProbeResult:
-    state: AuthState
-    http_status: int | None
-    final_host: str
-    final_path: str
-    body_length: int
-    elapsed_ms: int
-
-    def to_public_dict(self) -> dict[str, object]:
-        return {
-            "state": self.state.value,
-            "http_status": self.http_status,
-            "final_host": self.final_host,
-            "final_path": self.final_path,
-            "body_length": self.body_length,
-            "elapsed_ms": self.elapsed_ms,
-        }
-
-
-def classify_response(
-    final_url: str,
-    http_status: int | None,
-    body: str,
-) -> AuthState:
-    parsed = urlparse(final_url)
-    host = parsed.netloc.lower()
-    path = parsed.path.lower()
-    body_prefix = body[:1000].lower()
-    url_lower = final_url.lower()
-
-    if (
-        host == "login.microsoftonline.com"
-        or host.endswith(".access.mcas.ms")
-        or "/saml2" in path
-        or path == "/aad_login"
-    ):
-        return AuthState.AUTH_REQUIRED_MICROSOFT
-    if host == "accounts.google.com" or "servicelogin" in url_lower:
-        return AuthState.AUTH_REQUIRED_GOOGLE
-    if http_status is not None and http_status >= 400:
-        return AuthState.APP_ERROR
-
-    compact_body = "".join(body_prefix.split())
-    is_script_response = host.endswith("script.googleusercontent.com") or (
-        host.endswith("script.google.com")
-        and body.lstrip().startswith(("{", "["))
-    )
-    if is_script_response:
-        if '"status":"error"' in compact_body:
-            return AuthState.APP_ERROR
-        return AuthState.AUTHENTICATED
-
-    if "sign in" in body_prefix:
-        return AuthState.AUTH_REQUIRED_GOOGLE
-    return AuthState.UNKNOWN
 
 
 def exit_code_for(state: AuthState) -> int:
@@ -114,26 +59,17 @@ def exit_code_for(state: AuthState) -> int:
 
 
 def build_probe_url(base_url: str = APP_SCRIPT_URL) -> str:
-    return f"{base_url}?{urlencode({'action': 'search', 'q': PROBE_QUERY})}"
+    return build_action_url(
+        "search",
+        {"q": PROBE_QUERY},
+        base_url=base_url,
+    )
 
 
 def validate_repeat_count(count: int) -> int:
     if not 1 <= count <= 20:
         raise ValueError("repeat count must be between 1 and 20")
     return count
-
-
-def validate_profile_path(profile: Path, user_home: Path) -> Path:
-    resolved = profile.expanduser().resolve()
-    forbidden = {
-        (user_home / ".gemini/tools/gmail/chrome_profile").resolve(),
-        (user_home / "AppData/Local/Microsoft/Edge/User Data").resolve(),
-    }
-    if resolved in forbidden or any(root in resolved.parents for root in forbidden):
-        raise ValueError(
-            "PoC profile must not use a production Chromium or normal Edge profile"
-        )
-    return resolved
 
 
 def summarize_results(results: list[ProbeResult]) -> dict[str, object]:
