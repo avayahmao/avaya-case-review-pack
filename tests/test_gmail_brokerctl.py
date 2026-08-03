@@ -212,6 +212,14 @@ class ExitCodeTests(unittest.TestCase):
         self.assertEqual(exit_code, 10)
         self.assertTrue(payload["ok"])
 
+    def test_status_treats_unprobed_starting_broker_as_authentication_required(self):
+        client = RecordingClient({"health": make_health_result(edge_state="STARTING")})
+
+        exit_code, payload, _stderr = run_cli("status", client)
+
+        self.assertEqual(exit_code, 10)
+        self.assertTrue(payload["ok"])
+
 
 class EntryPointTests(unittest.TestCase):
     def test_direct_and_package_help_work_without_browser_imports(self):

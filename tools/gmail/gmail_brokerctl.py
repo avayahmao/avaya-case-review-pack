@@ -120,7 +120,10 @@ def _success_exit_code(command: str, result: dict[str, Any]) -> int:
     if command not in {"status", "diagnostics", "start"}:
         return EXIT_SUCCESS
     edge_state = result.get("edge_state")
-    if edge_state in _AUTH_REQUIRED_STATES:
+    # A freshly lazy-started broker has not probed Gmail yet. Treat STARTING
+    # as authentication-required so the installer/control flow performs the
+    # one permitted interactive login instead of silently declaring readiness.
+    if edge_state in _AUTH_REQUIRED_STATES or edge_state == "STARTING":
         return EXIT_AUTH_REQUIRED
     if edge_state == "BROWSER_ERROR":
         return EXIT_UNAVAILABLE
