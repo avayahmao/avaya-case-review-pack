@@ -104,6 +104,15 @@ class BrokerClient:
             state = self._start_and_wait(deadline)
         return self._send(state, method, params, deadline)
 
+    def request_existing(self, method: str, params: dict[str, Any]) -> Any:
+        """Perform one request without starting an absent or unhealthy broker."""
+
+        deadline = float(self._clock()) + self._request_timeout
+        state = self._discover_healthy_state(deadline)
+        if state is None:
+            raise BrokerUnavailable()
+        return self._send(state, method, params, deadline)
+
     def _read_current_state(self) -> BrokerState | None:
         try:
             state = self._state_store.read()

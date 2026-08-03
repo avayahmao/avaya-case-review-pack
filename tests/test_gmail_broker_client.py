@@ -209,6 +209,48 @@ class HealthyStateRequestTests(unittest.TestCase):
         self.assertEqual(broker.requests[1].params, {"query": sentinel})
 
 
+class ExistingBrokerRequestTests(unittest.TestCase):
+    def test_missing_broker_is_unavailable_without_launching(self):
+        launched = []
+
+        with TemporaryDirectory() as tmp:
+            client = BrokerClient(
+                state_store=BrokerStateStore(Path(tmp), acl_applier=None),
+                launcher=lambda *args, **kwargs: launched.append((args, kwargs)),
+            )
+
+            with self.assertRaises(BrokerUnavailable):
+                client.request_existing("shutdown", {})
+
+        self.assertEqual(launched, [])
+
+    def test_healthy_existing_broker_receives_requested_method(self):
+        launched = []
+
+        def respond(request):
+            if request.method == "health":
+                return BrokerResponse.success(request.id, make_health_result())
+            return BrokerResponse.success(request.id, {"stopping": True})
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            store = BrokerStateStore(Path(tmp), acl_applier=None)
+            write_state(store, broker)
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda _pid: True,
+                launcher=lambda *args, **kwargs: launched.append((args, kwargs)),
+            )
+
+            result = client.request_existing("shutdown", {})
+
+        self.assertEqual(result, {"stopping": True})
+        self.assertEqual(
+            [request.method for request in broker.requests],
+            ["health", "shutdown"],
+        )
+        self.assertEqual(launched, [])
+
+
 class ClientErrorContractTests(unittest.TestCase):
     def test_typed_errors_publish_stable_codes(self):
         self.assertEqual(CLIENT_TIMEOUT_SECONDS, 370)
