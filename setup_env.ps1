@@ -401,14 +401,16 @@ $SourceGmailDir = Join-Path $ScriptDir "tools\gmail"
 $SourceCaseToMdDir = Join-Path $ScriptDir "tools\casetomd"
 $TargetCaseToMdDir = Join-Path $UserHome ".gemini\tools\casetomd"
 $GmailDeploymentFiles = @(
-    "gmail_broker_client.py"
-    "gmail_broker_protocol.py"
-    "gmail_broker_state.py"
-    "gmail_brokerctl.py"
-    "gmail_edge_broker.py"
-    "gmail_edge_common.py"
-    "gmail_legacy_backend.py"
-    "gmail_mcp_server.py"
+    "gmail_broker_client.py",
+    "gmail_broker_protocol.py",
+    "gmail_broker_state.py",
+    "gmail_brokerctl.py",
+    "gmail_edge_broker.py",
+    "gmail_edge_common.py",
+    "gmail_edge_poc.py",
+    "gmail_legacy_backend.py",
+    "gmail_mcp_server.py",
+    "gmail_playwright.py"
 )
 
 if (-not (Test-Path -LiteralPath $SourceGmailDir)) {
