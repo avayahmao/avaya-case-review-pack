@@ -1,7 +1,7 @@
 # Managed Edge Gmail Authentication PoC Design
 
 **Date:** 2026-08-02
-**Status:** Approved concept; written specification awaiting final review
+**Status:** PoC implemented and successful
 
 ## Context
 
@@ -208,3 +208,16 @@ The PoC implementation is complete when:
 - the isolated experiment sequence is executed or explicitly blocked awaiting one user SSO interaction;
 - results clearly state success, failure, or the exact external policy blocker;
 - no production Gmail MCP behavior has changed.
+
+## Observed PoC Result
+
+The isolated Managed Edge profile passed the experiment on 2026-08-03:
+
+- initial state: `AUTH_REQUIRED_MICROSOFT` through the MCAS `/aad_login` path;
+- after one user SSO/MFA interaction: two standalone authenticated statuses;
+- long-lived context: 5/5 authenticated probes with no errors;
+- post-process restart: authenticated;
+- destination: `script.googleusercontent.com/a/macros/avaya.com/echo`, HTTP 200;
+- controlled profile hashes: production Chromium and normal Edge baseline files unchanged during a PoC status window.
+
+The result supports a separate production migration design. It does not yet solve multiple MCP processes sharing browser ownership.
