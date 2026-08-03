@@ -46,19 +46,24 @@ The easiest way to configure your system is using the included PowerShell script
 1. **Installs Python Libraries**: Installs `mcp` and `playwright`.
 2. **Installs Playwright Chromium**: Downloads the headless browser engine required for Gmail automation.
 3. **Deploys Plugins**: Copies `plugins/avaya-case-review` to `C:\Users\<username>\.gemini\config\plugins\avaya-case-review`.
-4. **Deploys Gmail MCP Script**: Copies `tools/gmail/gmail_mcp_server.py` to `C:\Users\<username>\.gemini\tools\gmail\`.
-5. **Updates Configuration**: Configures `mcp_config.json` with `gmail` and `CaseToMD` MCP server definitions.
-6. **Initializes Google SSO**: Launches a Chrome window to authenticate your Avaya Google account for Gmail searching and reading.
+4. **Deploys Gmail broker modules**: Copies the broker, client, control CLI, thin MCP adapter, and explicit legacy backend into `C:\Users\<username>\.gemini\tools\gmail\`.
+5. **Updates Configuration**: Configures `mcp_config.json` with `gmail` (`GMAIL_BACKEND=edge_broker`) and `CaseToMD` MCP server definitions.
+6. **Checks broker authentication**: Runs broker status and requests interactive login only when status exits `10`.
 
 ---
 
 ## 3. Google SSO Authentication (One-Time Setup)
 
-During the execution of `setup_env.ps1`, a Chrome browser window will automatically launch and open the Avaya Google Apps Script endpoint.
+During setup, the installer checks the single Managed Edge broker. If interactive authentication is required, `gmail_brokerctl.py login` opens the dedicated Edge profile and the broker restores its headless context after the login probe.
 
 1. **Log In**: If prompted, log into your `@avaya.com` account and complete any Duo / SSO MFA prompts.
 2. **Authorize**: Accept any Google authorization prompts to allow email search/read access.
-3. **Complete**: Once you see the Google Apps Script JSON response or Gmail interface, simply **close the Chrome window**. The login session token is saved locally under `C:\Users\<username>\.gemini\tools\gmail\chrome_profile`.
+3. **Complete**: Once the broker reports an authenticated verification probe, close the Edge login window. The dedicated session is saved locally under `C:\Users\<username>\.gemini\tools\gmail\edge_broker_profile`.
+
+The broker state and sanitized operational log are stored under
+`%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`. Do not copy the normal Edge
+profile or delete `chrome_profile`; the latter remains the one-release rollback
+profile.
 
 ---
 
@@ -117,13 +122,15 @@ The main body contains no Evidence IDs. Risk and action judgments remain with th
 - **Cause**: You may not be connected to the corporate VPN, or the CaseToMD server at `192.168.67.160` is unreachable.
 - **Fix**: Verify your VPN connection by testing `https://192.168.67.160:8000/mcp` in your web browser. If a self-signed certificate warning appears, click "Proceed / Continue to site".
 
-### Q2: Gmail search returns authentication errors or blank results.
-- **Cause**: The stored Google SSO session expired or was not completed during setup.
-- **Fix**: Re-run the SSO initialization script:
+### Q2: Gmail search returns an authentication or broker error.
+- **Cause**: The dedicated Edge session may require SSO/MFA, or the broker may not be running.
+- **Fix**: Run the sanitized control commands:
   ```powershell
-  python C:\Users\<username>\.gemini\tools\gmail\gmail_mcp_server.py
+  python C:\Users\<username>\.gemini\tools\gmail\gmail_brokerctl.py status
+  python C:\Users\<username>\.gemini\tools\gmail\gmail_brokerctl.py login
+  python C:\Users\<username>\.gemini\tools\gmail\gmail_brokerctl.py diagnostics
   ```
-  Or re-run `.\setup_env.ps1`.
+  Exit code `10` means authentication is required; `20` means broker/browser unavailable. The MCP client lazy-starts one broker and never falls back automatically.
 
 ### Q3: Is technical domain knowledge from the Avaya Debugger used in case reviews?
 - **Yes!** Rather than requiring managers to run complex technical trace debugging tools manually, the core diagnostic knowledge from the Avaya Debugger (e.g. trunk CLI loss rules, SA9114/SA9124 requirements, ACRA call boundary bugs, vendor escalation paths) is built directly into the `case-review` skill. Antigravity automatically uses this knowledge during case reviews to verify if the engineers' technical directions are valid or misdirected.
@@ -135,6 +142,8 @@ The main body contains no Evidence IDs. Risk and action judgments remain with th
 | Item | Deployed Path | Description |
 |---|---|---|
 | **Plugin Folder** | `C:\Users\<username>\.gemini\config\plugins\avaya-case-review` | Case review plugin definition & skills |
-| **Gmail MCP Script** | `C:\Users\<username>\.gemini\tools\gmail\gmail_mcp_server.py` | Playwright Gmail MCP server |
-| **Chrome Session** | `C:\Users\<username>\.gemini\tools\gmail\chrome_profile` | Persistent Google SSO session profile |
+| **Gmail MCP / broker** | `C:\Users\<username>\.gemini\tools\gmail\gmail_mcp_server.py` and `gmail_edge_broker.py` | Thin MCP adapter and single Managed Edge owner |
+| **Edge broker session** | `C:\Users\<username>\.gemini\tools\gmail\edge_broker_profile` | Dedicated persistent SSO context |
+| **Legacy rollback session** | `C:\Users\<username>\.gemini\tools\gmail\chrome_profile` | Explicit `legacy_playwright` fallback only |
+| **Broker state** | `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker` | State, lock, and sanitized rotating log |
 | **MCP Config File** | `C:\Users\<username>\.gemini\config\mcp_config.json` | JSON configuration for Gmail and CaseToMD MCP servers |

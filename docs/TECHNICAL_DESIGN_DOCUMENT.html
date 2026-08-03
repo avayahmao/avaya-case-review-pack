@@ -164,8 +164,8 @@
 +-----------------------------------------------------------------------------------+
 | 2. MCP BRIDGE & AGENT TOOL SUBSYSTEMS                                              |
 |  +-------------------------------------+   +------------------------------------+ |
-|  | CaseToMD MCP Bridge                 |   | Playwright Gmail MCP Server        | |
-|  | (casetomd_mcp_bridge.py)          |   | (gmail_mcp_server.py / playwright) | |
+|  | CaseToMD MCP Bridge                 |   | Gmail MCP Clients + Edge Broker    | |
+|  | (casetomd_mcp_bridge.py)          |   | (thin adapter -&gt; one broker)       | |
 |  +-------------------------------------+   +------------------------------------+ |
 +-----------------------------------------------------------------------------------+
                    |                                           |
@@ -220,17 +220,14 @@
         </li>
     </ul>
 
-    <h4>Subsystem B: Playwright Gmail MCP Server (<code>tools/gmail/gmail_mcp_server.py</code>)</h4>
+    <h4>Subsystem B: Gmail MCP and Single Managed Edge Broker</h4>
     <ul>
-        <li><strong>Protocol</strong>: MCP STDIO server interfacing with a headless Playwright Chromium instance.</li>
-        <li><strong>Authentication Persistence</strong>: Session profile is stored locally under <code>%USERPROFILE%\.gemini\tools\gmail\chrome_profile</code> preserving corporate Google SSO Duo/MFA tokens across restarts.</li>
-        <li><strong>Tools Exposed</strong>:
-            <ol>
-                <li><code>gmail_search(query)</code>: Queries inbox for case IDs, sub-task IDs (<code>TASK0614855</code>), customer names, or SDM thread keywords.</li>
-                <li><code>gmail_read(message_id)</code>: Extracts the full message body, sender, recipient, and timestamps.</li>
-                <li><code>gmail_send(to, subject, body)</code>: Sends executive digest or escalation email from user's authenticated handle.</li>
-            </ol>
-        </li>
+        <li><strong>Protocol</strong>: Each MCP server remains MCP STDIO, while clients send authenticated NDJSON requests over loopback to one <code>gmail_edge_broker.py</code> process.</li>
+        <li><strong>Ownership</strong>: The broker is the only process allowed to open <code>%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile</code>; all browser operations are serialized.</li>
+        <li><strong>Authentication Persistence</strong>: The broker-owned Edge context retains the Avaya SSO/MFA session across MCP and broker restarts. <code>gmail_brokerctl.py login</code> temporarily switches to headful Edge and always restores headless mode.</li>
+        <li><strong>Tools Exposed</strong>: <code>gmail_search(query)</code>, <code>gmail_read(message_id)</code>, and <code>gmail_send(to, subject, body)</code> retain their existing schemas and response text.</li>
+        <li><strong>Operations</strong>: <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> expose only sanitized state. The default is <code>GMAIL_BACKEND=edge_broker</code>; <code>GMAIL_BACKEND=legacy_playwright</code> is an explicit one-release rollback with no automatic fallback.</li>
+        <li><strong>Security</strong>: State and lifetime lock files live under <code>%LOCALAPPDATA%\AvayaCaseReview\gmail-broker</code>; logs never contain queries, message content, recipients, cookies, or tokens.</li>
     </ul>
 
     <h3>3.3 Intelligence Engine & 10-Domain Knowledge Base</h3>
@@ -357,9 +354,10 @@ function sendDailyManagerDigest() { ... }</pre>
     <h2>4. Security, Authentication & Data Protection</h2>
     <ol>
         <li><strong>Credential Isolation</strong>: Zero hardcoded passwords or API keys in repository files.</li>
-        <li><strong>SSO Session Token Isolation</strong>: Gmail SSO tokens are isolated in local user directory (<code>%USERPROFILE%\.gemini\tools\gmail\chrome_profile</code>) and protected by OS file permissions.</li>
-        <li><strong>Transport Security</strong>: Internal TLS endpoints (CaseToMD server) use HTTPS with explicit SSL context handling.</li>
-        <li><strong>Data Minimization</strong>: Case data is fetched on-demand in memory; no persistent raw ticket database copies are stored locally.</li>
+        <li><strong>SSO Session Token Isolation</strong>: The broker-owned Edge SSO context is isolated in <code>%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile</code>; state and lock files are ACL-protected under <code>%LOCALAPPDATA%\AvayaCaseReview\gmail-broker</code>.</li>
+        <li><strong>Single Browser Owner</strong>: MCP processes never launch Edge in broker mode. A lifetime owner lock and loopback token prevent a second broker from opening the profile.</li>
+        <li><strong>Transport Security</strong>: Internal TLS endpoints (CaseToMD server) use HTTPS with explicit SSL context handling; broker traffic is loopback-only and token-authenticated.</li>
+        <li><strong>Data Minimization</strong>: Case data is fetched on-demand in memory; no persistent raw ticket database copies are stored locally and broker logs contain only sanitized counters.</li>
     </ol>
 
     <h2>5. Deployment & Installation Architecture</h2>
@@ -367,16 +365,18 @@ function sendDailyManagerDigest() { ... }</pre>
 <pre># 1. Environment Verification
 # Checks Python 3.10+, PowerShell 5.1+, and Antigravity App directory
 
-# 2. Dependency Installation
+# 2. Dependency Installation (Chromium remains for explicit rollback)
 python -m pip install --upgrade pip
 pip install mcp playwright urllib3 requests python-pptx
 
-# 3. Playwright Chromium Browser Setup
+# 3. Playwright Chromium Browser Setup for legacy rollback
 playwright install chromium
 
 # 4. Plugin & MCP Deployment
 # Copies plugins/avaya-case-review to %USERPROFILE%\.gemini\config\plugins\
-# Configures %USERPROFILE%\.gemini\config\mcp.json for CaseToMD & Gmail MCP servers</pre>
+# Copies broker modules and configures GMAIL_BACKEND=edge_broker
+# Configures %USERPROFILE%\.gemini\config\mcp_config.json for CaseToMD & Gmail MCP servers
+# Checks broker status; runs gmail_brokerctl.py login only on exit code 10</pre>
 
     <h2>6. Verification &amp; Validation Framework</h2>
     <ol>

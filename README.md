@@ -22,7 +22,7 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 **Recommended (works under corporate Group Policy):**
 1. Unzip the pack.
 2. **Double-click `install.bat`** (or from a terminal: `.\install.bat`).
-3. A Chrome browser window will open to initialize Google SSO for `@avaya.com`. Complete sign-in/MFA if prompted, then close the browser window.
+3. The installer deploys the single Managed Edge broker and checks authentication. If its status exits `10`, run `python %USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py login` and complete SSO/MFA in the opened Edge window.
 4. Restart **Antigravity**.
 
 `install.bat` is a thin wrapper that runs `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1`, which is required because Windows PowerShell's default execution policy (`Restricted` / `AllSigned`) blocks unsigned `.ps1` files *before* any code inside the script can adjust the policy.
@@ -44,7 +44,11 @@ If your org supplies a corporate CA bundle, prefer setting `NODE_EXTRA_CA_CERTS`
 $env:NODE_EXTRA_CA_CERTS = "C:\path\to\corp-ca-bundle.pem"
 .\install.bat
 ```
-When that variable is set, the installer uses your CA bundle instead of the bypass.
+When that variable is set, the installer uses your CA bundle instead of the bypass. Chromium remains installed for the explicit one-release `legacy_playwright` rollback; normal Gmail traffic uses the Edge broker.
+
+### Gmail broker operations
+
+The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use `status`, `diagnostics`, `start`, `login`, and `stop` from `gmail_brokerctl.py`; see [`docs/GMAIL_EDGE_BROKER.md`](docs/GMAIL_EDGE_BROKER.md). The rollback switch is explicit (`GMAIL_BACKEND=legacy_playwright`) and there is no automatic fallback.
 
 ---
 
@@ -69,8 +73,9 @@ All project documentation, release notes, installation guides, design specificat
 ## 🛠️ Package Structure
 
 - **`setup_env.ps1`**: Automated environment installer script.
+- **`docs/GMAIL_EDGE_BROKER.md`**: Managed Edge broker operation, authentication, diagnostics, and rollback guide.
 - **`docs/`**: Centralized documentation suite (Release Notes, Guides, TDD, Presentations, PowerPoint).
 - **`plugins/avaya-case-review/`**: The Case Review plugin containing the `case-review` skill, `gmail-capability` skill, and **10 embedded Avaya product domain reference guides** (`aes-cti-jtapi.md`, `contact-center.md`, `recording-wfo.md`, `analytics-kubernetes.md`, `security-vulnerability.md`, `sip-voice-quality.md`, `certificates-login-outage.md`, `digital-channels.md`, `ip-office.md`, `log-collection.md`).
 - **`tools/casetomd/`**: Python bridge for the CaseToMD server (`https://192.168.67.160:8000/mcp`).
-- **`tools/gmail/`**: Playwright-based Gmail MCP server for inbox search and email reading.
+- **`tools/gmail/`**: Single Managed Edge broker, thin Gmail MCP adapter, and explicit legacy Playwright rollback backend.
 - **`tools/appsscript/`**: Google Apps Script module (`Code.gs`) for Google Sheets/Docs/Email digest governance.

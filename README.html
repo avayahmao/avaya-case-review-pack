@@ -121,7 +121,7 @@
     <ol>
         <li>Unzip the pack.</li>
         <li><strong>Double-click <code>install.bat</code></strong> (or from a terminal: <code>.\install.bat</code>).</li>
-        <li>A Chrome browser window will open to initialize Google SSO for <code>@avaya.com</code>. Complete sign-in/MFA if prompted, then close the browser window.</li>
+        <li>The installer deploys the single Managed Edge broker and checks authentication. If status exits <code>10</code>, run <code>python %USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py login</code> and complete SSO/MFA in the opened Edge window.</li>
         <li>Restart <strong>Antigravity</strong>.</li>
     </ol>
     <p><code>install.bat</code> is a thin wrapper that runs <code>powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</code>, which is required because Windows PowerShell's default execution policy (<code>Restricted</code> / <code>AllSigned</code>) blocks unsigned <code>.ps1</code> files <em>before</em> any code inside the script can adjust the policy.</p>
@@ -139,7 +139,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
     <p>If your org supplies a corporate CA bundle, prefer setting <code>NODE_EXTRA_CA_CERTS</code> to the <code>.pem</code> path <em>before</em> running <code>install.bat</code>:</p>
 <pre>$env:NODE_EXTRA_CA_CERTS = "C:\path\to\corp-ca-bundle.pem"
 .\install.bat</pre>
-    <p>When that variable is set, the installer uses your CA bundle instead of the bypass.</p>
+    <p>When that variable is set, the installer uses your CA bundle instead of the bypass. Chromium remains installed for the explicit one-release <code>legacy_playwright</code> rollback; normal Gmail traffic uses the Edge broker.</p>
+    <h3>Gmail broker operations</h3>
+    <p>The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> from <code>gmail_brokerctl.py</code>; see <a href="docs/GMAIL_EDGE_BROKER.md">docs/GMAIL_EDGE_BROKER.md</a>. The rollback switch is explicit (<code>GMAIL_BACKEND=legacy_playwright</code>) and there is no automatic fallback.</p>
 
     <h2>📖 Complete Documentation Suite (<code>docs/</code>)</h2>
     <p>All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the <strong><a href="docs/">docs/</a></strong> directory:</p>
@@ -181,7 +183,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
         <li><code>docs/</code>: Centralized documentation suite (Release Notes, Guides, TDD, Presentations, PowerPoint).</li>
         <li><code>plugins/avaya-case-review/</code>: The Case Review plugin containing the <code>case-review</code> skill, <code>gmail-capability</code> skill, and <strong>10 embedded Avaya product domain reference guides</strong>.</li>
         <li><code>tools/casetomd/</code>: Python bridge for the CaseToMD server (<code>https://192.168.67.160:8000/mcp</code>).</li>
-        <li><code>tools/gmail/</code>: Playwright-based Gmail MCP server for inbox search and email reading.</li>
+        <li><code>tools/gmail/</code>: Single Managed Edge broker, thin Gmail MCP adapter, and explicit legacy Playwright rollback backend.</li>
         <li><code>tools/appsscript/</code>: Google Apps Script module (<code>Code.gs</code>) for Google Sheets/Docs/Email digest governance.</li>
     </ul>
 

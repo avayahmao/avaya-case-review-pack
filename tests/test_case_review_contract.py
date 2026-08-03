@@ -163,8 +163,10 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.5.0", release_html)
         self.assertIn("[v1.4.0]", release_md)
         self.assertIn("v1.4.0", release_html)
-        self.assertNotIn("[Unreleased]", release_md)
-        self.assertNotIn(">Unreleased<", release_html)
+        self.assertIn("[Unreleased]", release_md)
+        self.assertIn(">Unreleased<", release_html)
+        self.assertIn("Single Managed Edge Gmail Broker", release_md)
+        self.assertIn("Single Managed Edge Gmail Broker", release_html)
 
         plugin = json.loads(read(PLUGIN_JSON))
         self.assertEqual("1.5.0", plugin["version"])

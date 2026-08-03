@@ -30,8 +30,8 @@ The architecture consists of five primary decoupled layers:
 +-----------------------------------------------------------------------------------+
 | 2. MCP BRIDGE & AGENT TOOL SUBSYSTEMS                                              |
 |  +-------------------------------------+   +------------------------------------+ |
-|  | CaseToMD MCP Bridge                 |   | Playwright Gmail MCP Server        | |
-|  | (casetomd_mcp_bridge.py)          |   | (gmail_mcp_server.py / playwright) | |
+|  | CaseToMD MCP Bridge                 |   | Gmail MCP Clients + Edge Broker    | |
+|  | (casetomd_mcp_bridge.py)          |   | (thin adapter -> one broker)       | |
 |  +-------------------------------------+   +------------------------------------+ |
 +-----------------------------------------------------------------------------------+
                    |                                           |
@@ -88,13 +88,13 @@ The architecture consists of five primary decoupled layers:
   ```
 - **Error Handling**: Implements exponential backoff, HTTP status code translation, and fallback error payloads.
 
-#### Subsystem B: Playwright Gmail MCP Server (`tools/gmail/gmail_mcp_server.py` & `gmail_playwright.py`)
-- **Protocol**: MCP STDIO server interfacing with a headless Playwright Chromium instance.
-- **Authentication Persistence**: Session profile is stored locally under `%USERPROFILE%\.gemini\tools\gmail\chrome_profile` preserving corporate Google SSO Duo/MFA tokens across restarts.
-- **Tools Exposed**:
-  1. `gmail_search(query)`: Queries inbox for case IDs, sub-task IDs (`TASK0614855`), customer names, or SDM thread keywords.
-  2. `gmail_read(message_id)`: Extracts the full message body, sender, recipient, and timestamps.
-  3. `gmail_send(to, subject, body)`: Sends executive digest or escalation email from user's authenticated handle.
+#### Subsystem B: Gmail MCP and Single Managed Edge Broker
+- **Protocol**: Each MCP server remains MCP STDIO, while clients send authenticated NDJSON requests over loopback to one `gmail_edge_broker.py` process.
+- **Ownership**: The broker is the only process allowed to open `%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile`; all browser operations are serialized.
+- **Authentication Persistence**: The broker-owned Edge context retains the Avaya SSO/MFA session across MCP and broker restarts. `gmail_brokerctl.py login` temporarily switches to headful Edge and always restores headless mode.
+- **Tools Exposed**: `gmail_search(query)`, `gmail_read(message_id)`, and `gmail_send(to, subject, body)` retain their existing schemas and response text.
+- **Operations**: `status`, `diagnostics`, `start`, `login`, and `stop` expose only sanitized state. The default is `GMAIL_BACKEND=edge_broker`; `GMAIL_BACKEND=legacy_playwright` is an explicit one-release rollback with no automatic fallback.
+- **Security**: State and lifetime lock files live under `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`; logs never contain queries, message content, recipients, cookies, or tokens.
 
 ---
 
@@ -215,9 +215,10 @@ function sendDailyManagerDigest() { ... }
 ## 4. Security, Authentication & Data Protection
 
 1. **Credential Isolation**: Zero hardcoded passwords or API keys in repository files.
-2. **SSO Session Token Isolation**: Gmail SSO tokens are isolated in local user directory (`%USERPROFILE%\.gemini\tools\gmail\chrome_profile`) and protected by OS file permissions.
-3. **Transport Security**: Internal TLS endpoints (CaseToMD server) use HTTPS with explicit SSL context handling.
-4. **Data Minimization**: Case data is fetched on-demand in memory; no persistent raw ticket database copies are stored locally.
+2. **SSO Session Token Isolation**: The broker-owned Edge SSO context is isolated in `%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile`; state and lock files are ACL-protected under `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`.
+3. **Single Browser Owner**: MCP processes never launch Edge in broker mode. A lifetime owner lock and loopback token prevent a second broker from opening the profile.
+4. **Transport Security**: Internal TLS endpoints (CaseToMD server) use HTTPS with explicit SSL context handling; broker traffic is loopback-only and token-authenticated.
+5. **Data Minimization**: Case data is fetched on-demand in memory; no persistent raw ticket database copies are stored locally and broker logs contain only sanitized counters.
 
 ---
 
@@ -229,16 +230,18 @@ Installation is completely automated via PowerShell (`setup_env.ps1`):
 # 1. Environment Verification
 # Checks Python 3.10+, PowerShell 5.1+, and Antigravity App directory
 
-# 2. Dependency Installation
+# 2. Dependency Installation (Chromium remains for explicit rollback)
 python -m pip install --upgrade pip
 pip install mcp playwright urllib3 requests python-pptx
 
-# 3. Playwright Chromium Browser Setup
+# 3. Playwright Chromium Browser Setup for legacy rollback
 playwright install chromium
 
 # 4. Plugin & MCP Deployment
 # Copies plugins/avaya-case-review to %USERPROFILE%\.gemini\config\plugins\
-# Configures %USERPROFILE%\.gemini\config\mcp.json for CaseToMD & Gmail MCP servers
+# Copies the broker modules and configures GMAIL_BACKEND=edge_broker
+# Configures %USERPROFILE%\.gemini\config\mcp_config.json for CaseToMD & Gmail MCP servers
+# Checks broker status; runs gmail_brokerctl.py login only on exit code 10
 ```
 
 ---

@@ -53,7 +53,7 @@ The files in this repo get **deployed** by `install.bat` — the runtime paths t
 |---|---|---|
 | Plugin | `plugins/avaya-case-review/` | `%USERPROFILE%\.gemini\config\plugins\avaya-case-review\` |
 | Skill | `plugins/avaya-case-review/skills/case-review/` | same, under runtime plugin dir |
-| Gmail MCP | `tools/gmail/` | `%USERPROFILE%\.gemini\tools\gmail\` |
+| Gmail MCP + Edge broker | `tools/gmail/` | `%USERPROFILE%\.gemini\tools\gmail\` (broker state is under `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`) |
 | CaseToMD MCP | `tools/casetomd/` | `%USERPROFILE%\.gemini\tools\casetomd\` |
 | MCP config | (n/a) | `%USERPROFILE%\.gemini\config\mcp_config.json` |
 | Persistent Chrome profile (SSO cookies) | (n/a) | `%USERPROFILE%\.gemini\tools\gmail\chrome_profile\` |
@@ -107,19 +107,20 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 | Change the case-review workflow | `plugins/avaya-case-review/skills/case-review/SKILL.md` |
 | Add a new Avaya-domain reference | new `.md` in `plugins/avaya-case-review/skills/case-review/references/`, plus a row in the SKILL.md routing table |
 | Change the installer | `setup_env.ps1` (invoked by `install.bat`) — verify with `powershell -NoProfile -Command "[PSParser]::Tokenize((Get-Content -Raw './setup_env.ps1'),[ref]$null)|Out-Null"` |
-| Change Gmail behavior | `tools/gmail/gmail_mcp_server.py` (async, MCP) **and** `tools/gmail/gmail_playwright.py` (sync CLI) — usually both, keep them in sync |
+| Change Gmail behavior | `tools/gmail/gmail_mcp_server.py`, `gmail_edge_broker.py`, `gmail_broker_client.py`, and `gmail_legacy_backend.py`; keep the explicit rollback path tested |
 | Change CaseToMD behavior | `tools/casetomd/casetomd_mcp_bridge.py` |
 | Update docs | `docs/` — HTML and MD versions should be kept in sync, README top-level too |
 
 ## 7. Release workflow
 
 ```bash
-# 1. Build the zip locally (mirrors the previous release's file list)
+# 1. Build the zip locally from the tracked release manifest (never mirror a prior ZIP)
 python -c "
-import zipfile, os
-files = zipfile.ZipFile('avaya-case-review-pack-vLAST.zip').namelist()
+import zipfile
+from pathlib import Path
+manifest = [line.strip() for line in Path('release-manifest.txt').read_text(encoding='utf-8').splitlines() if line.strip() and not line.startswith('#')]
 with zipfile.ZipFile('avaya-case-review-pack-vNEW.zip','w',zipfile.ZIP_DEFLATED,9) as z:
-    for f in files: z.write(f)
+    for name in manifest: z.write(name)
 "
 # 2. Commit code changes (NOT the zip — it's gitignored)
 git add <changed files>
