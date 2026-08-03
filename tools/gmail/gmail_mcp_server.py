@@ -1,46 +1,76 @@
-import sys
-import json
-import os
+"""Gmail MCP stdio adapter with an Edge-broker default and explicit rollback."""
+
+from __future__ import annotations
+
 import asyncio
-import urllib.parse
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
-from playwright.async_api import async_playwright
+from mcp.types import TextContent, Tool
 
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')
+from tools.gmail.gmail_broker_client import BrokerClient, BrokerClientError
+from tools.gmail.gmail_legacy_backend import legacy_query
 
-PROFILE_DIR = os.path.join(os.path.dirname(__file__), "chrome_profile")
-APPS_SCRIPT_URL = "https://script.google.com/a/macros/avaya.com/s/AKfycbwfqUGLMBppaPEtdzAC74_TeT34shpYkIVv5FMY1JjhqPDH0MXEp-WdeTOp8zmCDL0F/exec"
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
+
+DEFAULT_BACKEND = "edge_broker"
+LEGACY_BACKEND = "legacy_playwright"
+_BROKER_ERROR_MESSAGES = {
+    "AUTH_REQUIRED": "Interactive Gmail authentication is required; run gmail_brokerctl.py login",
+    "LOGIN_IN_PROGRESS": "Interactive Gmail login is already in progress",
+    "REQUEST_TIMEOUT": "Gmail broker request timed out",
+    "BROWSER_ERROR": "Managed Edge browser operation failed",
+    "BROKER_UNAVAILABLE": "Gmail Edge broker is unavailable",
+    "BROKER_START_TIMEOUT": "Gmail Edge broker did not become ready",
+    "BROKER_PROTOCOL_MISMATCH": "Gmail Edge broker protocol mismatch",
+    "RESPONSE_TOO_LARGE": "Gmail broker response exceeded the size limit",
+    "INVALID_REQUEST": "Gmail broker rejected the request",
+    "APP_ERROR": "Gmail broker application error",
+}
+
+
+def get_backend_name() -> str:
+    """Read the explicit backend switch for each MCP process."""
+
+    return os.environ.get("GMAIL_BACKEND", DEFAULT_BACKEND)
+
+
+def _broker_error_text(error: BrokerClientError) -> str:
+    code = error.code if error.code in _BROKER_ERROR_MESSAGES else "APP_ERROR"
+    return f"[Gmail broker error: {code}] {_BROKER_ERROR_MESSAGES[code]}"
+
+
+async def query_backend(method: str, params: dict[str, Any]) -> str:
+    """Execute a Gmail method through the selected backend without fallback."""
+
+    backend = get_backend_name()
+    if backend == DEFAULT_BACKEND:
+        try:
+            result = await asyncio.to_thread(BrokerClient().request, method, params)
+        except BrokerClientError as error:
+            return _broker_error_text(error)
+        if not isinstance(result, str):
+            return "[Gmail broker error: APP_ERROR] Gmail broker returned an invalid result"
+        return result
+    if backend == LEGACY_BACKEND:
+        return await legacy_query(method, params)
+    raise RuntimeError(f"Unsupported GMAIL_BACKEND: {backend}")
+
 
 app = Server("gmail")
 
-async def query_apps_script(action, extra_params=""):
-    url = f"{APPS_SCRIPT_URL}?action={action}{extra_params}"
-    async with async_playwright() as p:
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=PROFILE_DIR,
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled"]
-        )
-        body_text = ""
-        try:
-            page = context.pages[0] if context.pages else await context.new_page()
-            await page.goto(url)
-            await page.wait_for_load_state("networkidle")
-            if not page.is_closed():
-                body_text = await page.text_content("body") or ""
-        finally:
-            # Same defensive close as in gmail_playwright.setup_login — never let a
-            # torn-down browser target crash the caller before session state is flushed.
-            try:
-                await context.close()
-            except Exception:
-                pass
-        return body_text
 
 @app.list_tools()
 async def list_tools():
@@ -53,8 +83,8 @@ async def list_tools():
                 "properties": {
                     "query": {"type": "string", "description": "Search query"}
                 },
-                "required": ["query"]
-            }
+                "required": ["query"],
+            },
         ),
         Tool(
             name="gmail_read",
@@ -64,8 +94,8 @@ async def list_tools():
                 "properties": {
                     "message_id": {"type": "string", "description": "Email message ID"}
                 },
-                "required": ["message_id"]
-            }
+                "required": ["message_id"],
+            },
         ),
         Tool(
             name="gmail_send",
@@ -75,56 +105,72 @@ async def list_tools():
                 "properties": {
                     "to": {"type": "string", "description": "Recipient email address"},
                     "subject": {"type": "string", "description": "Subject"},
-                    "body": {"type": "string", "description": "Email body content"}
+                    "body": {"type": "string", "description": "Email body content"},
                 },
-                "required": ["to", "subject", "body"]
-            }
-        )
+                "required": ["to", "subject", "body"],
+            },
+        ),
     ]
 
-@app.call_tool()
-async def call_tool(name: str, arguments: dict):
-    if name == "gmail_search":
-        q = arguments.get("query", "is:unread")
-        res = await query_apps_script("search", f"&q={urllib.parse.quote(q)}")
-        return [TextContent(type="text", text=res)]
-    elif name == "gmail_read":
-        msg_id = arguments.get("message_id", "")
-        res = await query_apps_script("read", f"&id={msg_id}")
-        return [TextContent(type="text", text=res)]
-    elif name == "gmail_send":
-        to = arguments.get("to", "")
-        subject = arguments.get("subject", "")
-        body = arguments.get("body", "")
-        res = await query_apps_script("send", f"&to={urllib.parse.quote(to)}&subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}")
-        return [TextContent(type="text", text=res)]
-    raise ValueError(f"Unknown tool: {name}")
 
-async def main():
-    if len(sys.argv) > 1:
-        action = sys.argv[1]
+@app.call_tool()
+async def call_tool(name: str, arguments: dict[str, Any]):
+    if name == "gmail_search":
+        params = {"query": arguments.get("query", "is:unread")}
+    elif name == "gmail_read":
+        params = {"message_id": arguments.get("message_id", "")}
+    elif name == "gmail_send":
+        params = {
+            "to": arguments.get("to", ""),
+            "subject": arguments.get("subject", ""),
+            "body": arguments.get("body", ""),
+        }
+    else:
+        raise ValueError(f"Unknown tool: {name}")
+    result = await query_backend(name, params)
+    return [TextContent(type="text", text=result)]
+
+
+async def main(argv: list[str] | None = None):
+    args = sys.argv[1:] if argv is None else argv
+    if args:
+        action = args[0]
         if action == "search":
-            q = sys.argv[2] if len(sys.argv) > 2 else "is:unread"
-            res = await query_apps_script("search", f"&q={urllib.parse.quote(q)}")
-            print(res)
+            query = args[1] if len(args) > 1 else "is:unread"
+            result = await query_backend("gmail_search", {"query": query})
         elif action == "read":
-            msg_id = sys.argv[2] if len(sys.argv) > 2 else ""
-            res = await query_apps_script("read", f"&id={msg_id}")
-            print(res)
+            message_id = args[1] if len(args) > 1 else ""
+            result = await query_backend("gmail_read", {"message_id": message_id})
         elif action == "send":
-            to = sys.argv[2]
-            subject = sys.argv[3]
-            body = sys.argv[4]
-            res = await query_apps_script("send", f"&to={urllib.parse.quote(to)}&subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}")
-            print(res)
+            result = await query_backend(
+                "gmail_send",
+                {"to": args[1], "subject": args[2], "body": args[3]},
+            )
+        else:
+            print("Usage: python gmail_mcp_server.py <search|read|send> [args...]")
+            return
+        print(result)
         return
 
     async with stdio_server() as streams:
         await app.run(
             streams[0],
             streams[1],
-            app.create_initialization_options()
+            app.create_initialization_options(),
         )
+
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+__all__ = [
+    "DEFAULT_BACKEND",
+    "LEGACY_BACKEND",
+    "app",
+    "call_tool",
+    "get_backend_name",
+    "list_tools",
+    "main",
+    "query_backend",
+]
