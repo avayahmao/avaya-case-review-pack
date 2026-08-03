@@ -5,6 +5,7 @@ from unittest.mock import patch
 from tools.gmail.gmail_broker_protocol import (
     ALLOWED_METHODS,
     MAX_FRAME_BYTES,
+    MAX_REQUEST_ID_BYTES,
     PROTOCOL_VERSION,
     BrokerError,
     BrokerErrorCode,
@@ -37,6 +38,7 @@ class RequestDecodingTests(unittest.TestCase):
     def test_protocol_constants_match_wire_contract(self):
         self.assertEqual(PROTOCOL_VERSION, 1)
         self.assertEqual(MAX_FRAME_BYTES, 8 * 1024 * 1024)
+        self.assertEqual(MAX_REQUEST_ID_BYTES, 128)
         self.assertEqual(
             ALLOWED_METHODS,
             frozenset(
@@ -101,6 +103,9 @@ class RequestDecodingTests(unittest.TestCase):
         for request_id in (None, 7, ""):
             with self.subTest(request_id=request_id):
                 self.assert_invalid(self.make_frame(id=request_id))
+
+    def test_rejects_request_id_too_large_for_safe_response(self):
+        self.assert_invalid(self.make_frame(id="x" * 129))
 
     def test_rejects_non_string_or_empty_token(self):
         for token in (None, 7, ""):
@@ -254,6 +259,10 @@ class ResponseEncodingTests(unittest.TestCase):
             with self.subTest(request_id=request_id):
                 with self.assertRaises(ValueError):
                     BrokerResponse.success(request_id, None)
+
+    def test_response_rejects_request_id_too_large_for_safe_fallback(self):
+        with self.assertRaises(ValueError):
+            BrokerResponse.success("x" * 129, None)
 
     def test_response_model_rejects_invalid_success_error_combinations(self):
         error = BrokerError(BrokerErrorCode.APP_ERROR, "failed")

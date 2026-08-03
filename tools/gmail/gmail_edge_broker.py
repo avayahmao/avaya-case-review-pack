@@ -36,6 +36,9 @@ from tools.gmail.gmail_edge_common import AuthState
 QUEUE_WAIT_TIMEOUT_SECONDS = 300
 EXECUTION_TIMEOUT_SECONDS = 60
 CLIENT_TIMEOUT_SECONDS = 370
+FRAME_READ_TIMEOUT_SECONDS = 5
+LOGIN_TIMEOUT_SECONDS = 330
+CONNECTION_DRAIN_TIMEOUT_SECONDS = 370
 IDLE_TIMEOUT_SECONDS = 2 * 60 * 60
 
 _SAFE_READ_METHODS = frozenset({"gmail_search", "gmail_read"})
@@ -116,6 +119,9 @@ class GmailEdgeBroker:
         port: int = 0,
         queue_wait_timeout: float = QUEUE_WAIT_TIMEOUT_SECONDS,
         execution_timeout: float = EXECUTION_TIMEOUT_SECONDS,
+        frame_read_timeout: float = FRAME_READ_TIMEOUT_SECONDS,
+        login_timeout: float = LOGIN_TIMEOUT_SECONDS,
+        connection_drain_timeout: float = CONNECTION_DRAIN_TIMEOUT_SECONDS,
         idle_timeout: float = IDLE_TIMEOUT_SECONDS,
         idle_check_interval: float = 1.0,
         clock: Callable[[], float] = time.monotonic,
@@ -152,6 +158,15 @@ class GmailEdgeBroker:
         self.execution_timeout = _positive_timeout(
             "execution_timeout", execution_timeout
         )
+        self.frame_read_timeout = _positive_timeout(
+            "frame_read_timeout", frame_read_timeout
+        )
+        self.login_timeout = _positive_timeout(
+            "login_timeout", login_timeout
+        )
+        self.connection_drain_timeout = _positive_timeout(
+            "connection_drain_timeout", connection_drain_timeout
+        )
         self.idle_timeout = _positive_timeout("idle_timeout", idle_timeout)
         self.idle_check_interval = _positive_timeout(
             "idle_check_interval", idle_check_interval
@@ -164,6 +179,7 @@ class GmailEdgeBroker:
         self._idle_task: asyncio.Task[None] | None = None
         self._stopped = asyncio.Event()
         self._running = False
+        self._stopping = False
         self._browser_started = False
         self._login_in_progress = False
         self._queue_depth = 0
@@ -175,6 +191,8 @@ class GmailEdgeBroker:
         self._max_browser_concurrency = 0
         self._started_at: float | None = None
         self._last_completed_at = 0.0
+        self._connection_tasks: set[asyncio.Task[None]] = set()
+        self._connection_writers: set[asyncio.StreamWriter] = set()
 
     @property
     def address(self) -> tuple[str, int]:
@@ -228,12 +246,13 @@ class GmailEdgeBroker:
             self._started_at = now
             self._last_completed_at = now
             self._running = True
+            self._stopping = False
             self._idle_task = asyncio.create_task(
                 self._idle_watch(),
                 name=f"gmail-edge-broker-idle-{self.instance_id}",
             )
-            assert self.logger is not None
-            self.logger.info(
+            self._safe_log(
+                "info",
                 "broker_started",
                 result_code="OK",
                 **self._counter_fields(),
@@ -269,12 +288,11 @@ class GmailEdgeBroker:
             if self._stopped.is_set():
                 return
             self._running = False
+            self._stopping = True
             first_error: BaseException | None = None
 
             if self._server is not None:
                 self._server.close()
-                await self._server.wait_closed()
-                self._server = None
 
             current_task = asyncio.current_task()
             if self._idle_task is not None and self._idle_task is not current_task:
@@ -282,6 +300,29 @@ class GmailEdgeBroker:
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._idle_task
             self._idle_task = None
+
+            current_task = asyncio.current_task()
+            pending_connections = [
+                task
+                for task in self._connection_tasks
+                if task is not current_task and not task.done()
+            ]
+            if pending_connections:
+                done, pending = await asyncio.wait(
+                    pending_connections,
+                    timeout=self.connection_drain_timeout,
+                )
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(
+                        *pending,
+                        return_exceptions=True,
+                    )
+
+            if self._server is not None:
+                await self._server.wait_closed()
+                self._server = None
 
             await self._operation_lock.acquire()
             try:
@@ -313,15 +354,16 @@ class GmailEdgeBroker:
                             first_error = exc
 
             try:
-                if self.logger is not None:
-                    self.logger.info(
-                        "broker_stopped",
-                        result_code="OK" if first_error is None else "APP_ERROR",
-                        **self._counter_fields(),
-                    )
+                self._safe_log(
+                    "info",
+                    "broker_stopped",
+                    result_code="OK" if first_error is None else "APP_ERROR",
+                    **self._counter_fields(),
+                )
             finally:
                 if self.logger is not None:
-                    self.logger.close()
+                    with contextlib.suppress(Exception):
+                        self.logger.close()
                 self._stopped.set()
 
             if first_error is not None:
@@ -353,6 +395,10 @@ class GmailEdgeBroker:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            self._connection_tasks.add(task)
+        self._connection_writers.add(writer)
         request: BrokerRequest | None = None
         response: BrokerResponse
         shutdown_after_response = False
@@ -362,7 +408,10 @@ class GmailEdgeBroker:
                     BrokerErrorCode.INVALID_REQUEST,
                     "Broker accepts loopback connections only",
                 )
-            frame = await reader.readline()
+            frame = await asyncio.wait_for(
+                reader.readline(),
+                timeout=self.frame_read_timeout,
+            )
             if not frame:
                 raise ProtocolError(
                     BrokerErrorCode.INVALID_REQUEST,
@@ -379,7 +428,12 @@ class GmailEdgeBroker:
             else:
                 response = await self._dispatch(request)
                 shutdown_after_response = request.method == "shutdown" and response.ok
-        except (ProtocolError, asyncio.LimitOverrunError, ValueError):
+        except (
+            ProtocolError,
+            asyncio.LimitOverrunError,
+            asyncio.TimeoutError,
+            ValueError,
+        ):
             response = BrokerResponse.failure(
                 "invalid-request",
                 BrokerErrorCode.INVALID_REQUEST,
@@ -406,6 +460,9 @@ class GmailEdgeBroker:
             writer.close()
             with contextlib.suppress(ConnectionError, OSError):
                 await writer.wait_closed()
+            self._connection_writers.discard(writer)
+            if task is not None:
+                self._connection_tasks.discard(task)
         if shutdown_after_response:
             asyncio.create_task(self.stop())
 
@@ -416,7 +473,13 @@ class GmailEdgeBroker:
         if request.method != "health":
             self._request_count += 1
         try:
-            if request.method == "health":
+            if self._stopping and request.method != "health":
+                response = BrokerResponse.failure(
+                    request.id,
+                    BrokerErrorCode.APP_ERROR,
+                    "Broker is stopping",
+                )
+            elif request.method == "health":
                 response = BrokerResponse.success(request.id, self.diagnostics())
             elif request.method == "shutdown":
                 response = BrokerResponse.success(request.id, {"stopping": True})
@@ -490,9 +553,14 @@ class GmailEdgeBroker:
 
             queue_wait_ms = self._elapsed_ms(queue_started)
             try:
+                operation_timeout = (
+                    self.login_timeout
+                    if request.method == "auth_login"
+                    else self.execution_timeout
+                )
                 result = await asyncio.wait_for(
                     self._perform(request),
-                    timeout=self.execution_timeout,
+                    timeout=operation_timeout,
                 )
                 return BrokerResponse.success(request.id, result), queue_wait_ms
             except asyncio.TimeoutError:
@@ -682,7 +750,7 @@ class GmailEdgeBroker:
         if _SAFE_REQUEST_ID.fullmatch(request.id) is not None:
             fields["request_id"] = request.id
         if self.logger is not None:
-            self.logger.info("request_finished", **fields)
+            self._safe_log("info", "request_finished", **fields)
 
     def _log_rejected(
         self,
@@ -698,7 +766,22 @@ class GmailEdgeBroker:
             if _SAFE_REQUEST_ID.fullmatch(request.id) is not None:
                 fields["request_id"] = request.id
         if self.logger is not None:
-            self.logger.warning("request_rejected", **fields)
+            self._safe_log("warning", "request_rejected", **fields)
+
+    def _safe_log(
+        self,
+        level: str,
+        event: str,
+        **fields: object,
+    ) -> None:
+        logger = self.logger
+        if logger is None:
+            return
+        try:
+            getattr(logger, level)(event, **fields)
+        except Exception:
+            # Broker logging must never make Gmail delivery ambiguous.
+            return
 
     @staticmethod
     def _result_code(response: BrokerResponse) -> str:
@@ -729,8 +812,11 @@ class GmailEdgeBroker:
 
 __all__ = [
     "CLIENT_TIMEOUT_SECONDS",
+    "CONNECTION_DRAIN_TIMEOUT_SECONDS",
     "EXECUTION_TIMEOUT_SECONDS",
+    "FRAME_READ_TIMEOUT_SECONDS",
     "IDLE_TIMEOUT_SECONDS",
+    "LOGIN_TIMEOUT_SECONDS",
     "QUEUE_WAIT_TIMEOUT_SECONDS",
     "BrowserAdapter",
     "BrowserAdapterError",

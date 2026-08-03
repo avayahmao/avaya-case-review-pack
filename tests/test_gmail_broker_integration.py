@@ -1,5 +1,6 @@
 import asyncio
 from collections import Counter
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -18,7 +19,9 @@ from tools.gmail.gmail_broker_state import (
 from tools.gmail.gmail_edge_broker import (
     CLIENT_TIMEOUT_SECONDS,
     EXECUTION_TIMEOUT_SECONDS,
+    FRAME_READ_TIMEOUT_SECONDS,
     IDLE_TIMEOUT_SECONDS,
+    LOGIN_TIMEOUT_SECONDS,
     QUEUE_WAIT_TIMEOUT_SECONDS,
     BrowserAdapterError,
     BrowserApplicationError,
@@ -67,6 +70,7 @@ class FakeBrowserAdapter:
         self.release = asyncio.Event()
         self.release.set()
         self.login_state = AuthState.AUTHENTICATED
+        self.login_delay = 0.0
         self.slow_first_close = False
 
     async def start(self):
@@ -119,6 +123,8 @@ class FakeBrowserAdapter:
             self.execution_finished.set()
 
     async def interactive_login(self):
+        if self.login_delay:
+            await asyncio.sleep(self.login_delay)
         return self.login_state
 
 
@@ -148,6 +154,19 @@ class RejectingOwnerLock:
 class NullLogger:
     def close(self):
         return None
+
+
+class FailingLogger(NullLogger):
+    def __init__(self):
+        self.fail = False
+
+    def info(self, *_args, **_kwargs):
+        if self.fail:
+            raise OSError("log write failed")
+
+    def warning(self, *_args, **_kwargs):
+        if self.fail:
+            raise OSError("log write failed")
 
 
 class ImmediateWaitClosedServer:
@@ -192,10 +211,12 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             backend=NoopLockBackend(),
             acl_applier=None,
         )
-        logger = SanitizedRotatingLogger(
-            store.paths.log_file,
-            acl_applier=None,
-        )
+        logger = overrides.pop("logger", None)
+        if logger is None:
+            logger = SanitizedRotatingLogger(
+                store.paths.log_file,
+                acl_applier=None,
+            )
         broker = GmailEdgeBroker(
             adapter or FakeBrowserAdapter(),
             state_store=store,
@@ -458,6 +479,8 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(EXECUTION_TIMEOUT_SECONDS, 60)
         self.assertEqual(CLIENT_TIMEOUT_SECONDS, 370)
         self.assertEqual(IDLE_TIMEOUT_SECONDS, 2 * 60 * 60)
+        self.assertEqual(FRAME_READ_TIMEOUT_SECONDS, 5)
+        self.assertEqual(LOGIN_TIMEOUT_SECONDS, 330)
         fake = FakeBrowserAdapter(delay=0.01)
         broker, _store = await self.make_broker(
             fake,
@@ -605,6 +628,84 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(active_response["ok"])
         self.assertTrue(fake.execution_finished.is_set())
         self.assertEqual(fake.close_count, 1)
+
+    async def test_silent_connected_client_cannot_wedge_stop(self):
+        broker, _store = await self.make_broker(
+            frame_read_timeout=0.02,
+            connection_drain_timeout=0.2,
+        )
+        host, port = broker.address
+        _reader, writer = await asyncio.open_connection(host, port)
+
+        await asyncio.wait_for(broker.stop(), timeout=1.0)
+
+        self.assertFalse(broker.is_running)
+        writer.close()
+        await writer.wait_closed()
+
+    async def test_delayed_frame_after_stop_never_reaches_adapter(self):
+        fake = FakeBrowserAdapter()
+        broker, _store = await self.make_broker(
+            fake,
+            frame_read_timeout=0.2,
+            connection_drain_timeout=0.2,
+        )
+        host, port = broker.address
+        _reader, writer = await asyncio.open_connection(host, port)
+        stop_task = asyncio.create_task(broker.stop())
+        await self.wait_for(lambda: broker._stopping)
+        payload = {
+            "version": PROTOCOL_VERSION,
+            "id": "late-id",
+            "token": "test-token",
+            "method": "gmail_search",
+            "params": {},
+        }
+        with contextlib.suppress(ConnectionError, OSError):
+            writer.write(
+                json.dumps(payload, separators=(",", ":")).encode("utf-8")
+                + b"\n"
+            )
+            await writer.drain()
+        await asyncio.wait_for(stop_task, timeout=1.0)
+
+        self.assertEqual(fake.execute_count, 0)
+        writer.close()
+        with contextlib.suppress(ConnectionError, OSError):
+            await writer.wait_closed()
+
+    async def test_auth_login_uses_dedicated_long_timeout(self):
+        fake = FakeBrowserAdapter()
+        fake.login_delay = 0.03
+        broker, _store = await self.make_broker(
+            fake,
+            execution_timeout=0.01,
+            login_timeout=0.1,
+        )
+
+        response = await self.request(
+            broker,
+            "login-id",
+            method="auth_login",
+        )
+
+        self.assertTrue(response["ok"], response)
+
+    async def test_logger_failure_does_not_override_successful_send(self):
+        fake = FakeBrowserAdapter()
+        logger = FailingLogger()
+        broker, _store = await self.make_broker(fake, logger=logger)
+        logger.fail = True
+
+        response = await self.request(
+            broker,
+            "send-log-failure",
+            method="gmail_send",
+            params={"result": "sent"},
+        )
+
+        self.assertTrue(response["ok"], response)
+        self.assertEqual(response["result"], "sent")
 
 
 if __name__ == "__main__":

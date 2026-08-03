@@ -11,6 +11,7 @@ from typing import Any
 
 PROTOCOL_VERSION = 1
 MAX_FRAME_BYTES = 8 * 1024 * 1024
+MAX_REQUEST_ID_BYTES = 128
 ALLOWED_METHODS = frozenset(
     {
         "health",
@@ -54,6 +55,10 @@ def _is_valid_wire_string(value: object) -> bool:
     )
 
 
+def _is_valid_request_id(value: object) -> bool:
+    return _is_valid_wire_string(value) and len(value.encode("utf-8")) <= MAX_REQUEST_ID_BYTES
+
+
 @dataclass(frozen=True)
 class BrokerRequest:
     """A validated broker request; sensitive fields are omitted from ``repr``."""
@@ -67,8 +72,11 @@ class BrokerRequest:
     def __post_init__(self) -> None:
         if type(self.version) is not int or self.version != PROTOCOL_VERSION:
             raise ValueError("Unsupported broker protocol version")
-        if not _is_valid_wire_string(self.id):
-            raise ValueError("Request id must be a non-empty printable string")
+        if not _is_valid_request_id(self.id):
+            raise ValueError(
+                "Request id must be a printable string no larger than "
+                f"{MAX_REQUEST_ID_BYTES} UTF-8 bytes"
+            )
         if not _is_valid_wire_string(self.token):
             raise ValueError("Request token must be a non-empty printable string")
         if not isinstance(self.method, str) or self.method not in ALLOWED_METHODS:
@@ -107,8 +115,11 @@ class BrokerResponse:
     def __post_init__(self) -> None:
         if type(self.version) is not int or self.version != PROTOCOL_VERSION:
             raise ValueError("Unsupported broker protocol version")
-        if not _is_valid_wire_string(self.id):
-            raise ValueError("Response id must be a non-empty printable string")
+        if not _is_valid_request_id(self.id):
+            raise ValueError(
+                "Response id must be a printable string no larger than "
+                f"{MAX_REQUEST_ID_BYTES} UTF-8 bytes"
+            )
         if type(self.ok) is not bool:
             raise ValueError("Response ok must be a boolean")
         if self.error is not None and not isinstance(self.error, BrokerError):
@@ -208,8 +219,11 @@ def decode_request(frame: bytes) -> BrokerRequest:
 
     if type(version) is not int or version != PROTOCOL_VERSION:
         raise _invalid_request("Unsupported broker protocol version")
-    if not _is_valid_wire_string(request_id):
-        raise _invalid_request("Request id must be a non-empty printable string")
+    if not _is_valid_request_id(request_id):
+        raise _invalid_request(
+            "Request id must be a printable string no larger than "
+            f"{MAX_REQUEST_ID_BYTES} UTF-8 bytes"
+        )
     if not _is_valid_wire_string(token):
         raise _invalid_request("Request token must be a non-empty printable string")
     if not isinstance(method, str) or method not in ALLOWED_METHODS:
@@ -269,6 +283,7 @@ def encode_response(response: BrokerResponse) -> bytes:
 __all__ = [
     "ALLOWED_METHODS",
     "MAX_FRAME_BYTES",
+    "MAX_REQUEST_ID_BYTES",
     "PROTOCOL_VERSION",
     "BrokerError",
     "BrokerErrorCode",
