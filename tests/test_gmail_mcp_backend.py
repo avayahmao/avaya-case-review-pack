@@ -147,32 +147,131 @@ class BackendRoutingTests(unittest.TestCase):
 
 
 class ToolContractTests(unittest.TestCase):
-    def test_tool_names_and_input_schemas_remain_unchanged(self):
+    def test_tool_names_and_input_schemas_preserve_legacy_tools_and_append_context_tools(self):
         tools = asyncio.run(gmail_mcp_server.list_tools())
-        self.assertEqual([tool.name for tool in tools], [
-            "gmail_search",
-            "gmail_read",
-            "gmail_send",
-        ])
-        self.assertEqual(tools[0].inputSchema["required"], ["query"])
-        self.assertEqual(tools[1].inputSchema["required"], ["message_id"])
-        self.assertEqual(tools[2].inputSchema["required"], ["to", "subject", "body"])
+        self.assertEqual(
+            [tool.name for tool in tools],
+            [
+                "gmail_search",
+                "gmail_read",
+                "gmail_send",
+                "gmail_list_threads",
+                "gmail_read_thread_page",
+            ],
+        )
+        self.assertEqual(tools[0].inputSchema, {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Search query"}},
+            "required": ["query"],
+        })
+        self.assertEqual(tools[1].inputSchema, {
+            "type": "object",
+            "properties": {"message_id": {"type": "string", "description": "Email message ID"}},
+            "required": ["message_id"],
+        })
+        self.assertEqual(tools[2].inputSchema, {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient email address"},
+                "subject": {"type": "string", "description": "Subject"},
+                "body": {"type": "string", "description": "Email body content"},
+            },
+            "required": ["to", "subject", "body"],
+        })
+        self.assertEqual(
+            tools[3].description,
+            "Enumerate one complete page of Gmail thread IDs for an exact record ID within a shared collection snapshot",
+        )
+        self.assertEqual(
+            tools[3].inputSchema,
+            {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Exact case or related record ID"},
+                    "snapshot_before": {
+                        "type": "string",
+                        "description": "Shared RFC3339 snapshot; empty only on the first page",
+                    },
+                    "page_token": {
+                        "type": "string",
+                        "description": "Opaque Gmail page token from the prior response",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "description": "Maximum thread IDs returned in this page",
+                    },
+                },
+                "required": ["query", "max_results"],
+            },
+        )
+        self.assertEqual(
+            tools[4].inputSchema,
+            {
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "description": "Gmail thread ID"},
+                    "snapshot_before": {
+                        "type": "string",
+                        "description": "Shared RFC3339 collection snapshot",
+                    },
+                    "cursor": {
+                        "type": "string",
+                        "description": "Opaque cursor from the prior response",
+                    },
+                },
+                "required": ["thread_id", "snapshot_before"],
+            },
+        )
 
-    def test_call_tool_maps_arguments_to_existing_broker_contract(self):
+    def test_call_tool_maps_arguments_to_broker_contract(self):
         async def exercise():
-            with patch.object(gmail_mcp_server, "query_backend", return_value="ok") as query:
-                result = await gmail_mcp_server.call_tool(
+            cases = (
+                ("gmail_search", {"query": "case"}, {"query": "case"}),
+                ("gmail_read", {"message_id": "message-1"}, {"message_id": "message-1"}),
+                (
                     "gmail_send",
                     {"to": "recipient@example.com", "subject": "subject", "body": "body"},
-                )
-                return result, query
+                    {"to": "recipient@example.com", "subject": "subject", "body": "body"},
+                ),
+                (
+                    "gmail_list_threads",
+                    {
+                        "query": "1-23508794022",
+                        "snapshot_before": "",
+                        "page_token": "",
+                        "max_results": 100,
+                    },
+                    {
+                        "query": "1-23508794022",
+                        "snapshot_before": "",
+                        "page_token": "",
+                        "max_results": 100,
+                    },
+                ),
+                (
+                    "gmail_read_thread_page",
+                    {
+                        "thread_id": "thread-1",
+                        "snapshot_before": "2026-08-04T10:15:30Z",
+                        "cursor": "",
+                    },
+                    {
+                        "thread_id": "thread-1",
+                        "snapshot_before": "2026-08-04T10:15:30Z",
+                        "cursor": "",
+                    },
+                ),
+            )
+            for name, arguments, expected_params in cases:
+                with self.subTest(name=name):
+                    with patch.object(gmail_mcp_server, "query_backend", return_value="ok") as query:
+                        result = await gmail_mcp_server.call_tool(name, arguments)
+                    self.assertEqual(result[0].text, "ok")
+                    query.assert_awaited_once_with(name, expected_params)
 
-        result, query = asyncio.run(exercise())
-        self.assertEqual(result[0].text, "ok")
-        query.assert_awaited_once_with(
-            "gmail_send",
-            {"to": "recipient@example.com", "subject": "subject", "body": "body"},
-        )
+        asyncio.run(exercise())
 
 
 class LegacyBackendThreadContextTests(unittest.TestCase):
@@ -268,6 +367,29 @@ class DirectCliTests(unittest.TestCase):
                 "gmail_send",
                 {"to": "to@example.com", "subject": "subject", "body": "body"},
             )),
+            (
+                ["list-threads", "1-23508794022", "", "", "100"],
+                (
+                    "gmail_list_threads",
+                    {
+                        "query": "1-23508794022",
+                        "snapshot_before": "",
+                        "page_token": "",
+                        "max_results": 100,
+                    },
+                ),
+            ),
+            (
+                ["read-thread-page", "thread-1", "2026-08-04T10:15:30Z", ""],
+                (
+                    "gmail_read_thread_page",
+                    {
+                        "thread_id": "thread-1",
+                        "snapshot_before": "2026-08-04T10:15:30Z",
+                        "cursor": "",
+                    },
+                ),
+            ),
         ):
             with self.subTest(argv=argv):
                 calls = []
@@ -277,6 +399,40 @@ class DirectCliTests(unittest.TestCase):
                         asyncio.run(gmail_mcp_server.main(argv))
                 self.assertEqual(calls, [expected])
                 self.assertEqual(stdout.getvalue().strip(), "result")
+
+    def test_list_threads_cli_rejects_invalid_max_results(self):
+        async def fake_query(method, params):
+            calls.append((method, params))
+            return "result"
+
+        for invalid in (True, "True", "not-a-number", "0", "101"):
+            with self.subTest(invalid=invalid):
+                calls = []
+                with patch.object(gmail_mcp_server, "query_backend", side_effect=fake_query):
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        asyncio.run(
+                            gmail_mcp_server.main(
+                                ["list-threads", "1-23508794022", "", "", invalid]
+                            )
+                        )
+                self.assertEqual(calls, [])
+                self.assertIn("<search|read|send|list-threads|read-thread-page>", stdout.getvalue())
+
+    def test_direct_help_is_sanitized_and_does_not_import_a_browser(self):
+        root = Path(__file__).resolve().parents[1]
+        completed = subprocess.run(
+            [sys.executable, "tools/gmail/gmail_mcp_server.py", "--help"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=10,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("<search|read|send|list-threads|read-thread-page>", completed.stdout)
+        self.assertNotIn("playwright", completed.stdout.lower())
 
 
 if __name__ == "__main__":

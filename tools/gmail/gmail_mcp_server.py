@@ -27,6 +27,10 @@ if hasattr(sys.stderr, "reconfigure"):
 
 DEFAULT_BACKEND = "edge_broker"
 LEGACY_BACKEND = "legacy_playwright"
+_USAGE = (
+    "Usage: python gmail_mcp_server.py "
+    "<search|read|send|list-threads|read-thread-page> [args...]"
+)
 _BROKER_ERROR_MESSAGES = {
     "AUTH_REQUIRED": "Interactive Gmail authentication is required; run gmail_brokerctl.py login",
     "LOGIN_IN_PROGRESS": "Interactive Gmail login is already in progress",
@@ -67,6 +71,20 @@ async def query_backend(method: str, params: dict[str, Any]) -> str:
     if backend == LEGACY_BACKEND:
         return await legacy_query(method, params)
     raise RuntimeError(f"Unsupported GMAIL_BACKEND: {backend}")
+
+
+def _parse_max_results(value: Any) -> int:
+    """Convert a direct-CLI page size without accepting booleans or fractions."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError("max_results must be an integer")
+    try:
+        max_results = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError("max_results must be an integer") from error
+    if not 1 <= max_results <= 100:
+        raise ValueError("max_results must be between 1 and 100")
+    return max_results
 
 
 app = Server("gmail")
@@ -110,6 +128,59 @@ async def list_tools():
                 "required": ["to", "subject", "body"],
             },
         ),
+        Tool(
+            name="gmail_list_threads",
+            description=(
+                "Enumerate one complete page of Gmail thread IDs for an exact record ID "
+                "within a shared collection snapshot"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Exact case or related record ID",
+                    },
+                    "snapshot_before": {
+                        "type": "string",
+                        "description": "Shared RFC3339 snapshot; empty only on the first page",
+                    },
+                    "page_token": {
+                        "type": "string",
+                        "description": "Opaque Gmail page token from the prior response",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "description": "Maximum thread IDs returned in this page",
+                    },
+                },
+                "required": ["query", "max_results"],
+            },
+        ),
+        Tool(
+            name="gmail_read_thread_page",
+            description=(
+                "Read one page of normalized Gmail message-body segments for a thread "
+                "within a shared collection snapshot"
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "thread_id": {"type": "string", "description": "Gmail thread ID"},
+                    "snapshot_before": {
+                        "type": "string",
+                        "description": "Shared RFC3339 collection snapshot",
+                    },
+                    "cursor": {
+                        "type": "string",
+                        "description": "Opaque cursor from the prior response",
+                    },
+                },
+                "required": ["thread_id", "snapshot_before"],
+            },
+        ),
     ]
 
 
@@ -124,6 +195,19 @@ async def call_tool(name: str, arguments: dict[str, Any]):
             "to": arguments.get("to", ""),
             "subject": arguments.get("subject", ""),
             "body": arguments.get("body", ""),
+        }
+    elif name == "gmail_list_threads":
+        params = {
+            "query": arguments.get("query", ""),
+            "snapshot_before": arguments.get("snapshot_before", ""),
+            "page_token": arguments.get("page_token", ""),
+            "max_results": arguments.get("max_results", 100),
+        }
+    elif name == "gmail_read_thread_page":
+        params = {
+            "thread_id": arguments.get("thread_id", ""),
+            "snapshot_before": arguments.get("snapshot_before", ""),
+            "cursor": arguments.get("cursor", ""),
         }
     else:
         raise ValueError(f"Unknown tool: {name}")
@@ -146,8 +230,38 @@ async def main(argv: list[str] | None = None):
                 "gmail_send",
                 {"to": args[1], "subject": args[2], "body": args[3]},
             )
+        elif action == "list-threads":
+            query = args[1] if len(args) > 1 else ""
+            snapshot_before = args[2] if len(args) > 2 else ""
+            page_token = args[3] if len(args) > 3 else ""
+            try:
+                max_results = _parse_max_results(args[4] if len(args) > 4 else "100")
+            except ValueError:
+                print(_USAGE)
+                return
+            result = await query_backend(
+                "gmail_list_threads",
+                {
+                    "query": query,
+                    "snapshot_before": snapshot_before,
+                    "page_token": page_token,
+                    "max_results": max_results,
+                },
+            )
+        elif action == "read-thread-page":
+            thread_id = args[1] if len(args) > 1 else ""
+            snapshot_before = args[2] if len(args) > 2 else ""
+            cursor = args[3] if len(args) > 3 else ""
+            result = await query_backend(
+                "gmail_read_thread_page",
+                {
+                    "thread_id": thread_id,
+                    "snapshot_before": snapshot_before,
+                    "cursor": cursor,
+                },
+            )
         else:
-            print("Usage: python gmail_mcp_server.py <search|read|send> [args...]")
+            print(_USAGE)
             return
         print(result)
         return
@@ -167,6 +281,7 @@ if __name__ == "__main__":
 __all__ = [
     "DEFAULT_BACKEND",
     "LEGACY_BACKEND",
+    "_parse_max_results",
     "app",
     "call_tool",
     "get_backend_name",
