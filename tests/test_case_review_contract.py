@@ -175,7 +175,7 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_adm_expands_technical_depth_without_duplicate_sections(self):
         template = extract_report_template(self.skill)
         for marker in [
-            "ADM mode activates",
+            "ADM mode activates only when the user explicitly requests `ADM` or `Avaya Diagnostic Methodology`, matched case-insensitively.",
             "Details/Findings",
             "Problem Clarification",
             "Cause",
