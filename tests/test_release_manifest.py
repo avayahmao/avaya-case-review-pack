@@ -27,7 +27,9 @@ EXPECTED_GMAIL_DEPLOYMENT_FILES = frozenset(
     }
 )
 
-REQUIRED_RELEASE_PATHS = frozenset(
+INSTALLER_ENTRY_POINTS = frozenset({"install.bat", "setup_env.ps1"})
+
+REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
     {
         "release-manifest.txt",
         "docs/GMAIL_EDGE_BROKER.md",
@@ -97,6 +99,10 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertFalse(
             required_gmail_paths - entries,
             f"missing Gmail deployment files: {sorted(required_gmail_paths - entries)}",
+        )
+        self.assertFalse(
+            INSTALLER_ENTRY_POINTS - entries,
+            f"missing installer entry points: {sorted(INSTALLER_ENTRY_POINTS - entries)}",
         )
         self.assertFalse(
             REQUIRED_RELEASE_PATHS - entries,
