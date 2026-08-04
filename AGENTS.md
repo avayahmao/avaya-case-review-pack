@@ -11,7 +11,7 @@ The **Avaya Case Review Suite** — a distributable pack for Avaya Support & Ope
 - an Antigravity/Claude-style **skill** (`case-review`) that turns a raw Siebel SR / ServiceNow INC ID into an executive-ready management brief
 - two **MCP servers** the skill depends on:
   - **CaseToMD** — fetches the case JSON/Markdown from the internal endpoint `https://192.168.67.160:8000/mcp`
-  - **Gmail** (Playwright-driven, persistent Chrome profile) — pulls related email threads for `@avaya.com`
+  - **Gmail** (single Managed Edge broker with a broker-owned persistent Edge profile; explicit legacy Chromium rollback only) — pulls related email threads for `@avaya.com`
 - a Windows installer (`install.bat` → `setup_env.ps1`) that deploys everything into `%USERPROFILE%\.gemini\`
 - 10 embedded Avaya-domain reference guides used for progressive-disclosure knowledge loading
 
@@ -56,7 +56,10 @@ The files in this repo get **deployed** by `install.bat` — the runtime paths t
 | Gmail MCP + Edge broker | `tools/gmail/` | `%USERPROFILE%\.gemini\tools\gmail\` (broker state is under `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`) |
 | CaseToMD MCP | `tools/casetomd/` | `%USERPROFILE%\.gemini\tools\casetomd\` |
 | MCP config | (n/a) | `%USERPROFILE%\.gemini\config\mcp_config.json` |
-| Persistent Chrome profile (SSO cookies) | (n/a) | `%USERPROFILE%\.gemini\tools\gmail\chrome_profile\` |
+| Managed Edge broker profile (active, broker-owned) | (n/a) | `%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile\` |
+| Legacy Chromium rollback profile (rollback only) | (n/a) | `%USERPROFILE%\.gemini\tools\gmail\chrome_profile\` |
+
+The installer sets `GMAIL_BACKEND=edge_broker`. `GMAIL_BACKEND=legacy_playwright` is an explicit rollback only; there is no automatic fallback.
 
 **Debugging tip:** if a fix "isn't taking effect", the user probably edited the repo copy but Antigravity is running the deployed copy. Either re-run `install.bat` or replace the specific file under `%USERPROFILE%\.gemini\…`.
 
@@ -81,8 +84,10 @@ avaya-case-review-pack/
 │       └── gmail-capability/SKILL.md     ← tells the agent Gmail MCP is available
 ├── tools/
 │   ├── casetomd/casetomd_mcp_bridge.py   ← internal HTTPS MCP bridge
-│   ├── gmail/gmail_mcp_server.py         ← async MCP server (used by Antigravity)
-│   └── gmail/gmail_playwright.py         ← sync CLI entry point (used for `login` bootstrap)
+│   ├── gmail/gmail_mcp_server.py         ← async MCP entry point; defaults to GMAIL_BACKEND=edge_broker
+│   ├── gmail/gmail_edge_broker.py        ← single Managed Edge browser owner
+│   ├── gmail/gmail_brokerctl.py          ← status/diagnostics/start/login/stop control CLI
+│   └── gmail/gmail_playwright.py         ← legacy Chromium rollback support (not normal login bootstrap)
 ├── examples/
 │   └── optional-appsscript/Code.gs       ← optional, manually deployed governance reference (not runtime)
 └── docs/                                 ← guides, TDD, release notes, presentations
@@ -97,7 +102,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 1. **`*.ps1`, `*.bat`, `*.cmd` are CRLF + UTF-8 BOM.** LF-only .ps1 files break Windows PowerShell 5.1's here-string parser — this was the v1.2.0 bug. Git normalizes on check-in; do not override.
 2. **Distribution zips (`avaya-case-review-pack-v*.zip`) are not tracked in git.** They live only on GitHub Releases. If you build one locally, `gh release create ...` it — do not `git add`.
 3. **Never bypass corporate SSL globally.** The installer's `NODE_TLS_REJECT_UNAUTHORIZED=0` is scoped to the single `playwright install chromium` call and restored immediately. If you're adding new network operations that fail behind corp proxy, prefer honoring `NODE_EXTRA_CA_CERTS` first.
-4. **The Gmail Playwright flow must survive early browser-window close** (bug fixed in v1.2.3). Any new code that reads a page after user interaction must guard with `page.is_closed()` and wrap `context.close()` in `try/except`.
+4. **Browser login recovery must survive early browser-window close.** The active Managed Edge broker restores and verifies its headless context after login interaction. Any legacy rollback code that reads a page after user interaction must guard with `page.is_closed()` and wrap `context.close()` in `try/except`.
 
 ---
 
@@ -108,7 +113,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 | Change the case-review workflow | `plugins/avaya-case-review/skills/case-review/SKILL.md` |
 | Add a new Avaya-domain reference | new `.md` in `plugins/avaya-case-review/skills/case-review/references/`, plus a row in the SKILL.md routing table |
 | Change the installer | `setup_env.ps1` (invoked by `install.bat`) — verify with `powershell -NoProfile -Command "[PSParser]::Tokenize((Get-Content -Raw './setup_env.ps1'),[ref]$null)|Out-Null"` |
-| Change Gmail behavior | `tools/gmail/gmail_mcp_server.py`, `gmail_edge_broker.py`, `gmail_broker_client.py`, and `gmail_legacy_backend.py`; keep the explicit rollback path tested |
+| Change Gmail behavior | `tools/gmail/gmail_mcp_server.py`, `gmail_edge_broker.py`, `gmail_broker_client.py`, `gmail_brokerctl.py`, and `gmail_legacy_backend.py`; keep `edge_broker` as the default and the explicit `legacy_playwright` rollback path tested |
 | Change CaseToMD behavior | `tools/casetomd/casetomd_mcp_bridge.py` |
 | Update docs | `docs/` — HTML and MD versions should be kept in sync, README top-level too |
 

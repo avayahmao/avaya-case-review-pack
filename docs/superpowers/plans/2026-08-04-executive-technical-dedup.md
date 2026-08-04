@@ -1,8 +1,13 @@
-# Executive Summary and Technical Assessment Deduplication Implementation Plan
+# Executive Summary and Technical Assessment Deduplication — Executed Record
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+- **Status:** Completed
+- **Executed:** 2026-08-04
+- **Pre-implementation base:** `aec2139`
+- **Completion head before this record fix:** `0859fce`
 
-**Goal:** Replace the overlapping field-by-field Executive Summary with one 6-8 sentence management/technical paragraph while making Technical & Incident Assessment the exclusive home for detailed reasoning, ADM depth, and evidence-backed prevention controls.
+> **Record note:** Command blocks and `Expected:` lines are retained to preserve the original test-first intent. Completed checkboxes and the Execution Record capture the outcomes that were actually achieved.
+
+**Goal:** Replace the overlapping field-by-field Executive Summary with one 6-8 sentence management/technical paragraph while making Technical & Incident Assessment the exclusive home for detailed reasoning, ADM depth, and Existing prevention controls whose implementation is confirmed by evidence.
 
 **Architecture:** Treat the technical assessment as the source of the report's technical conclusion, then extract only conclusion-level facts into the Executive Summary. Enforce the boundary through the canonical SKILL contract, scenario fixtures, static contract tests, synchronized user documentation, and a final deployed-runtime comparison.
 
@@ -12,7 +17,17 @@
 
 ## Working Tree Constraint
 
-The repository already contains approved, uncommitted changes for chronological ordering, the `unknown` evidence fallback, Executive Summary migration, and optional Apps Script cleanup. Do not reset, discard, or replace those edits. Stage only the exact files listed in each task, and inspect every staged diff before committing. Capture the approved Apps Script optionalization dependencies before final runtime verification so a clean checkout is self-contained.
+Work began with approved, uncommitted changes for chronological ordering, the `unknown` evidence fallback, Executive Summary migration, and optional Apps Script cleanup. Those edits were preserved rather than reset or replaced, staged only with their assigned files, and captured by the commits below. The Apps Script optionalization dependencies were committed before final runtime verification, leaving the completed checkout self-contained.
+
+## Execution Record
+
+| Task | Commits | Recorded outcome |
+|---|---|---|
+| Task 1 — Canonical contract | `b2f4219`, `97d5a0e`, `e4ac4fd` | Layered Executive Summary, technical-depth, ADM activation, and prevention-boundary safeguards completed. |
+| Task 2 — Core documentation | `0074e35`, `515dad7`, `6b3c58a` | README, Manager Guide, and Technical Design Markdown/HTML parity completed. |
+| Task 3 — Supporting references | `0706292`, `6e2f49a`, `49acc6c`, `e5ed40b` | ADM specification, presentation, release notes, and evidence-gate wording completed. |
+| Task 4 — Optionalization and runtime verification | `6380f1b`, `0859fce` | Apps Script moved to optional examples; the execution plan was captured; runtime verification completed. |
+| Final verification | — | `198/198` tests passed; Node syntax passed; release-manifest tests passed; all 6 HTML files parsed; source/runtime SKILL SHA-256 matched; the working tree was clean; commits were not pushed. |
 
 ## File Responsibility Map
 
@@ -38,7 +53,7 @@ The repository already contains approved, uncommitted changes for chronological 
 - Modify: `tests/case_review_scenarios.json:38-43`
 - Modify: `plugins/avaya-case-review/skills/case-review/SKILL.md:150-183,188-260,271-276`
 
-- [ ] **Step 1: Add a section extraction helper and failing contract tests**
+- [x] **Step 1: Add a section extraction helper and failing contract tests**
 
 Add this helper after `extract_report_template` in `tests/test_case_review_contract.py`:
 
@@ -94,6 +109,8 @@ def test_technical_assessment_adds_reasoning_without_restatement(self):
         "solution, workaround, implementation, or verification detail",
         "only paraphrases an Executive Summary sentence",
         "Existing prevention controls",
+        "evidence confirms implementation",
+        "Planned or committed preventive work",
     ]:
         self.assertIn(required, self.skill)
 
@@ -119,7 +136,7 @@ def test_adm_expands_technical_depth_without_duplicate_sections(self):
         self.assertNotIn(forbidden, template)
 ```
 
-- [ ] **Step 2: Update the scenario matrix for the approved behavior**
+- [x] **Step 2: Update the scenario matrix for the approved behavior**
 
 Replace `executive_summary_fields` and add two new objects in `tests/case_review_scenarios.json`:
 
@@ -165,7 +182,7 @@ required = {
 }
 ```
 
-- [ ] **Step 3: Run the focused tests and verify the old contract fails**
+- [x] **Step 3: Run the focused tests and verify the old contract fails**
 
 Run:
 
@@ -180,7 +197,7 @@ python -m unittest `
 
 Expected: FAIL because the current template still has three Executive Summary subheadings, contains `Future prevention`, and lacks canonical ADM/deduplication rules.
 
-- [ ] **Step 4: Replace the overlapping SKILL rules with the layered-disclosure contract**
+- [x] **Step 4: Replace the overlapping SKILL rules with the layered-disclosure contract**
 
 Replace `### Executive Summary content` through the line before `### Step 5 - Enforce the Evidence Gate` with:
 
@@ -205,9 +222,9 @@ Start with problem clarification rather than another incident summary. Each para
 - causal reasoning or an RCA-state explanation;
 - a ruled-out path, unresolved hypothesis, or missing validation;
 - solution, workaround, implementation, or verification detail;
-- Existing prevention controls already stated, committed, or implemented in evidence.
+- Existing prevention controls whose implementation is confirmed by evidence.
 
-If a paragraph only paraphrases an Executive Summary sentence without adding one of those elements, remove it during reflection. Future prevention is excluded from Executive Summary; report Existing prevention controls only inside the relevant technical problem and omit them when absent.
+If a paragraph only paraphrases an Executive Summary sentence without adding one of those elements, remove it during reflection. Future prevention is excluded from Executive Summary; report Existing prevention controls only inside the relevant technical problem when evidence confirms implementation. Planned or committed preventive work that is not implemented remains planned or committed work or the next evidence-stated checkpoint; never label it an Existing prevention control or an agent recommendation. Omit controls when absent.
 
 #### Adaptive ADM depth
 
@@ -245,7 +262,7 @@ For the conditional technical section:
 
 - **Multi-problem:** use `Problem Statement`, then `Problem 1 - <Record ID>`, `Problem 2 - <Record ID>`, and cover problem clarification, findings, cause, solution/validation, mitigation maturity, and unresolved gaps for each problem.
 - **Single issue:** use `Incident & RCA Summary` and cover problem clarification, findings, cause, solution/validation, mitigation maturity, and unresolved gaps.
-- Report Existing prevention controls under the relevant technical problem only when case evidence already states, commits, or implements them.
+- Report Existing prevention controls under the relevant technical problem only when case evidence confirms implementation. Describe unimplemented planned or committed preventive work only as planned or committed work or an evidence-stated next checkpoint; never label it an Existing prevention control or recommendation.
 
 Do not render both conditional structures. Do not create a standalone telemetry section or a second ADM block.
 ```
@@ -263,18 +280,18 @@ Replace the final prevention-related non-negotiable rules with:
 
 ```markdown
 - The report must not generate risk lists, risk scores, manager directives, or unsupported recommendations.
-- Future prevention is excluded from Executive Summary. Existing prevention controls may appear only under the relevant technical problem and only when evidence already states, commits, or implements them.
+- Future prevention is excluded from Executive Summary. Existing prevention controls may appear only under the relevant technical problem and only when evidence confirms implementation. Planned or committed preventive work remains planned or committed work or an evidence-stated checkpoint; it is never labeled an Existing prevention control or recommendation.
 - Executive Summary states conclusion-level information; Technical & Incident Assessment adds explanation and proof without repeating the summary narrative.
 - The manager should understand the incident, impact, current technical conclusion, mitigation, status, and next checkpoint from Executive Summary without reading the technical detail first.
 ```
 
-- [ ] **Step 5: Run focused tests and verify they pass**
+- [x] **Step 5: Run focused tests and verify they pass**
 
 Run the command from Step 3 again.
 
 Expected: all four focused tests PASS.
 
-- [ ] **Step 6: Commit the canonical contract and tests**
+- [x] **Step 6: Commit the canonical contract and tests**
 
 ```powershell
 git add -- plugins/avaya-case-review/skills/case-review/SKILL.md tests/test_case_review_contract.py tests/case_review_scenarios.json
@@ -298,7 +315,7 @@ Expected: one commit containing only the canonical skill and contract-test files
 - Modify: `docs/TECHNICAL_DESIGN_DOCUMENT.md:127-147`
 - Modify: `docs/TECHNICAL_DESIGN_DOCUMENT.html:299-325`
 
-- [ ] **Step 1: Add a failing documentation-parity test**
+- [x] **Step 1: Add a failing documentation-parity test**
 
 Add this test after `test_current_contract_docs_match_skill`:
 
@@ -310,6 +327,9 @@ def test_contract_docs_describe_layered_disclosure(self):
         "technical reasoning",
         "Future prevention is excluded from Executive Summary",
         "Existing prevention controls",
+        "evidence confirms they are implemented",
+        "Planned or committed preventive work",
+        "never labeled an Existing prevention control or an agent recommendation",
     ]
     for name, content in self.contract_docs.items():
         with self.subTest(document=name):
@@ -321,7 +341,7 @@ def test_contract_docs_describe_layered_disclosure(self):
             )
 ```
 
-- [ ] **Step 2: Run the documentation test and verify it fails**
+- [x] **Step 2: Run the documentation test and verify it fails**
 
 Run:
 
@@ -332,14 +352,14 @@ python -m unittest tests.test_case_review_contract.CaseReviewContractTests.test_
 
 Expected: FAIL because the current documents still describe field-by-field prevention content in Executive Summary.
 
-- [ ] **Step 3: Update README Markdown and HTML with the public boundary**
+- [x] **Step 3: Update README Markdown and HTML with the public boundary**
 
 Use this exact contract language in both README variants, with HTML tags substituted in `README.html`:
 
 ```markdown
 - The report starts with one **6-8 sentence Executive Summary** paragraph for management and technical readers. It contains conclusion-level incident, impact, response, RCA-state, mitigation, status, and next-checkpoint information.
 - **Technical & Incident Assessment** supplies the technical reasoning: environment, findings, causal mechanism, validation, and unresolved gaps without restating the summary.
-- Future prevention is excluded from Executive Summary. Existing prevention controls appear only in the technical assessment when supported by case evidence.
+- Future prevention is excluded from Executive Summary. Existing prevention controls appear only in the technical assessment when case evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
 ```
 
 HTML equivalent:
@@ -347,26 +367,26 @@ HTML equivalent:
 ```html
 <li>The report starts with one <strong>6-8 sentence Executive Summary</strong> paragraph for management and technical readers. It contains conclusion-level incident, impact, response, RCA-state, mitigation, status, and next-checkpoint information.</li>
 <li><strong>Technical &amp; Incident Assessment</strong> supplies the technical reasoning: environment, findings, causal mechanism, validation, and unresolved gaps without restating the summary.</li>
-<li>Future prevention is excluded from Executive Summary. Existing prevention controls appear only in the technical assessment when supported by case evidence.</li>
+<li>Future prevention is excluded from Executive Summary. Existing prevention controls appear only in the technical assessment when case evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.</li>
 ```
 
-- [ ] **Step 4: Update Manager Onboarding Markdown and HTML**
+- [x] **Step 4: Update Manager Onboarding Markdown and HTML**
 
 Replace only the Executive Summary and Technical Assessment list items with the following; leave the intervening Two Freshness Clocks item unchanged:
 
 ```markdown
 1. **Executive Summary**: One citation-free, 6-8 sentence paragraph for management and technical readers. It contains conclusion-level incident, timing/location, affected scope, business impact, key response, one-sentence RCA state/conclusion, mitigation and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are `unknown`.
-3. **Conditional Technical & Incident Assessment**: Starts with problem clarification and adds technical reasoning through environment, findings, cause analysis, solution/validation, and unresolved gaps. It does not restate the complete incident or business impact. Future prevention is excluded from Executive Summary; Existing prevention controls appear here only when evidenced.
+3. **Conditional Technical & Incident Assessment**: Starts with problem clarification and adds technical reasoning through environment, findings, cause analysis, solution/validation, and unresolved gaps. It does not restate the complete incident or business impact. Future prevention is excluded from Executive Summary. Existing prevention controls appear here only when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
 ```
 
 Use these exact HTML list items in the companion:
 
 ```html
 <li><strong>Executive Summary</strong>: One citation-free, 6-8 sentence paragraph for management and technical readers. It contains conclusion-level incident, timing/location, affected scope, business impact, key response, one-sentence RCA state/conclusion, mitigation and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are <code>unknown</code>.</li>
-<li><strong>Conditional Technical &amp; Incident Assessment</strong>: Starts with problem clarification and adds technical reasoning through environment, findings, cause analysis, solution/validation, and unresolved gaps. It does not restate the complete incident or business impact. Future prevention is excluded from Executive Summary; Existing prevention controls appear here only when evidenced.</li>
+<li><strong>Conditional Technical &amp; Incident Assessment</strong>: Starts with problem clarification and adds technical reasoning through environment, findings, cause analysis, solution/validation, and unresolved gaps. It does not restate the complete incident or business impact. Future prevention is excluded from Executive Summary. Existing prevention controls appear here only when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.</li>
 ```
 
-- [ ] **Step 5: Update Technical Design Markdown and HTML**
+- [x] **Step 5: Update Technical Design Markdown and HTML**
 
 Replace the output-schema items for Executive Summary and Conditional Technical Assessment with:
 
@@ -380,7 +400,7 @@ Add these evidence-processing rules:
 ```markdown
 9. Generate Technical & Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.
 10. Remove technical paragraphs that only paraphrase the summary without adding findings, mechanism, validation, or unresolved gaps.
-11. Future prevention is excluded from Executive Summary. Existing prevention controls may appear only in the relevant technical problem when supported by evidence.
+11. Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
 ```
 
 Use these exact HTML elements in the companion:
@@ -390,10 +410,10 @@ Use these exact HTML elements in the companion:
 <li><strong>Conditional Technical Assessment</strong>: Starts with problem clarification and adds technical reasoning through environment/findings, causal mechanism, solution/validation, and unresolved gaps. Exactly one multi-problem <code>Problem Statement</code> or single-issue <code>Incident &amp; RCA Summary</code> is rendered.</li>
 <li>Generate Technical &amp; Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.</li>
 <li>Remove technical paragraphs that only paraphrase the summary without adding findings, mechanism, validation, or unresolved gaps.</li>
-<li>Future prevention is excluded from Executive Summary. Existing prevention controls may appear only in the relevant technical problem when supported by evidence.</li>
+<li>Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.</li>
 ```
 
-- [ ] **Step 6: Run documentation and portability tests**
+- [x] **Step 6: Run documentation and portability tests**
 
 Run:
 
@@ -408,7 +428,7 @@ python -m unittest `
 
 Expected: all four tests PASS.
 
-- [ ] **Step 7: Commit synchronized core documentation**
+- [x] **Step 7: Commit synchronized core documentation**
 
 ```powershell
 git add -- README.md README.html docs/MANAGER_ONBOARDING_GUIDE.md docs/MANAGER_ONBOARDING_GUIDE.html docs/TECHNICAL_DESIGN_DOCUMENT.md docs/TECHNICAL_DESIGN_DOCUMENT.html tests/test_case_review_contract.py
@@ -430,7 +450,7 @@ Expected: one commit containing the core Markdown/HTML parity updates and their 
 - Modify: `docs/RELEASE_NOTES.md:7-12`
 - Modify: `docs/RELEASE_NOTES.html:114-118`
 
-- [ ] **Step 1: Add failing regression coverage for the ADM specification and presentation**
+- [x] **Step 1: Add failing regression coverage for the ADM specification and presentation**
 
 Add constants:
 
@@ -450,7 +470,8 @@ def test_adm_spec_and_presentation_follow_layered_contract(self):
     for marker in [
         "Executive Summary remains one 6-8 sentence paragraph",
         "Future prevention is excluded from Executive Summary",
-        "Existing prevention controls",
+        "Existing prevention controls require evidence confirming implementation",
+        "Planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or an implemented control",
         "does not append another set of ADM sections",
     ]:
         self.assertIn(marker, adm)
@@ -474,7 +495,7 @@ def test_adm_spec_and_presentation_follow_layered_contract(self):
         self.assertIn("6-8 sentence Executive Summary", release)
 ```
 
-- [ ] **Step 2: Run the new regression and verify it fails**
+- [x] **Step 2: Run the new regression and verify it fails**
 
 Run:
 
@@ -485,7 +506,7 @@ python -m unittest tests.test_case_review_contract.CaseReviewContractTests.test_
 
 Expected: FAIL because the earlier ADM spec still assigns prevention to Executive Summary and the presentation still shows obsolete Risk Flags and Recommended Manager Actions cards.
 
-- [ ] **Step 3: Align the earlier ADM specification**
+- [x] **Step 3: Align the earlier ADM specification**
 
 Add this note after its status:
 
@@ -497,7 +518,8 @@ Replace the Case Review placement bullets with:
 
 ```markdown
 - **Executive Summary:** Executive Summary remains one 6-8 sentence paragraph containing conclusion-level incident, impact, response, one-sentence RCA state/conclusion, mitigation, status, and next-checkpoint information. Future prevention is excluded from Executive Summary.
-- **Technical & Incident Assessment:** open with Problem Clarification; integrate Details/Findings; express Cause through RCA state and reasoning; express Solution through mitigation and validation; include Existing prevention controls only when stated, committed, or implemented in evidence.
+- **Technical & Incident Assessment:** open with Problem Clarification; integrate Details/Findings; express Cause through RCA state and reasoning; express Solution through mitigation and validation; include Existing prevention controls only when evidence confirms implementation.
+- **Preventive work boundary:** Planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or an implemented control.
 - **ADM rendering:** deeper ADM content stays inside Technical & Incident Assessment and does not append another set of ADM sections or enlarge Executive Summary.
 ```
 
@@ -507,7 +529,7 @@ Replace `No ADM request: use the standard v1.5.0 output` with:
 - **No ADM request:** use the current layered report contract with standard technical depth.
 ```
 
-- [ ] **Step 4: Replace the obsolete presentation cards**
+- [x] **Step 4: Replace the obsolete presentation cards**
 
 Use this five-card block in `docs/PRESENTATION.html`:
 
@@ -534,23 +556,23 @@ Use this five-card block in `docs/PRESENTATION.html`:
 </div>
 ```
 
-- [ ] **Step 5: Record the redesign under Unreleased**
+- [x] **Step 5: Record the redesign under Unreleased**
 
 Append these Markdown bullets under `[Unreleased]`:
 
 ```markdown
 * Applies layered disclosure: a one-paragraph, 6-8 sentence Executive Summary states conclusion-level information while Technical & Incident Assessment supplies technical reasoning and validation.
-* Removes Future prevention from Executive Summary; evidence-backed Existing prevention controls remain in the relevant technical problem only.
+* Removes Future prevention from Executive Summary; evidence-confirmed Existing prevention controls remain in the relevant technical problem only, while planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or implemented control.
 * Keeps ADM depth inside Technical & Incident Assessment instead of appending a duplicate ADM outline.
 ```
 
 Add an equivalent paragraph to the HTML Unreleased block:
 
 ```html
-<p>Applies layered disclosure: a one-paragraph, 6-8 sentence Executive Summary states conclusion-level information while Technical &amp; Incident Assessment supplies technical reasoning and validation. Future prevention is excluded from Executive Summary; evidence-backed Existing prevention controls remain in the relevant technical problem only. ADM depth stays inside Technical &amp; Incident Assessment instead of appending a duplicate ADM outline.</p>
+<p>Applies layered disclosure: a one-paragraph, 6-8 sentence Executive Summary states conclusion-level information while Technical &amp; Incident Assessment supplies technical reasoning and validation. Future prevention is excluded from Executive Summary; evidence-confirmed Existing prevention controls remain in the relevant technical problem only, while planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or implemented control. ADM depth stays inside Technical &amp; Incident Assessment instead of appending a duplicate ADM outline.</p>
 ```
 
-- [ ] **Step 6: Run focused presentation, release, and ADM checks**
+- [x] **Step 6: Run focused presentation, release, and ADM checks**
 
 Run:
 
@@ -564,7 +586,7 @@ python -m unittest `
 
 Expected: all three tests PASS.
 
-- [ ] **Step 7: Commit the supporting documentation**
+- [x] **Step 7: Commit the supporting documentation**
 
 ```powershell
 git add -- docs/superpowers/specs/2026-08-02-adm-adaptive-integration-design.md docs/PRESENTATION.html docs/RELEASE_NOTES.md docs/RELEASE_NOTES.html tests/test_case_review_contract.py
@@ -585,7 +607,7 @@ Expected: one documentation commit with its regression test.
 - Verify: `examples/optional-appsscript/Code.gs`
 - Verify: `release-manifest.txt`
 
-- [ ] **Step 1: Confirm the repository contract is clean before deployment**
+- [x] **Step 1: Confirm the repository contract is clean before deployment**
 
 Run:
 
@@ -597,7 +619,7 @@ git diff --check
 
 Expected: `rg` returns no matches and `git diff --check` reports no errors.
 
-- [ ] **Step 2: Run the complete automated suite**
+- [x] **Step 2: Run the complete automated suite**
 
 Run:
 
@@ -608,7 +630,7 @@ python -m unittest discover -s tests -p 'test_*.py' -v
 
 Expected: all tests PASS; with the post-review coverage, the suite reports at least 198 tests.
 
-- [ ] **Step 3: Validate the optional Apps Script and release manifest**
+- [x] **Step 3: Validate the optional Apps Script and release manifest**
 
 Run:
 
@@ -619,7 +641,7 @@ python -m unittest tests.test_release_manifest -v
 
 Expected: JavaScript syntax check exits 0 and all release-manifest tests PASS. The optional Apps Script remains outside the active release manifest.
 
-- [ ] **Step 4: Copy the validated canonical SKILL to the deployed runtime**
+- [x] **Step 4: Copy the validated canonical SKILL to the deployed runtime**
 
 Run:
 
@@ -634,7 +656,7 @@ Copy-Item -LiteralPath $sourceSkill -Destination $runtimeSkill -Force
 
 Expected: the runtime skill is replaced without running the installer or restarting the Gmail broker.
 
-- [ ] **Step 5: Prove source and runtime copies are identical**
+- [x] **Step 5: Prove source and runtime copies are identical**
 
 Run:
 
@@ -652,7 +674,7 @@ rg -n -F $forbiddenFallback $runtimeSkill
 
 Expected: hashes match and `rg` returns no matches.
 
-- [ ] **Step 6: Inspect the final repository state**
+- [x] **Step 6: Inspect the final repository state**
 
 Run:
 
@@ -662,7 +684,7 @@ git status --short
 git diff --check
 ```
 
-Expected: the three implementation commits are visible; only explicitly preserved, unrelated working-tree changes remain; no whitespace errors are reported.
+Expected: the Task 1-4 execution-record commits listed above are visible; the working tree is clean; no whitespace errors are reported.
 
 ---
 
@@ -672,6 +694,6 @@ Expected: the three implementation commits are visible; only explicitly preserve
 - Future prevention is absent from Executive Summary.
 - Technical & Incident Assessment starts with problem clarification and adds reasoning, findings, validation, or unresolved gaps rather than paraphrasing the summary.
 - ADM expands only Technical & Incident Assessment and never appends a second rigid ADM outline.
-- Existing prevention controls appear only under a relevant technical problem and only when evidenced.
+- Existing prevention controls appear only under a relevant technical problem and only when evidence confirms implementation. Planned or committed preventive work remains planned work or an evidence-stated checkpoint and is never labeled an Existing prevention control or recommendation.
 - Markdown, HTML, presentation, release notes, scenarios, tests, and deployed runtime skill describe the same contract.
 - The complete test suite, JavaScript syntax check, release-manifest checks, and `git diff --check` all pass.
