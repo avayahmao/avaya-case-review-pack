@@ -513,29 +513,71 @@ function hasFilenameParameter_(parameters) {
   return false;
 }
 
-function safePercentDecode_(value) {
-  var source = String(value || "");
-  try {
-    return decodeURIComponent(source);
-  } catch (error) {
-    return source.replace(/%([0-9a-f]{2})/gi, function (match, hex) {
-      return String.fromCharCode(parseInt(hex, 16));
-    });
-  }
-}
-
 function sanitizedAttachmentName_(value) {
   return String(value || "").replace(/[\u0000\r\n]/g, "").trim();
 }
 
-function decodeDispositionValue_(value, extended, stripCharset) {
-  var source = String(value || "");
-  if (extended && stripCharset) {
-    var charsetSeparator = source.indexOf("'");
-    var languageSeparator = charsetSeparator < 0 ? -1 : source.indexOf("'", charsetSeparator + 1);
-    if (languageSeparator >= 0) source = source.slice(languageSeparator + 1);
+function appendUtf8CodePointBytes_(bytes, codePoint) {
+  if (codePoint >= 0xD800 && codePoint <= 0xDFFF) codePoint = 0xFFFD;
+  if (codePoint <= 0x7F) {
+    bytes.push(codePoint);
+  } else if (codePoint <= 0x7FF) {
+    bytes.push(0xC0 | (codePoint >> 6), 0x80 | (codePoint & 0x3F));
+  } else if (codePoint <= 0xFFFF) {
+    bytes.push(0xE0 | (codePoint >> 12), 0x80 | ((codePoint >> 6) & 0x3F), 0x80 | (codePoint & 0x3F));
+  } else {
+    bytes.push(0xF0 | (codePoint >> 18), 0x80 | ((codePoint >> 12) & 0x3F),
+      0x80 | ((codePoint >> 6) & 0x3F), 0x80 | (codePoint & 0x3F));
   }
-  return sanitizedAttachmentName_(extended ? safePercentDecode_(source) : source);
+}
+
+function percentEncodedBytes_(value) {
+  var source = String(value || "");
+  var bytes = [];
+  for (var index = 0; index < source.length;) {
+    if (source.charAt(index) === "%" && /^[0-9a-f]{2}$/i.test(source.slice(index + 1, index + 3))) {
+      bytes.push(parseInt(source.slice(index + 1, index + 3), 16));
+      index += 3;
+    } else {
+      var codePoint = source.codePointAt(index);
+      appendUtf8CodePointBytes_(bytes, codePoint);
+      index += codePoint > 0xFFFF ? 2 : 1;
+    }
+  }
+  return bytes;
+}
+
+function decodeFilenameBytes_(bytes, charset) {
+  var requestedCharset = charset || "UTF-8";
+  try {
+    return sanitizedAttachmentName_(Utilities.newBlob(bytes).getDataAsString(requestedCharset));
+  } catch (error) {
+    try {
+      return sanitizedAttachmentName_(Utilities.newBlob(bytes).getDataAsString("UTF-8"));
+    } catch (fallbackError) {
+      var safe = "";
+      for (var index = 0; index < bytes.length; index += 1) safe += bytes[index] < 0x80 ? String.fromCharCode(bytes[index]) : "\uFFFD";
+      return sanitizedAttachmentName_(safe);
+    }
+  }
+}
+
+function splitExtendedDispositionValue_(value) {
+  var source = String(value || "");
+  var charset = "UTF-8";
+  var charsetSeparator = source.indexOf("'");
+  var languageSeparator = charsetSeparator < 0 ? -1 : source.indexOf("'", charsetSeparator + 1);
+  if (languageSeparator >= 0) {
+    if (charsetSeparator > 0) charset = source.slice(0, charsetSeparator);
+    source = source.slice(languageSeparator + 1);
+  }
+  return { charset: charset, encoded: source };
+}
+
+function decodeDispositionValue_(value, extended, stripCharset) {
+  if (!extended) return sanitizedAttachmentName_(value);
+  var parsed = stripCharset ? splitExtendedDispositionValue_(value) : { charset: "UTF-8", encoded: value };
+  return decodeFilenameBytes_(percentEncodedBytes_(parsed.encoded), parsed.charset);
 }
 
 function dispositionFilenames_(value) {
@@ -571,10 +613,21 @@ function dispositionFilenames_(value) {
       var currentIndex = continuationIndexes[segment];
       if (currentIndex !== expectedIndex) break;
       var current = continuation[currentIndex];
-      joined += decodeDispositionValue_(current.value, current.extended, current.extended && currentIndex === 0);
+      if (current.extended) {
+        var parsed = currentIndex === 0 ? splitExtendedDispositionValue_(current.value) : { charset: "UTF-8", encoded: current.value };
+        if (currentIndex === 0) continuation.charset = parsed.charset;
+        continuation.extended = true;
+        joined += parsed.encoded;
+      } else {
+        joined += current.value;
+      }
       expectedIndex += 1;
     }
-    if (expectedIndex > 0) names.push(sanitizedAttachmentName_(joined));
+    if (expectedIndex > 0) {
+      names.push(continuation.extended
+        ? decodeFilenameBytes_(percentEncodedBytes_(joined), continuation.charset || "UTF-8")
+        : sanitizedAttachmentName_(joined));
+    }
   }
   if (!names.length && extendedName) names.push(extendedName);
   if (!names.length && simpleName) names.push(simpleName);

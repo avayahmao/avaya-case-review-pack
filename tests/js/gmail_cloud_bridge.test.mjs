@@ -73,7 +73,13 @@ function loadBridge({ listPages = {}, threads = {}, legacyThreads = [], legacyMe
         : Buffer.from(String(value), "utf8");
       return {
         getBytes: () => Array.from(bytes),
-        getDataAsString: () => bytes.toString("utf8"),
+        getDataAsString: (charset = "UTF-8") => {
+          const normalizedCharset = String(charset).toLowerCase().replace(/[-_]/g, "");
+          if (normalizedCharset === "shiftjis" || normalizedCharset === "sjis") {
+            return new TextDecoder("shift_jis").decode(bytes);
+          }
+          return bytes.toString("utf8");
+        },
       };
     },
     base64EncodeWebSafe(bytes) {
@@ -298,6 +304,22 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
         body: { data: webSafe("CONTINUATION SECRET") },
       },
       {
+        mimeType: "text/plain",
+        headers: [{
+          name: "Content-Disposition",
+          value: "attachment; filename*0*=UTF-8''caf%C3; filename*1*=%A9.txt",
+        }],
+        body: { data: webSafe("SPLIT UTF8 SECRET") },
+      },
+      {
+        mimeType: "text/plain",
+        headers: [{
+          name: "Content-Disposition",
+          value: "attachment; filename*=Shift_JIS''%83%65%83%58%83%67.txt",
+        }],
+        body: { data: webSafe("SHIFT SECRET") },
+      },
+      {
         mimeType: "multipart/alternative",
         parts: [{ mimeType: "text/plain", body: { data: webSafe("Plain body") } }],
       },
@@ -313,7 +335,7 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
   const normalized = api.normalizeMessage(multipart);
   assert.deepEqual(Array.from(normalized.body_chunks), ["Plain body"]);
   assert.deepEqual(Array.from(normalized.attachment_names), [
-    "notes.txt", "secret.txt", "secret extended.txt", "continuation-name.txt", "evidence.pdf",
+    "notes.txt", "secret.txt", "secret extended.txt", "continuation-name.txt", "café.txt", "テスト.txt", "evidence.pdf",
   ]);
   assert.equal(normalized.body_chunks.join("").includes("attachment payload"), false);
   assert.equal(normalized.body_chunks.join("").includes("attachment text"), false);
@@ -321,6 +343,8 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
   assert.equal(normalized.body_chunks.join("").includes("INLINE SECRET"), false);
   assert.equal(normalized.body_chunks.join("").includes("RFC2231 SECRET"), false);
   assert.equal(normalized.body_chunks.join("").includes("CONTINUATION SECRET"), false);
+  assert.equal(normalized.body_chunks.join("").includes("SPLIT UTF8 SECRET"), false);
+  assert.equal(normalized.body_chunks.join("").includes("SHIFT SECRET"), false);
 });
 
 test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting code points", () => {
