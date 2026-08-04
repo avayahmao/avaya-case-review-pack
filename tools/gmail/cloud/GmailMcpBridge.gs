@@ -3,6 +3,8 @@ var MAX_LIST_RESULTS = 100;
 var DEFAULT_LIST_RESULTS = 100;
 var BODY_CHUNK_MAX_BYTES = 96 * 1024;
 var THREAD_PAGE_MAX_SEGMENTS = 4;
+var MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
+var SUPPORTED_RECORD_ID_RE = /^(?:INC[0-9]{3,20}|SR#?(?:[0-9]{3,20}|1-[A-Z0-9][A-Z0-9_-]{2,79})|1-[A-Z0-9][A-Z0-9_-]{2,79}|(?:CTASK|SCTASK|TASK|ACT|ACTIVITY|CHG|PRJTASK|PEA|ESC|ESCALATION|PRB|RITM|REQ)[A-Z0-9_-]{2,79}|SWA-INC[0-9]{3,20})$/i;
 
 function doGet(e) {
   try {
@@ -81,7 +83,7 @@ function legacySend_(parameters) {
 
 function requireRecordId_(value) {
   var recordId = typeof value === "string" ? value : "";
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$/.test(recordId)) throw new Error("INVALID_RECORD_ID");
+  if (recordId.length > 80 || !SUPPORTED_RECORD_ID_RE.test(recordId)) throw new Error("INVALID_RECORD_ID");
   return recordId;
 }
 
@@ -117,7 +119,7 @@ function listThreads_(parameters) {
     threadIds.push(String(threads[index].id));
   }
   var nextPageToken = response.nextPageToken === undefined ? "" : response.nextPageToken;
-  return {
+  var result = {
     success: true,
     bridge_version: GMAIL_BRIDGE_VERSION,
     query: recordId,
@@ -126,6 +128,7 @@ function listThreads_(parameters) {
     next_page_token: nextPageToken,
     complete: !nextPageToken,
   };
+  return result;
 }
 
 function validateListResponse_(response) {
@@ -224,7 +227,7 @@ function readThreadPage_(parameters) {
     message_index: emitted.message_index,
     chunk_index: emitted.chunk_index,
   });
-  return {
+  var result = {
     success: true,
     bridge_version: GMAIL_BRIDGE_VERSION,
     thread_id: threadId,
@@ -236,6 +239,8 @@ function readThreadPage_(parameters) {
     next_cursor: nextCursor,
     complete: emitted.complete,
   };
+  assertResponseSize_(result);
+  return result;
 }
 
 function validateThreadResponse_(thread) {
@@ -311,7 +316,7 @@ function normalizeMessage_(message, fallbackThreadId) {
   validateMimeStructure_(payload);
   var headers = lowerCaseHeaders_(payload.headers);
   var body = normalizedBody_(payload);
-  var bodyBytes = utf8Bytes_(body).length;
+  var bodyBytes = utf8ByteLength_(body);
   return {
     message_id: String(message.id || ""),
     thread_id: String(message.threadId || fallbackThreadId || ""),
@@ -374,11 +379,29 @@ function headerValue_(headers, name) {
 function commaSeparated_(value) {
   if (!value) return [];
   var result = [];
-  var parts = String(value).split(",");
-  for (var index = 0; index < parts.length; index += 1) {
-    var part = parts[index].trim();
-    if (part) result.push(part);
+  var current = "";
+  var inQuotes = false;
+  var escaped = false;
+  var source = String(value);
+  for (var index = 0; index < source.length; index += 1) {
+    var character = source.charAt(index);
+    if (escaped) {
+      current += character;
+      escaped = false;
+    } else if (character === "\\" && inQuotes) {
+      current += character;
+      escaped = true;
+    } else if (character === '"') {
+      current += character;
+      inQuotes = !inQuotes;
+    } else if (character === "," && !inQuotes) {
+      if (current.trim()) result.push(current.trim());
+      current = "";
+    } else {
+      current += character;
+    }
   }
+  if (current.trim()) result.push(current.trim());
   return result;
 }
 
@@ -428,7 +451,7 @@ function isAttachmentPart_(part) {
   for (var index = 0; index < headers.length; index += 1) {
     var header = headers[index];
     if (header && String(header.name || "").toLowerCase() === "content-disposition" &&
-        /\battachment\b/i.test(String(header.value || ""))) return true;
+        (/\battachment\b/i.test(String(header.value || "")) || /\bfilename\s*=/i.test(String(header.value || "")))) return true;
   }
   return false;
 }
@@ -487,10 +510,18 @@ function decodeHtmlEntities_(value) {
   return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, function (match, entity) {
     var lower = String(entity).toLowerCase();
     if (named[lower] !== undefined) return named[lower];
-    if (lower.indexOf("#x") === 0) return String.fromCharCode(parseInt(lower.slice(2), 16));
-    if (lower.indexOf("#") === 0) return String.fromCharCode(parseInt(lower.slice(1), 10));
+    if (lower.indexOf("#x") === 0) return codePointString_(parseInt(lower.slice(2), 16), match);
+    if (lower.indexOf("#") === 0) return codePointString_(parseInt(lower.slice(1), 10), match);
     return match;
   });
+}
+
+function codePointString_(codePoint, fallback) {
+  if (!isFinite(codePoint) || codePoint < 0 || codePoint > 0x10FFFF ||
+      (codePoint >= 0xD800 && codePoint <= 0xDFFF)) return fallback;
+  if (codePoint <= 0xFFFF) return String.fromCharCode(codePoint);
+  var adjusted = codePoint - 0x10000;
+  return String.fromCharCode(0xD800 + (adjusted >> 10), 0xDC00 + (adjusted & 0x3FF));
 }
 
 function utf8Bytes_(value) {
@@ -499,6 +530,30 @@ function utf8Bytes_(value) {
 
 function utf8FromBytes_(bytes) {
   return Utilities.newBlob(bytes).getDataAsString("UTF-8");
+}
+
+function utf8CodePointByteLength_(codePoint) {
+  if (codePoint <= 0x7F) return 1;
+  if (codePoint <= 0x7FF) return 2;
+  if (codePoint <= 0xFFFF) return 3;
+  return 4;
+}
+
+function utf8ByteLength_(value) {
+  var source = String(value || "");
+  var length = 0;
+  for (var index = 0; index < source.length;) {
+    var codePoint = source.codePointAt(index);
+    length += utf8CodePointByteLength_(codePoint);
+    index += codePoint > 0xFFFF ? 2 : 1;
+  }
+  return length;
+}
+
+function stringForCodePoint_(codePoint) {
+  if (codePoint <= 0xFFFF) return String.fromCharCode(codePoint);
+  var adjusted = codePoint - 0x10000;
+  return String.fromCharCode(0xD800 + (adjusted >> 10), 0xDC00 + (adjusted & 0x3FF));
 }
 
 function splitUtf8_(text, maximumBytes) {
@@ -510,8 +565,8 @@ function splitUtf8_(text, maximumBytes) {
   var currentBytes = 0;
   for (var index = 0; index < source.length;) {
     var codePoint = source.codePointAt(index);
-    var character = String.fromCodePoint(codePoint);
-    var characterBytes = utf8Bytes_(character).length;
+    var character = stringForCodePoint_(codePoint);
+    var characterBytes = utf8CodePointByteLength_(codePoint);
     if (current && currentBytes + characterBytes > limit) {
       chunks.push(current);
       current = "";
@@ -535,6 +590,11 @@ function sha256Hex_(value) {
   return hex;
 }
 
+function assertResponseSize_(value) {
+  var serialized = JSON.stringify(value);
+  if (utf8ByteLength_(serialized) > MAX_RESPONSE_BYTES) throw new Error("RESPONSE_TOO_LARGE");
+}
+
 function sanitizedError_(error) {
   var code = error && error.message ? String(error.message) : "";
   var allowed = {
@@ -542,6 +602,7 @@ function sanitizedError_(error) {
     INVALID_SNAPSHOT: true,
     INVALID_CURSOR: true,
     INVALID_THREAD_ID: true,
+    RESPONSE_TOO_LARGE: true,
   };
   return allowed[code] ? code : "APP_ERROR";
 }

@@ -62,11 +62,12 @@ function legacyMessage({
 }
 
 function loadBridge({ listPages = {}, threads = {}, legacyThreads = [], legacyMessages = {} } = {}) {
-  const calls = { list: [], get: [], search: [], sent: [] };
+  const calls = { list: [], get: [], search: [], sent: [], blob: 0 };
   const Utilities = {
     Charset: { UTF_8: "UTF-8" },
     DigestAlgorithm: { SHA_256: "SHA_256" },
     newBlob(value) {
+      calls.blob += 1;
       const bytes = Array.isArray(value) || Buffer.isBuffer(value)
         ? Buffer.from(value)
         : Buffer.from(String(value), "utf8");
@@ -188,6 +189,15 @@ test("list_threads handles zero results and rejects non-record queries", () => {
     () => api.listThreads({ q: "1-23 OR is:unread", snapshot_before: "2026-08-04T10:15:30Z" }),
     /INVALID_RECORD_ID/,
   );
+  for (const invalidId of ["alice", "password", "foo123", "INCABC"]) {
+    assert.throws(
+      () => api.listThreads({ q: invalidId, snapshot_before: "2026-08-04T10:15:30Z" }),
+      /INVALID_RECORD_ID/,
+    );
+  }
+  for (const validId of ["INC7445969", "1-23508794022", "1-AWTCH3", "CTASK0001234", "CHG1037245", "PRJTASK0001", "ACTIVITY123", "ESC123", "SR12345"]) {
+    assert.doesNotThrow(() => api.listThreads({ q: validId, snapshot_before: "2026-08-04T10:15:30Z" }));
+  }
   assert.equal(api.normalizeSnapshot("2026-08-04T10:15:30+00:00"), "2026-08-04T10:15:30.000Z");
   assert.throws(() => api.normalizeSnapshot("not-a-date"), /INVALID_SNAPSHOT/);
 });
@@ -223,7 +233,7 @@ test("read_thread_page filters after-snapshot messages and orders retained messa
     body: "early",
     headers: {
       From: "sender@example.com",
-      TO: "first@example.com, second@example.com",
+      TO: '\"Doe, Jane\" <first@example.com>, second@example.com',
       Cc: "copy@example.com",
       SUBJECT: "Case update",
     },
@@ -242,7 +252,7 @@ test("read_thread_page filters after-snapshot messages and orders retained messa
   assert.equal(response.complete, true);
   assert.equal(response.messages_completed, 3);
   assert.equal(response.segments[0].from, "sender@example.com");
-  assert.deepEqual(Array.from(response.segments[0].to), ["first@example.com", "second@example.com"]);
+  assert.deepEqual(Array.from(response.segments[0].to), ['\"Doe, Jane\" <first@example.com>', "second@example.com"]);
   assert.deepEqual(Array.from(response.segments[0].cc), ["copy@example.com"]);
   assert.equal(response.segments[0].subject, "Case update");
 });
@@ -252,7 +262,7 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
   const htmlOnly = rawMessage({
     id: "html-only",
     mimeType: "text/html",
-    body: "<div>Hello <b>world</b><br>again &amp; more</div>",
+    body: "<div>Hello <b>world</b><br>again &amp; more &#x1F642;</div>",
   });
   const multipart = rawMessage({
     id: "multipart",
@@ -270,6 +280,11 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
         body: { attachmentId: "body-attachment-1", data: webSafe("ATTACHED SECRET") },
       },
       {
+        mimeType: "text/plain",
+        headers: [{ name: "Content-Disposition", value: 'inline; filename="secret.txt"' }],
+        body: { data: webSafe("INLINE SECRET") },
+      },
+      {
         mimeType: "multipart/alternative",
         parts: [{ mimeType: "text/plain", body: { data: webSafe("Plain body") } }],
       },
@@ -281,17 +296,18 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
     ],
   });
 
-  assert.equal(api.normalizeMessage(htmlOnly).body_chunks.join(""), "Hello world\nagain & more");
+  assert.equal(api.normalizeMessage(htmlOnly).body_chunks.join(""), "Hello world\nagain & more \uD83D\uDE42");
   const normalized = api.normalizeMessage(multipart);
   assert.deepEqual(Array.from(normalized.body_chunks), ["Plain body"]);
-  assert.deepEqual(Array.from(normalized.attachment_names), ["notes.txt", "evidence.pdf"]);
+  assert.deepEqual(Array.from(normalized.attachment_names), ["notes.txt", "secret.txt", "evidence.pdf"]);
   assert.equal(normalized.body_chunks.join("").includes("attachment payload"), false);
   assert.equal(normalized.body_chunks.join("").includes("attachment text"), false);
   assert.equal(normalized.body_chunks.join("").includes("ATTACHED SECRET"), false);
+  assert.equal(normalized.body_chunks.join("").includes("INLINE SECRET"), false);
 });
 
 test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting code points", () => {
-  const { api } = loadBridge();
+  const { api, calls } = loadBridge();
   const body = "🙂".repeat(30_000) + " fin";
   const chunks = api.splitUtf8(body);
 
@@ -300,6 +316,10 @@ test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting co
   for (const chunk of chunks) {
     assert.ok(Buffer.byteLength(chunk, "utf8") <= 96 * 1024);
   }
+  assert.equal(calls.blob, 0);
+  const mixed = "\uD83D\uDE42\uD800";
+  assert.equal(api.splitUtf8(mixed).join(""), mixed);
+  assert.equal(Buffer.byteLength(mixed, "utf8"), 7);
 });
 
 test("thread pages advertise stable manifests and complete bodies with bytes and hashes", () => {
@@ -424,6 +444,30 @@ test("malformed Gmail responses, messages, and MIME data fail closed with saniti
     parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
   }).data);
   assert.deepEqual(malformedTokenResponse, { success: false, error: "APP_ERROR" });
+
+  const oversizedParts = [
+    { mimeType: "text/plain", body: { data: webSafe("body") } },
+    ...Array.from({ length: 70 }, (_, index) => ({
+      mimeType: "application/octet-stream",
+      filename: `attachment-${index}-${"x".repeat(100_000)}`,
+      body: {},
+    })),
+  ];
+  const oversized = loadBridge({
+    threads: {
+      "thread-oversized": {
+        messages: [rawMessage({ id: "oversized", threadId: "thread-oversized", mimeType: "multipart/mixed", parts: oversizedParts })],
+      },
+    },
+  });
+  assert.throws(
+    () => oversized.api.readThreadPage({ thread_id: "thread-oversized", snapshot_before: snapshot }),
+    /RESPONSE_TOO_LARGE/,
+  );
+  const oversizedResponse = JSON.parse(oversized.context.doGet({
+    parameter: { action: "read_thread_page", thread_id: "thread-oversized", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(oversizedResponse, { success: false, error: "RESPONSE_TOO_LARGE" });
 });
 
 test("legacy actions retain their search, read, and send contract", () => {
