@@ -67,8 +67,56 @@ def extract_html_pre_after(content: str, anchor: str) -> str:
     return html.unescape(match.group(1))
 
 
-def parse_html(content: str) -> None:
-    parser = HTMLParser()
+class StrictHTMLParser(HTMLParser):
+    VOID_ELEMENTS = frozenset(
+        {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "param",
+            "source",
+            "track",
+            "wbr",
+        }
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.open_tags: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag not in self.VOID_ELEMENTS:
+            self.open_tags.append(tag)
+
+    def handle_startendtag(self, tag: str, attrs) -> None:
+        return
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.open_tags:
+            raise AssertionError(f"Unexpected closing tag </{tag}>")
+        expected = self.open_tags[-1]
+        if tag != expected:
+            raise AssertionError(
+                f"Closing tag </{tag}> does not match open tag <{expected}>"
+            )
+        self.open_tags.pop()
+
+    def close(self) -> None:
+        super().close()
+        if self.open_tags:
+            unclosed = " > ".join(f"<{tag}>" for tag in self.open_tags)
+            raise AssertionError(f"Unclosed HTML tags: {unclosed}")
+
+
+def validate_html_structure(content: str) -> None:
+    parser = StrictHTMLParser()
     parser.feed(content)
     parser.close()
 
@@ -475,7 +523,7 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_adm_spec_and_presentation_follow_layered_contract(self):
         adm_spec = read(ADM_SPEC)
         presentation = read(PRESENTATION_HTML)
-        parse_html(presentation)
+        validate_html_structure(presentation)
         presentation_lower = presentation.lower()
 
         for marker in [
@@ -564,7 +612,7 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_tdd_key_capability_uses_evidence_triggered_direction_checks(self):
         tdd_md = self.contract_docs["tdd_md"]
         tdd_html = self.contract_docs["tdd_html"]
-        parse_html(tdd_html)
+        validate_html_structure(tdd_html)
         self.assertIn("### Key Capabilities", tdd_md)
         self.assertIn("<strong>Key Architectural Goals:</strong>", tdd_html)
         sections = {
@@ -583,9 +631,10 @@ class CaseReviewContractTests(unittest.TestCase):
             "Evidence-Triggered Technical Direction Checks",
             "compares retrieved evidence to conditional product references",
             "documents validation gaps and handoff context",
-            "never proves cause or assigns a vendor itself",
+            "reference comparison alone does not prove cause or vendor ownership",
         ]
         prohibited = [
+            "never proves cause or assigns a vendor itself",
             "Automated Sanity Auditing",
             "Detects engineer misdirection",
             "verifies system attribute dependencies",
@@ -602,7 +651,7 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_tdd_conditional_direction_checks_are_evidence_gated_and_in_parity(self):
         tdd_md = self.contract_docs["tdd_md"]
         tdd_html = self.contract_docs["tdd_html"]
-        parse_html(tdd_html)
+        validate_html_structure(tdd_html)
         md_heading = "#### Conditional Technical Direction Checks"
         html_heading = "<h4>Conditional Technical Direction Checks</h4>"
         self.assertIn(md_heading, tdd_md)
@@ -654,7 +703,7 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_tdd_vendor_handoff_matrix_is_reference_only_and_in_parity(self):
         tdd_md = self.contract_docs["tdd_md"]
         tdd_html = self.contract_docs["tdd_html"]
-        parse_html(tdd_html)
+        validate_html_structure(tdd_html)
         md_heading = "#### Vendor Handoff Reference Matrix"
         html_heading = "<h4>Vendor Handoff Reference Matrix</h4>"
         self.assertIn(md_heading, tdd_md)
@@ -675,7 +724,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "only after case evidence establishes the failing component",
             "Manager retains ownership and risk judgment",
             "Evidence-confirmed CM / AES core defect",
-            "BBE PEA reference destination",
+            "reference destination: [BBE PEA]",
         ]
         for name, section in sections.items():
             with self.subTest(document=name):
@@ -689,7 +738,7 @@ class CaseReviewContractTests(unittest.TestCase):
 
     def test_presentation_slide_two_frames_technical_direction_as_uncertainty(self):
         presentation = read(PRESENTATION_HTML)
-        parse_html(presentation)
+        validate_html_structure(presentation)
         slide_two = extract_template_section(
             presentation,
             "<!-- SLIDE 2 -->",
@@ -707,12 +756,63 @@ class CaseReviewContractTests(unittest.TestCase):
             "blaming JTAPI SDK null returns instead of CM SA9114/SA9124 attributes",
             "Misdirected Product Escalations",
             "Wasted engineering weeks and prolonged customer outages due to invalid troubleshooting paths",
+            "Risk Flag",
+            "Sanity & Risk Auditor",
+            "manager action directives",
+            "Recommended Manager Actions",
+            "Flagged as MISDIRECTED ESCALATION",
         ]:
             self.assertNotIn(marker, slide_two)
-        self.assertNotRegex(
-            slide_two.lower(),
-            r"\b(?:risk|directive|misdirection|misdirected)\b",
+
+    def test_presentation_vendor_handoff_slide_matches_reference_matrix(self):
+        presentation = read(PRESENTATION_HTML)
+        validate_html_structure(presentation)
+        slide_nine = extract_template_section(
+            presentation,
+            "<!-- SLIDE 9 -->",
+            "<!-- SLIDE 10 -->",
         )
+        tdd_matrix = extract_template_section(
+            self.contract_docs["tdd_html"],
+            "<h4>Vendor Handoff Reference Matrix</h4>",
+            "<h3>3.4 Optional Google Apps Script Governance Extension",
+        )
+        rows = extract_html_list_items(slide_nine)
+        self.assertEqual(5, len(rows))
+        self.assertEqual(extract_html_list_items(tdd_matrix), rows)
+        for row in rows:
+            self.assertTrue(row.startswith("Evidence-confirmed "))
+            self.assertIn("reference destination:", row)
+        for marker in [
+            "reference destination: [BBE PEA]",
+            "reference destination: [CPE PEA]",
+            "reference destination: [Verint Support Ticket]",
+            "reference destination: [Nuance Support Ticket]",
+            "Evidence-confirmed customer infrastructure condition",
+            "reference destination: Customer / MSP",
+            "only after case evidence establishes the failing component",
+            "Manager retains ownership and risk judgment",
+        ]:
+            self.assertIn(marker, slide_nine)
+        for marker in [
+            "Core Software Bugs ➔",
+            "Product Code ➔",
+            "Customer / MSP Action",
+            "Assign to",
+        ]:
+            self.assertNotIn(marker, slide_nine)
+
+    def test_strict_html_validator_rejects_invalid_nesting(self):
+        with self.assertRaisesRegex(AssertionError, "does not match"):
+            validate_html_structure("<div><span></div></span>")
+        with self.assertRaisesRegex(AssertionError, "Unclosed HTML tags"):
+            validate_html_structure("<div><span></span>")
+
+    def test_current_html_documents_have_strictly_balanced_tags(self):
+        html_documents = [README_HTML, *sorted((ROOT / "docs").glob("*.html"))]
+        for path in html_documents:
+            with self.subTest(document=path.name):
+                validate_html_structure(read(path))
 
     def test_tdd_contract_unconditionally_forbids_generated_recommendations(self):
         sections = {

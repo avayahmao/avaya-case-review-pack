@@ -481,14 +481,14 @@ Solution / validation state:
             <div class="card" style="min-height: 480px;">
                 <h3>Vendor Handoff Reference Matrix</h3>
                 <ul style="line-height: 2;">
-                    <li>🎯 CM / AES Core Software Bugs ➔ <strong style="color: var(--red-accent);">[BBE PEA]</strong> (CM ASAI, AES service crash, crossID exhaustion, CTI link state)</li>
-                    <li>🎯 POM / AEP Product Code ➔ <strong style="color: var(--red-accent);">[CPE PEA]</strong> (POM campaign engine, AEP application server, REST driver)</li>
-                    <li>🎯 Verint / WFO / RIS / WebLogic ➔ <strong style="color: var(--red-accent);">[Verint Support Ticket]</strong> (ACRA recording failure, RIS connection, DMSA, WebLogic heap)</li>
-                    <li>🎯 Nuance MRCP / ASR / TTS ➔ <strong style="color: var(--red-accent);">[Nuance Support Ticket]</strong> (Speech recognition grammar errors, MRCP v2 connection timeout)</li>
-                    <li>🎯 Customer Infrastructure ➔ <strong style="color: var(--red-accent);">[Customer / MSP Action]</strong> (LDAP auth, SQL database, network firewall ports, network jitter)</li>
+                    <li><strong>Evidence-confirmed CM / AES core defect</strong> &mdash; <strong style="color: var(--red-accent);">reference destination: [BBE PEA]</strong> (CM ASAI, AES service crash, crossID exhaustion).</li>
+                    <li><strong>Evidence-confirmed POM / AEP product-code defect</strong> &mdash; <strong style="color: var(--red-accent);">reference destination: [CPE PEA]</strong> (POM campaign engine, AEP application server, REST driver).</li>
+                    <li><strong>Evidence-confirmed Verint / WFO / RIS / WebLogic defect</strong> &mdash; <strong style="color: var(--red-accent);">reference destination: [Verint Support Ticket]</strong> (ACRA recording failure, RIS connection, DMSA).</li>
+                    <li><strong>Evidence-confirmed Nuance MRCP / ASR / TTS defect</strong> &mdash; <strong style="color: var(--red-accent);">reference destination: [Nuance Support Ticket]</strong> (speech recognition grammar errors, MRCP v2 timeout).</li>
+                    <li><strong>Evidence-confirmed customer infrastructure condition</strong> &mdash; <strong style="color: var(--red-accent);">reference destination: Customer / MSP</strong> (LDAP authentication, SQL database, firewall ports).</li>
                 </ul>
                 <div style="margin-top: 30px; background: #e0f2fe; border-left: 4px solid var(--blue-accent); padding: 15px; border-radius: 4px; color: #0c4a6e; font-weight: 600;">
-                    <strong>Evidence gate:</strong> A handoff mismatch is documented only after case evidence establishes the failing component and shows that the assigned vendor or team does not own it. If the failing component is not established, vendor ownership remains under investigation.
+                    <strong>Evidence gate:</strong> This reference applies only after case evidence establishes the failing component. It does not assign vendor ownership; the Manager retains ownership and risk judgment.
                 </div>
             </div>
         </div>

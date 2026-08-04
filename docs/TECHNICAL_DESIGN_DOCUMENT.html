@@ -146,7 +146,7 @@
         <ul>
             <li><strong>1-Click Executive Case Brief Generation</strong>: Transforms hundreds of pages of raw database dumps into clean, executive-ready markdown reports.</li>
             <li><strong>Unified Off-System Email Synthesis</strong>: Integrates headless Playwright browser automation with Google Workspace to extract SDM threads, customer commitments, and auto-router (OCD) "UNASSIGNABLE" dispatch alerts.</li>
-            <li><strong>Evidence-Triggered Technical Direction Checks</strong>: The engine compares retrieved evidence to conditional product references, documents validation gaps and handoff context, and never proves cause or assigns a vendor itself.</li>
+            <li><strong>Evidence-Triggered Technical Direction Checks</strong>: The engine compares retrieved evidence to conditional product references and documents validation gaps and handoff context; reference comparison alone does not prove cause or vendor ownership.</li>
             <li><strong>Optional Workspace Governance Extension (not deployed)</strong>: The repository keeps a manually deployable Apps Script reference for Sheets/Docs/digest workflows. It is outside the active installer, MCP, and case-review runtime.</li>
         </ul>
     </div>
@@ -338,13 +338,13 @@
     </ol>
 
     <h4>Vendor Handoff Reference Matrix</h4>
-    <p>Use this matrix only after case evidence establishes the failing component. It provides handoff context; the Manager retains ownership and risk judgment.</p>
+    <p>This reference applies only after case evidence establishes the failing component. It does not assign vendor ownership; the Manager retains ownership and risk judgment.</p>
     <ul>
-        <li><strong>Evidence-confirmed CM / AES core defect</strong> &rarr; <strong>BBE PEA reference destination</strong> (CM ASAI, AES service crash, crossID exhaustion).</li>
-        <li><strong>Evidence-confirmed POM / AEP product-code defect</strong> &rarr; <strong>CPE PEA reference destination</strong> (POM campaign engine, AEP application server, REST driver).</li>
-        <li><strong>Evidence-confirmed Verint / WFO / RIS / WebLogic defect</strong> &rarr; <strong>Verint Support ticket reference destination</strong> (ACRA recording failure, RIS connection, DMSA).</li>
-        <li><strong>Evidence-confirmed Nuance MRCP / ASR / TTS defect</strong> &rarr; <strong>Nuance Support ticket reference destination</strong> (speech recognition grammar errors, MRCP v2 timeout).</li>
-        <li><strong>Evidence-confirmed customer-infrastructure issue</strong> &rarr; <strong>Customer / MSP reference destination</strong> (LDAP authentication, SQL database, firewall ports).</li>
+        <li><strong>Evidence-confirmed CM / AES core defect</strong> &mdash; <strong>reference destination: [BBE PEA]</strong> (CM ASAI, AES service crash, crossID exhaustion).</li>
+        <li><strong>Evidence-confirmed POM / AEP product-code defect</strong> &mdash; <strong>reference destination: [CPE PEA]</strong> (POM campaign engine, AEP application server, REST driver).</li>
+        <li><strong>Evidence-confirmed Verint / WFO / RIS / WebLogic defect</strong> &mdash; <strong>reference destination: [Verint Support Ticket]</strong> (ACRA recording failure, RIS connection, DMSA).</li>
+        <li><strong>Evidence-confirmed Nuance MRCP / ASR / TTS defect</strong> &mdash; <strong>reference destination: [Nuance Support Ticket]</strong> (speech recognition grammar errors, MRCP v2 timeout).</li>
+        <li><strong>Evidence-confirmed customer infrastructure condition</strong> &mdash; <strong>reference destination: Customer / MSP</strong> (LDAP authentication, SQL database, firewall ports).</li>
     </ul>
 
     <h3>3.4 Optional Google Apps Script Governance Extension (<code>examples/optional-appsscript/Code.gs</code>)</h3>

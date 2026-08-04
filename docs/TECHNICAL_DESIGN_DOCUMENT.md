@@ -11,7 +11,7 @@ The system automates the synthesis of raw ticket data (Siebel SRs and ServiceNow
 ### Key Capabilities
 1. **1-Click Executive Case Brief Generation**: Transforms hundreds of pages of raw database dumps into clean, executive-ready markdown reports.
 2. **Unified Off-System Email Synthesis**: Integrates headless Playwright browser automation with Google Workspace to extract SDM threads, customer commitments, and auto-router (OCD) "UNASSIGNABLE" dispatch alerts.
-3. **Evidence-Triggered Technical Direction Checks**: The engine compares retrieved evidence to conditional product references, documents validation gaps and handoff context, and never proves cause or assigns a vendor itself.
+3. **Evidence-Triggered Technical Direction Checks**: The engine compares retrieved evidence to conditional product references and documents validation gaps and handoff context; reference comparison alone does not prove cause or vendor ownership.
 4. **Optional Workspace Governance Extension (not deployed)**: The repository keeps a manually deployable Apps Script reference for Sheets/Docs/digest workflows. It is outside the active installer, MCP, and case-review runtime.
 
 ---
@@ -151,13 +151,13 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 12. Progress Summary has no minimum count; its displayed milestone count follows the available substantive evidence and never pads or repeats evidence.
 
 #### Vendor Handoff Reference Matrix
-Use this matrix only after case evidence establishes the failing component. It provides handoff context; the Manager retains ownership and risk judgment.
+This reference applies only after case evidence establishes the failing component. It does not assign vendor ownership; the Manager retains ownership and risk judgment.
 
-- **Evidence-confirmed CM / AES core defect** → **BBE PEA reference destination** (CM ASAI, AES service crash, crossID exhaustion).
-- **Evidence-confirmed POM / AEP product-code defect** → **CPE PEA reference destination** (POM campaign engine, AEP application server, REST driver).
-- **Evidence-confirmed Verint / WFO / RIS / WebLogic defect** → **Verint Support ticket reference destination** (ACRA recording failure, RIS connection, DMSA).
-- **Evidence-confirmed Nuance MRCP / ASR / TTS defect** → **Nuance Support ticket reference destination** (speech recognition grammar errors, MRCP v2 timeout).
-- **Evidence-confirmed customer-infrastructure issue** → **Customer / MSP reference destination** (LDAP authentication, SQL database, firewall ports).
+- **Evidence-confirmed CM / AES core defect** — **reference destination: [BBE PEA]** (CM ASAI, AES service crash, crossID exhaustion).
+- **Evidence-confirmed POM / AEP product-code defect** — **reference destination: [CPE PEA]** (POM campaign engine, AEP application server, REST driver).
+- **Evidence-confirmed Verint / WFO / RIS / WebLogic defect** — **reference destination: [Verint Support Ticket]** (ACRA recording failure, RIS connection, DMSA).
+- **Evidence-confirmed Nuance MRCP / ASR / TTS defect** — **reference destination: [Nuance Support Ticket]** (speech recognition grammar errors, MRCP v2 timeout).
+- **Evidence-confirmed customer infrastructure condition** — **reference destination: Customer / MSP** (LDAP authentication, SQL database, firewall ports).
 
 
 ---
