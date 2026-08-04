@@ -100,7 +100,7 @@ To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigra
 
 The case review produces a structured, evidence-grounded executive report:
 
-1. **Executive Summary**: One citation-free 6-8 sentence paragraph for management and technical readers. It provides conclusion-level information on the incident, evidenced timing and location, affected scope, impact, key response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are `unknown`.
+1. **Executive Summary**: One citation-free 6-8 sentence paragraph for management and technical readers. It provides conclusion-level information on the incident, evidenced timing/location, affected scope, impact, key response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are `unknown`.
 2. **Two Freshness Clocks**:
    - **Case record freshness**: age of the official record's latest update.
    - **Last substantive progress age**: age of the latest concrete technical, mitigation, decision, or impact change.

@@ -125,7 +125,7 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 4. **Log Sufficiency**: Cross-checks case logs against `log-collection.md` to ensure `getlogs`, `csta_trace`, and `g3trace` were requested before escalating.
 
 #### Output Brief Schema
-1. **Executive Summary & Status**: One citation-free 6-8 sentence paragraph containing conclusion-level incident, scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.
+1. **Executive Summary & Status**: One citation-free 6-8 sentence paragraph containing conclusion-level incident, timing/location, affected scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.
 2. **Freshness Model**:
    - **Case record freshness** measures the age of the official record update.
    - **Last substantive progress age** measures the age of the latest concrete technical or operational change.
@@ -198,6 +198,9 @@ function sendDailyManagerDigest() { ... }
 Before using this optional extension, configure its Google Apps Script project, set the spreadsheet/folder/email settings, deploy the Web App with an appropriate access policy, connect a caller that posts the payload, and create the manager-digest trigger. None of these steps are performed by the installer.
 
 #### JSON Payload Contract for `doPost` Webhook
+
+This payload applies only to a manually deployed optional extension and a separately configured caller; it is not sent or consumed by the active runtime.
+
 ```json
 {
   "case_id": "1-23659220672",

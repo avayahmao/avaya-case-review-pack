@@ -298,7 +298,7 @@
 
     <h4>Output Brief Schema</h4>
     <ol>
-        <li><strong>Executive Summary &amp; Status</strong>: One citation-free 6-8 sentence paragraph containing conclusion-level incident, scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.</li>
+        <li><strong>Executive Summary &amp; Status</strong>: One citation-free 6-8 sentence paragraph containing conclusion-level incident, timing/location, affected scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.</li>
         <li><strong>Freshness Model</strong>:
             <ul>
                 <li><strong>Case record freshness</strong> measures the age of the official record update.</li>
@@ -344,7 +344,10 @@
     <h4>Optional capabilities</h4>
 <pre>// Key Functions in Code.gs:
 
-/** 1. doPost(e): HTTP Webhook Endpoint receiving JSON from Antigravity */
+/**
+ * 1. doPost(e): HTTP Webhook Endpoint
+ * Receives JSON payload from a separately configured caller.
+ */
 function doPost(e) { ... }
 
 /** 2. updateCaseTrackingSheet(data): Updates Google Sheet Governance Dashboard */
@@ -358,6 +361,26 @@ function sendDailyManagerDigest() { ... }</pre>
 
     <h4>Activation requirements</h4>
     <p>Before using this optional extension, configure its Google Apps Script project, set the spreadsheet/folder/email settings, deploy the Web App with an appropriate access policy, connect a caller that posts the payload, and create the manager-digest trigger. None of these steps are performed by the installer.</p>
+
+    <h4>JSON Payload Contract for <code>doPost</code> Webhook</h4>
+    <p>This payload applies only to a manually deployed optional extension and a separately configured caller; it is not sent or consumed by the active runtime.</p>
+<pre>{
+  "case_id": "1-23659220672",
+  "title": "AES JTAPI null address on unpark",
+  "health_status": "Stalled",
+  "owner": "John Doe",
+  "next_owner": "Jane Smith (Tier 3)",
+  "summary": "Case stalled for 14 days waiting for unassigned PEA review.",
+  "evidence": [
+    {
+      "ref": "E1",
+      "date": "2026-08-01",
+      "source": "Case activity",
+      "verbatim": "PEA review remains pending with no ETA.",
+      "supports": "Executive Summary &mdash; Status: Stalled; Ownership &mdash; Next owner"
+    }
+  ]
+}</pre>
 
     <h2>4. Security, Authentication & Data Protection</h2>
     <ol>

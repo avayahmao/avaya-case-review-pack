@@ -363,6 +363,7 @@ class CaseReviewContractTests(unittest.TestCase):
         required = [
             "6-8 sentence",
             "conclusion-level",
+            "timing/location",
             "technical reasoning",
             "Future prevention is excluded from Executive Summary",
             "Existing prevention controls",
@@ -376,6 +377,21 @@ class CaseReviewContractTests(unittest.TestCase):
                 for marker in required:
                     self.assertIn(marker, content)
                 self.assertNotIn(old_summary, content)
+
+    def test_tdd_optional_apps_script_contract_has_md_html_parity(self):
+        required = [
+            "separately configured caller",
+            "JSON Payload Contract",
+            "case_id",
+            "health_status",
+            "evidence",
+            "verbatim",
+            "supports",
+        ]
+        for name in ["tdd_md", "tdd_html"]:
+            with self.subTest(document=name):
+                for marker in required:
+                    self.assertIn(marker, self.contract_docs[name])
 
     def test_readme_files_are_english_only(self):
         for path in [README_MD, README_HTML]:

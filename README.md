@@ -9,7 +9,7 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 ## Evidence-Grounded Review Contract
 
 - The executive body is citation-free; all supporting material appears in the final **Appendix A - Evidence Register**.
-- The report starts with one 6-8 sentence **Executive Summary** paragraph for management and technical readers. It contains conclusion-level incident, impact, response, RCA-state, mitigation, status, and next-checkpoint information.
+- The report starts with one 6-8 sentence **Executive Summary** paragraph for management and technical readers. It contains conclusion-level incident, timing/location, affected scope, impact, response, RCA-state, mitigation, status, and next-checkpoint information.
 - **Technical & Incident Assessment** supplies the technical reasoning: environment, findings, causal mechanism, validation, and unresolved gaps without restating the summary.
 - Future prevention is excluded from Executive Summary. **Existing prevention controls** appear only in the technical assessment when supported by case evidence.
 - The appendix table contains Ref, Date, Source, **Verbatim evidence / data**, and **Supports**. The Supports column reverse-maps each row to the body conclusion it validates.
