@@ -466,6 +466,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "Faster Preparation",
             "Evidence Traceability",
             "Earlier Escalation Signals",
+            "only after case evidence establishes the failing component",
         ]:
             self.assertIn(marker, presentation)
 
@@ -507,6 +508,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "80% time saved",
             "zero blind spots",
             "30% faster mttr",
+            "flagged as misdirected escalation",
         ]:
             self.assertNotIn(marker, presentation_lower)
 
