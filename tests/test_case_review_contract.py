@@ -451,6 +451,7 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, presentation)
         for marker in [
+            "Risk Flag",
             "Risk Flags & Sanity Audit",
             "Risk Flags &amp; Sanity Audit",
             "Recommended Manager Actions",

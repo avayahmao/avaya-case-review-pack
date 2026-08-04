@@ -437,22 +437,30 @@ get_case_markdown(report_id: "1-23659220672")
                     Cross-checks case trace requests against log-collection.md matrix to ensure getlogs/csta_trace are attached.</p>
                 </div>
                 <div class="card dark">
-                    <h3>Generated Risk Flag Example</h3>
-                    <div class="code-box">## Risk Flags Detected
+                    <h3>Technical Assessment Example</h3>
+                    <div class="code-box">## Technical &amp; Incident Assessment
 
-• ⚠️ TECHNICAL DIRECTION RISK:
-  Engineer requesting JTAPI SDK PEA for missing
-  trunk CLI on 2nd unpark. JTAPI null return is
-  spec-compliant per Javadoc.
-  ➡ Correct Direction: Enable CM system-features
-     SA9114 and SA9124 (live change, no restart).
+Problem clarification:
+  The example record describes missing trunk CLI
+  on a second unpark, but affected scope and
+  reproducibility are not established.
 
-• ⚠️ MISSING DIAGNOSTIC LOGS:
-  Case notes state CTI link dropped but getlogs
-  (csta_trace / g3trace) was never requested.
+Findings:
+  A JTAPI null return is recorded. Synchronized
+  csta_trace / g3trace and the relevant CM feature
+  values are absent, so the application/CM event
+  boundary cannot be verified.
 
-• 🔴 Open PEA with no ETA:
-  PEA1-992813 on hold for 14 days without owner.</div>
+Cause state — Under Investigation:
+  A CM feature-configuration issue is a working
+  hypothesis and has not been established as
+  causal. Other paths remain open pending evidence.
+
+Solution / validation state:
+  No implemented change or production outcome is
+  confirmed. Validation remains pending because
+  CM attribute output and synchronized JTAPI/CM
+  traces are missing.</div>
                 </div>
             </div>
         </div>
