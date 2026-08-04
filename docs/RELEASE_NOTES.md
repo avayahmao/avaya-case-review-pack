@@ -6,12 +6,27 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
-* Orders all rendered date/time content — Progress Summary, Timeline, ADM chronology, and Evidence Appendix rows — from oldest to newest, with undated entries last.
-* Replaces the standalone Verdict section with a structured Executive Summary covering incident details, impact, response, one-sentence RCA state or conclusion, mitigation, current status, and next checkpoint.
-* Moves the unused Google Apps Script governance prototype out of the active runtime and release manifest, preserving it under `examples/optional-appsscript/` as a manually deployed reference only.
-* Applies layered disclosure: a one-paragraph, 6-8 sentence Executive Summary states conclusion-level information while Technical & Incident Assessment supplies technical reasoning and validation.
-* Removes Future prevention from Executive Summary; evidence-confirmed Existing prevention controls remain in the relevant technical problem only, while planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or implemented control.
-* Keeps ADM depth inside Technical & Incident Assessment instead of appending a duplicate ADM outline or lengthening Executive Summary.
+No unreleased changes.
+
+---
+
+## [v1.7.0] - 2026-08-04: Layered Executive and Technical Reporting
+
+### Executive Report Clarity and Evidence Integrity
+
+* Applies layered disclosure: a one-paragraph, 6-8 sentence Executive Summary contains conclusion-level incident, impact, response, RCA state, mitigation, status, and next-checkpoint information.
+* Makes `Technical & Incident Assessment` the exclusive home for problem clarification, findings, causal reasoning, solution validation, and unresolved technical gaps, with explicit anti-duplication checks.
+* Keeps ADM depth adaptive inside the technical assessment instead of appending a second rigid ADM outline.
+* Removes Future prevention from Executive Summary. Implemented prevention controls remain technical evidence; planned preventive work remains an evidence-stated checkpoint rather than an Agent recommendation.
+* Makes Progress Summary evidence-driven (`up to five` milestones) so sparse records are never padded or repeated.
+* Orders rendered date/time content from oldest to newest, with undated entries last, and uses lowercase `unknown` for unsupported required facts.
+
+### Documentation, Distribution, and Safety
+
+* Rewrites technical-direction and vendor-handoff guidance as conditional, evidence-triggered references rather than automated causal or routing judgments.
+* Synchronizes README, Manager Guide, Technical Design, HTML presentation, and the 12-slide PowerPoint deck with the current report contract and Single Managed Edge broker architecture.
+* Moves the unused Google Apps Script governance prototype out of active tools and the release archive, preserving it only as an optional source example.
+* Expands regression coverage to 213 tests, including PPTX-visible-text geometry, template hierarchy, strict HTML structure, release-manifest safety, sparse evidence, ADM, and prevention-state boundaries.
 
 ---
 
