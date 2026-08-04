@@ -171,7 +171,7 @@
                    |                                           |
                    v                                           v
 +--------------------------------------+    +---------------------------------------+
-| 3. ENTERPRISE DATA SOURCES           |    | 4. GOOGLE WORKSPACE SERVICES            |
+| 3. ENTERPRISE DATA SOURCES           |    | 4. GOOGLE WORKSPACE SERVICES          |
 |  * Siebel SR Database / ServiceNow   |    |  * @avaya.com Gmail Inbox             |
 |  * HTTPS Endpoint:                   |    |  * Optional Apps Script governance    |
 |    https://192.168.67.160:8000/mcp   |    |    reference (manual deployment only) |
@@ -321,11 +321,11 @@
         <li>Evidence entries are never split, duplicated, or invented to reach a target count.</li>
         <li>A reference guide may explain case evidence but cannot replace it.</li>
         <li>The body contains no Evidence IDs; <code>Supports</code> reverse-maps each appendix row to exact body conclusions.</li>
-        <li>The agent does not generate risk lists, scores, directives, or unsupported recommendations.</li>
+        <li>The agent does not generate risk lists, scores, or directives. The agent does not generate recommendations. Evidence-backed commitments may be restated only as planned work or evidence-stated next checkpoints.</li>
         <li>Any rendered list or table containing dates or timestamps is sorted ascending by normalized date/time; the freshness calculation still uses the newest dated evidence internally.</li>
         <li>Generate Technical &amp; Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.</li>
         <li>Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.</li>
-        <li>Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidenced.</li>
+        <li>Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.</li>
     </ol>
 
     <h4>Vendor Escalation Handoff Verification Rules</h4>
@@ -350,13 +350,22 @@
  */
 function doPost(e) { ... }
 
-/** 2. updateCaseTrackingSheet(data): Updates Google Sheet Governance Dashboard */
-function updateCaseTrackingSheet(data) { ... }
+/**
+ * 2. updateCaseTrackingSheet(caseData): Google Sheet Governance Dashboard
+ * Appends or updates case row in 'Case Tracker' sheet with conditional status formatting.
+ */
+function updateCaseTrackingSheet(caseData) { ... }
 
-/** 3. createGoogleDocReport(data): Generates formatted Google Doc Executive Summary */
-function createGoogleDocReport(data) { ... }
+/**
+ * 3. createGoogleDocReport(caseData): Google Doc Brief Generator
+ * Creates a formatted Google Doc brief with the Executive Summary and Evidence Appendix.
+ */
+function createGoogleDocReport(caseData) { ... }
 
-/** 4. sendDailyManagerDigest(): Scheduled trigger sending daily email alerts for Stalled cases */
+/**
+ * 4. sendDailyManagerDigest(): Scheduled Manager Email Digest
+ * Evaluates 'Case Tracker' sheet daily for Stalled (>7/30 days) and At Risk cases, sending HTML email alerts via MailApp.
+ */
 function sendDailyManagerDigest() { ... }</pre>
 
     <h4>Activation requirements</h4>

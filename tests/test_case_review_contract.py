@@ -1,3 +1,4 @@
+import html
 import json
 import re
 import unittest
@@ -36,6 +37,50 @@ def extract_template_section(template: str, heading: str, next_heading: str) -> 
     start = template.index(heading) + len(heading)
     end = template.index(next_heading, start)
     return template[start:end]
+
+
+def extract_contract_window(content: str) -> str:
+    anchor = content.index("6-8 sentence")
+    return content[max(0, anchor - 200) : min(len(content), anchor + 4200)]
+
+
+def extract_fenced_block_after(content: str, anchor: str, language: str) -> str:
+    start = content.index(anchor)
+    match = re.search(
+        rf"```{re.escape(language)}\n(.*?)\n```",
+        content[start:],
+        re.DOTALL,
+    )
+    if not match:
+        raise AssertionError(f"{language} fenced block not found after {anchor}")
+    return match.group(1)
+
+
+def extract_html_pre_after(content: str, anchor: str) -> str:
+    start = content.index(anchor)
+    match = re.search(r"<pre>(.*?)</pre>", content[start:], re.DOTALL)
+    if not match:
+        raise AssertionError(f"HTML pre block not found after {anchor}")
+    return html.unescape(match.group(1))
+
+
+def normalized_function_signatures(source: str) -> list[str]:
+    functions = (
+        "doPost",
+        "updateCaseTrackingSheet",
+        "createGoogleDocReport",
+        "sendDailyManagerDigest",
+    )
+    pattern = rf"^\s*function\s+({'|'.join(functions)})\s*\(([^)]*)\)"
+    signatures = []
+    for match in re.finditer(pattern, source, re.MULTILINE):
+        parameters = ",".join(
+            parameter.strip()
+            for parameter in match.group(2).split(",")
+            if parameter.strip()
+        )
+        signatures.append(f"{match.group(1)}({parameters})")
+    return signatures
 
 
 class CaseReviewContractTests(unittest.TestCase):
@@ -363,10 +408,13 @@ class CaseReviewContractTests(unittest.TestCase):
         required = [
             "6-8 sentence",
             "conclusion-level",
-            "timing/location",
             "technical reasoning",
             "Future prevention is excluded from Executive Summary",
             "Existing prevention controls",
+            "evidence confirms they are implemented",
+            "Planned or committed preventive work",
+            "evidence-stated next checkpoint",
+            "never labeled an Existing prevention control or an agent recommendation",
         ]
         old_summary = (
             "Executive Summary covering the incident, timing and location, affected "
@@ -374,24 +422,81 @@ class CaseReviewContractTests(unittest.TestCase):
         )
         for name, content in self.contract_docs.items():
             with self.subTest(document=name):
+                contract = extract_contract_window(content)
                 for marker in required:
-                    self.assertIn(marker, content)
-                self.assertNotIn(old_summary, content)
+                    self.assertIn(marker, contract)
+                self.assertRegex(contract, r"timing(?:/| and )location")
+                self.assertNotIn(old_summary, contract)
+
+    def test_tdd_contract_unconditionally_forbids_generated_recommendations(self):
+        sections = {
+            "tdd_md": extract_template_section(
+                self.contract_docs["tdd_md"],
+                "#### Evidence Processing Contract",
+                "#### Vendor Escalation Handoff Matrix",
+            ),
+            "tdd_html": extract_template_section(
+                self.contract_docs["tdd_html"],
+                "<h4>Evidence Processing Contract</h4>",
+                "<h4>Vendor Escalation Handoff Verification Rules</h4>",
+            ),
+        }
+        for name, section in sections.items():
+            with self.subTest(document=name):
+                self.assertIn("The agent does not generate recommendations.", section)
+                self.assertIn(
+                    "Evidence-backed commitments may be restated only as planned work "
+                    "or evidence-stated next checkpoints.",
+                    section,
+                )
+                self.assertNotIn("unsupported recommendations", section)
 
     def test_tdd_optional_apps_script_contract_has_md_html_parity(self):
-        required = [
-            "separately configured caller",
-            "JSON Payload Contract",
-            "case_id",
-            "health_status",
-            "evidence",
-            "verbatim",
-            "supports",
+        tdd_md = self.contract_docs["tdd_md"]
+        tdd_html = self.contract_docs["tdd_html"]
+        for name, content in {"tdd_md": tdd_md, "tdd_html": tdd_html}.items():
+            with self.subTest(document=name, contract="optional_boundary"):
+                for marker in [
+                    "separately configured caller",
+                    "manually deployed optional extension",
+                    "not sent or consumed by the active runtime",
+                ]:
+                    self.assertIn(marker, content)
+
+        md_payload = json.loads(
+            extract_fenced_block_after(tdd_md, "JSON Payload Contract", "json")
+        )
+        html_payload = json.loads(
+            extract_html_pre_after(tdd_html, "JSON Payload Contract")
+        )
+        self.assertEqual(md_payload, html_payload)
+
+        md_signatures = normalized_function_signatures(
+            extract_fenced_block_after(tdd_md, "Optional capabilities", "javascript")
+        )
+        html_signatures = normalized_function_signatures(
+            extract_html_pre_after(tdd_html, "Optional capabilities")
+        )
+        expected_signatures = [
+            "doPost(e)",
+            "updateCaseTrackingSheet(caseData)",
+            "createGoogleDocReport(caseData)",
+            "sendDailyManagerDigest()",
         ]
+        self.assertEqual(expected_signatures, md_signatures)
+        self.assertEqual(md_signatures, html_signatures)
+
+    def test_tdd_architecture_workspace_row_matches_box_width(self):
         for name in ["tdd_md", "tdd_html"]:
             with self.subTest(document=name):
-                for marker in required:
-                    self.assertIn(marker, self.contract_docs[name])
+                lines = self.contract_docs[name].splitlines()
+                row_index = next(
+                    index
+                    for index, line in enumerate(lines)
+                    if "| 4. GOOGLE WORKSPACE SERVICES" in line
+                )
+                self.assertGreater(row_index, 0)
+                self.assertEqual(len(lines[row_index - 1]), len(lines[row_index]))
 
     def test_readme_files_are_english_only(self):
         for path in [README_MD, README_HTML]:

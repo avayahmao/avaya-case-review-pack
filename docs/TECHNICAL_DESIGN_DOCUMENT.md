@@ -37,7 +37,7 @@ The architecture consists of five primary decoupled layers:
                    |                                           |
                    v                                           v
 +--------------------------------------+    +---------------------------------------+
-| 3. ENTERPRISE DATA SOURCES           |    | 4. GOOGLE WORKSPACE SERVICES            |
+| 3. ENTERPRISE DATA SOURCES           |    | 4. GOOGLE WORKSPACE SERVICES          |
 |  * Siebel SR Database / ServiceNow   |    |  * @avaya.com Gmail Inbox             |
 |  * HTTPS Endpoint:                   |    |  * Optional Apps Script governance    |
 |    https://192.168.67.160:8000/mcp   |    |    reference (manual deployment only) |
@@ -143,11 +143,11 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 4. Evidence entries are never split, duplicated, or invented to reach a target count.
 5. A reference guide may explain case evidence but cannot replace it.
 6. The body contains no Evidence IDs; `Supports` reverse-maps each appendix row to exact body conclusions.
-7. The agent does not generate risk lists, scores, directives, or unsupported recommendations.
+7. The agent does not generate risk lists, scores, or directives. The agent does not generate recommendations. Evidence-backed commitments may be restated only as planned work or evidence-stated next checkpoints.
 8. Any rendered list or table containing dates or timestamps is sorted ascending by normalized date/time; the freshness calculation still uses the newest dated evidence internally.
 9. Generate Technical & Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.
 10. Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.
-11. Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidenced.
+11. Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
 
 #### Vendor Escalation Handoff Matrix
 - **CM / AES Core Software Bugs** ➔ Assign to **[BBE PEA]** (CM ASAI, AES service crash, crossID exhaustion).

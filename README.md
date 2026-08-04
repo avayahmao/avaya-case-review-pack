@@ -11,7 +11,7 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 - The executive body is citation-free; all supporting material appears in the final **Appendix A - Evidence Register**.
 - The report starts with one 6-8 sentence **Executive Summary** paragraph for management and technical readers. It contains conclusion-level incident, timing/location, affected scope, impact, response, RCA-state, mitigation, status, and next-checkpoint information.
 - **Technical & Incident Assessment** supplies the technical reasoning: environment, findings, causal mechanism, validation, and unresolved gaps without restating the summary.
-- Future prevention is excluded from Executive Summary. **Existing prevention controls** appear only in the technical assessment when supported by case evidence.
+- Future prevention is excluded from Executive Summary. **Existing prevention controls** appear only in the technical assessment when case evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
 - The appendix table contains Ref, Date, Source, **Verbatim evidence / data**, and **Supports**. The Supports column reverse-maps each row to the body conclusion it validates.
 - Any rendered list or table containing dates or timestamps is ordered oldest to newest; undated entries follow dated entries.
 - The agent answers only what case-specific evidence supports. With zero verifiable case evidence, it outputs exactly `unknown`.
