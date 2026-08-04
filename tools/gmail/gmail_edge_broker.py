@@ -419,9 +419,11 @@ class ManagedEdgeAdapter:
             }
         else:
             raise BrowserApplicationError("Unsupported Gmail browser method")
+        if method in {"gmail_list_threads", "gmail_read_thread_page"}:
+            mapped = {key: value for key, value in mapped.items() if value != ""}
         return build_action_url(
             action,
-            {key: value for key, value in mapped.items() if value != ""},
+            mapped,
             base_url=self._app_script_url,
         )
 

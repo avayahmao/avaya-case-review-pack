@@ -326,6 +326,29 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         )
         await adapter.close()
 
+    async def test_preserves_empty_legacy_method_parameters(self):
+        pages = [FakePage(), FakePage(), FakePage()]
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(*pages))
+        await adapter.start()
+
+        await adapter.execute("gmail_search", {"query": ""})
+        await adapter.execute("gmail_read", {"message_id": ""})
+        await adapter.execute("gmail_send", {"to": "", "subject": "", "body": ""})
+
+        self.assertEqual(
+            parse_qs(urlparse(pages[0].goto_calls[0][0]).query, keep_blank_values=True),
+            {"action": ["search"], "q": [""]},
+        )
+        self.assertEqual(
+            parse_qs(urlparse(pages[1].goto_calls[0][0]).query, keep_blank_values=True),
+            {"action": ["read"], "id": [""]},
+        )
+        self.assertEqual(
+            parse_qs(urlparse(pages[2].goto_calls[0][0]).query, keep_blank_values=True),
+            {"action": ["send"], "to": [""], "subject": [""], "body": [""]},
+        )
+        await adapter.close()
+
     async def test_classifies_microsoft_redirect_before_reading_response_body(self):
         sentinel = "BODY_MUST_NOT_BE_READ_OR_LOGGED"
         page = FakePage(
@@ -389,9 +412,12 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             ("gmail_list_threads", {"query": "case"}),
             ("gmail_list_threads", {"query": "case", "max_results": 0}),
             ("gmail_list_threads", {"query": "case", "max_results": 101}),
+            ("gmail_list_threads", {"max_results": 1}),
             ("gmail_list_threads", {"query": "", "max_results": 1}),
+            ("gmail_list_threads", {"query": "case", "snapshot_before": 1, "max_results": 1}),
             ("gmail_list_threads", {"query": "case", "page_token": 1, "max_results": 1}),
             ("gmail_read_thread_page", {"snapshot_before": "snapshot"}),
+            ("gmail_read_thread_page", {"thread_id": "thread"}),
             ("gmail_read_thread_page", {"thread_id": "", "snapshot_before": "snapshot"}),
             ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": ""}),
             ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": "snapshot", "cursor": 1}),

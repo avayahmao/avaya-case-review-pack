@@ -213,15 +213,38 @@ class LegacyBackendThreadContextTests(unittest.TestCase):
             "&thread_id=thread-1&snapshot_before=snapshot",
         )
 
+    def test_read_thread_page_preserves_a_populated_cursor(self):
+        async def exercise():
+            with patch.object(gmail_legacy_backend, "query_apps_script", return_value="ok") as query:
+                result = await gmail_legacy_backend.legacy_query(
+                    "gmail_read_thread_page",
+                    {
+                        "thread_id": "thread-1",
+                        "snapshot_before": "snapshot",
+                        "cursor": "cursor 2",
+                    },
+                )
+                return result, query
+
+        result, query = asyncio.run(exercise())
+        self.assertEqual(result, "ok")
+        query.assert_awaited_once_with(
+            "read_thread_page",
+            "&thread_id=thread-1&snapshot_before=snapshot&cursor=cursor%202",
+        )
+
     def test_thread_context_rejects_invalid_parameters(self):
         invalid_calls = (
             ("gmail_list_threads", {"query": "case", "max_results": True}),
             ("gmail_list_threads", {"query": "case"}),
             ("gmail_list_threads", {"query": "case", "max_results": 0}),
             ("gmail_list_threads", {"query": "case", "max_results": 101}),
+            ("gmail_list_threads", {"max_results": 1}),
             ("gmail_list_threads", {"query": "", "max_results": 1}),
+            ("gmail_list_threads", {"query": "case", "snapshot_before": 1, "max_results": 1}),
             ("gmail_list_threads", {"query": "case", "page_token": 1, "max_results": 1}),
             ("gmail_read_thread_page", {"snapshot_before": "snapshot"}),
+            ("gmail_read_thread_page", {"thread_id": "thread"}),
             ("gmail_read_thread_page", {"thread_id": "", "snapshot_before": "snapshot"}),
             ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": ""}),
             ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": "snapshot", "cursor": 1}),
