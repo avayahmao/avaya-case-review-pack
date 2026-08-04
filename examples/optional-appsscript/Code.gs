@@ -1,11 +1,15 @@
 /**
  * ============================================================================
- * Avaya Case Review Suite — Google Apps Script Integration Module
+ * Avaya Case Review Suite — Optional Google Apps Script Governance Reference
  * ============================================================================
+ * This file is not deployed by setup_env.ps1 and is not part of the active
+ * Gmail MCP or case-review runtime. Deploy it separately only when the
+ * optional Sheets/Docs governance workflow is explicitly required.
+ *
  * Features:
  * 1. Webhooks Endpoint (doPost) for receiving Antigravity case reviews
  * 2. Automated Google Sheets Case Tracking Dashboard generator & updater
- * 3. Executive Google Docs Brief Creator
+ * 3. Executive Summary Google Docs Brief Creator
  * 4. Scheduled Daily/Weekly Manager Email Digest (ScriptApp Triggers)
  * ============================================================================
  */
@@ -99,14 +103,14 @@ function updateCaseTrackingSheet(caseData) {
 
   const headers = [
     "Timestamp", "Case ID", "Title", "Health Status", "Current Owner",
-    "Next Step Owner", "Summary Verdict"
+    "Next Step Owner", "Executive Summary"
   ];
   let sheet = ss.getSheetByName("Case Tracker");
   if (!sheet) {
     sheet = ss.insertSheet("Case Tracker");
   } else if (
     sheet.getLastColumn() === 8 &&
-    sheet.getRange(1, 8).getValue() === "Summary Verdict"
+    ["Summary Verdict", "Executive Summary"].includes(sheet.getRange(1, 8).getValue())
   ) {
     // Migrate the previous eight-column schema to the current seven columns.
     sheet.deleteColumn(7);
@@ -142,6 +146,30 @@ function updateCaseTrackingSheet(caseData) {
   return ss.getUrl();
 }
 
+function sortEvidenceByDateAscending(items) {
+  return items
+    .map((item, index) => ({
+      item,
+      index,
+      timestamp: parseEvidenceTimestamp(item && item.date)
+    }))
+    .sort((left, right) => {
+      const leftMissing = left.timestamp === null;
+      const rightMissing = right.timestamp === null;
+      if (leftMissing && rightMissing) return left.index - right.index;
+      if (leftMissing) return 1;
+      if (rightMissing) return -1;
+      return left.timestamp - right.timestamp || left.index - right.index;
+    })
+    .map(entry => entry.item);
+}
+
+function parseEvidenceTimestamp(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
 /**
  * Creates an executive Google Doc brief for a case
  */
@@ -157,22 +185,23 @@ function createGoogleDocReport(caseData) {
 
   // Subtitle / Metadata
   body.appendParagraph(`Title: ${caseData.title}`);
-  body.appendParagraph(`Health Verdict: ${caseData.healthStatus}`);
+  body.appendParagraph(`Health Status: ${caseData.healthStatus}`);
   body.appendParagraph(`Case Owner: ${caseData.owner} | Next Step Owner: ${caseData.nextOwner}`);
   body.appendParagraph(`Generated: ${new Date().toLocaleString()}`);
   body.appendHorizontalRule();
 
   // Executive Summary
-  const h1 = body.appendParagraph("1. Executive Verdict");
+  const h1 = body.appendParagraph("1. Executive Summary");
   h1.setHeading(DocumentApp.ParagraphHeading.HEADING1);
   body.appendParagraph(caseData.summary);
 
   // Evidence Appendix
   const h2 = body.appendParagraph("2. Appendix A — Evidence Register");
   h2.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  const orderedEvidence = sortEvidenceByDateAscending(caseData.evidence);
   const tableData = [
     ["Ref", "Date", "Source", "Verbatim evidence / data", "Supports"],
-    ...caseData.evidence.map(item => [
+    ...orderedEvidence.map(item => [
       item.ref || "",
       item.date || "not stated",
       item.source || "",

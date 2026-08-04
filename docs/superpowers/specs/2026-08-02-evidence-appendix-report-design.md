@@ -5,7 +5,7 @@
 
 ## Context
 
-The v1.4.0 report contract puts the Evidence section before the Verdict and repeats Evidence IDs throughout Verdict, Progress, Risk Flags, Ownership, Timeline, and Targeted Recommendations. VP feedback is that this interrupts the management reading path and makes the report feel like an audit record instead of an executive brief.
+The v1.4.0 report contract puts the Evidence section before the Executive Summary and repeats Evidence IDs throughout the summary, Progress, Risk Flags, Ownership, Timeline, and Targeted Recommendations. VP feedback is that this interrupts the management reading path and makes the report feel like an audit record instead of an executive brief.
 
 The redesigned report must preserve evidence discipline while making the main body clean, concise, and decision-oriented.
 
@@ -16,7 +16,7 @@ The redesigned report must preserve evidence discipline while making the main bo
 3. Remove all Evidence IDs and Evidence annotations from the report body.
 4. Preserve a complete audit trail through reverse mapping in the appendix.
 5. Remove `Risk Flags` and `Targeted Recommendations` completely so the Manager makes risk and action judgments.
-6. Preserve the zero-evidence rule: when no verifiable case-specific evidence exists, output exactly `不知道`.
+6. Preserve the zero-evidence rule: when no verifiable case-specific evidence exists, output exactly `unknown`.
 
 ## Non-Goals
 
@@ -32,26 +32,28 @@ The rendered report uses this exact order:
 
 1. **Case Header**
    - Case ID, title, status, priority, assignee, source, freshness clocks, and customer.
-2. **Verdict**
-   - One or two sentences stating Healthy, At Risk, Stalled, or `不知道`.
+2. **Executive Summary**
+   - Core Incident Details: What happened; When and where; Who was affected.
+   - Impact and Response: Business effect; Actions taken; Root cause.
+   - Next Steps: Future prevention; Status.
    - No Evidence IDs or source annotations.
 3. **Technical & Incident Assessment**
    - Exactly one structure: multi-problem Problem Statement or single-issue Incident & RCA Summary.
    - Includes RCA state and mitigation maturity.
-   - No recommendations and no inline evidence markers.
+   - No inline evidence markers; any prevention priority must remain evidence-backed and inside the Executive Summary.
 4. **Progress Summary**
-   - Three to five substantive milestones, newest first.
+   - Three to five substantive milestones, oldest first.
    - Routine status pings remain excluded from display but continue to inform the substantive-progress clock.
 5. **Ownership & Next Step**
    - Current assignee, last concrete action, stated next action, next-action owner, and next SLA/update due.
    - This section may only restate actions already present in evidence.
    - It must never generate a new recommendation.
 6. **Timeline**
-   - Substantive chronology only.
+   - Substantive chronology only, sorted by date/time ascending (oldest first).
    - No Evidence column and no inline Evidence IDs.
 7. **Appendix A — Evidence Register**
    - The final section in the report.
-   - Contains every evidence item used by the body.
+   - Contains every evidence item used by the body, sorted by date/time ascending; undated rows are last.
 
 The headings `Risk Flags` and `Targeted Recommendations` must not appear anywhere in generated output.
 
@@ -61,7 +63,7 @@ Use one table:
 
 | Ref | Date | Source | Verbatim evidence / data | Supports |
 |---|---|---|---|---|
-| E1 | 2026-08-01 | Case activity | Exact excerpt or measured value | Verdict — At Risk; RCA — Suspected |
+| E1 | 2026-08-01 | Case activity | Exact excerpt or measured value | Executive Summary — Status: At Risk; RCA — Suspected |
 | E2 | 2026-08-01 | Gmail subject/message | Exact excerpt or measured value | Ownership — Next action; Progress — milestone |
 
 Rules:
@@ -80,9 +82,9 @@ Rules:
 The agent still builds an internal claim-to-evidence ledger before rendering.
 
 - Every factual body claim must map to at least one appendix row.
-- Unsupported fields are rendered as `不知道`, `not stated`, or `unassigned`, as appropriate.
+- Unsupported fields are rendered as `unknown`, `not stated`, or `unassigned`, as appropriate.
 - When sources conflict, the relevant body field states that the conflict is unresolved; both source claims appear in the appendix.
-- If no verifiable case-specific evidence exists, output exactly `不知道` and do not render the report or appendix.
+- If no verifiable case-specific evidence exists, output exactly `unknown` and do not render the report or appendix.
 
 The appendix changes presentation only. It does not lower the evidence standard.
 
@@ -90,7 +92,7 @@ The appendix changes presentation only. It does not lower the evidence standard.
 
 The report may describe:
 
-- current status and health verdict;
+- current status and Executive Summary;
 - observed blockers and customer impact inside the relevant narrative;
 - evidence-backed RCA state and mitigation maturity;
 - owners, commitments, due dates, and next steps already stated by case participants.
@@ -99,13 +101,13 @@ The report must not:
 
 - label individual items as Risk Flags;
 - rank or score risks;
-- prescribe Manager or engineer actions;
+- prescribe Manager or engineer actions that are not stated or supported by evidence;
 - create Targeted Recommendations;
 - infer an owner or deadline that is not present in evidence.
 
 ## Error and Edge-Case Handling
 
-- **Zero evidence:** output exactly `不知道`.
+- **Zero evidence:** output exactly `unknown`.
 - **Partial evidence:** complete supported fields and mark unsupported fields unknown.
 - **Conflicting sources:** state the conflict without resolving it and include both rows in the appendix.
 - **Gmail no results:** continue with CaseToMD evidence and disclose the source gap in the appendix or relevant factual narrative.
@@ -117,7 +119,7 @@ The report must not:
 Implementation must update:
 
 - `plugins/avaya-case-review/skills/case-review/SKILL.md`
-- `tools/appsscript/Code.gs`
+- `examples/optional-appsscript/Code.gs` (optional, manually deployed reference only)
 - `README.md` and `README.html`
 - Manager Onboarding Guide Markdown and HTML
 - Technical Design Document Markdown and HTML
@@ -132,10 +134,10 @@ Required regression checks:
 4. `Risk Flags` is absent from the output contract and current documentation.
 5. `Targeted Recommendations` is absent from the output contract and current documentation.
 6. Ownership contains only evidence-stated actions.
-7. Zero evidence still produces exactly `不知道`.
+7. Zero evidence still produces exactly `unknown`.
 8. Source conflict and lab-versus-production rules remain enforced.
 9. Markdown and HTML descriptions remain semantically aligned.
-10. Google Docs generated by `Code.gs` use the same Evidence Appendix and do not recreate removed judgment sections.
+10. If the optional `Code.gs` reference is separately deployed, its Google Docs output uses the same Evidence Appendix and does not recreate removed judgment sections.
 
 ## Acceptance Criteria
 

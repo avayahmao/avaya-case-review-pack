@@ -82,8 +82,9 @@ avaya-case-review-pack/
 ├── tools/
 │   ├── casetomd/casetomd_mcp_bridge.py   ← internal HTTPS MCP bridge
 │   ├── gmail/gmail_mcp_server.py         ← async MCP server (used by Antigravity)
-│   ├── gmail/gmail_playwright.py         ← sync CLI entry point (used for `login` bootstrap)
-│   └── appsscript/Code.gs                ← Google Apps Script governance module
+│   └── gmail/gmail_playwright.py         ← sync CLI entry point (used for `login` bootstrap)
+├── examples/
+│   └── optional-appsscript/Code.gs       ← optional, manually deployed governance reference (not runtime)
 └── docs/                                 ← guides, TDD, release notes, presentations
 ```
 

@@ -30,7 +30,6 @@ plugins/avaya-case-review/skills/case-review/references/recording-wfo.md
 plugins/avaya-case-review/skills/case-review/references/security-vulnerability.md
 plugins/avaya-case-review/skills/case-review/references/sip-voice-quality.md
 plugins/avaya-case-review/skills/gmail-capability/SKILL.md
-tools/appsscript/Code.gs
 tools/casetomd/casetomd_mcp_bridge.py
 tools/gmail/gmail_broker_client.py
 tools/gmail/gmail_broker_protocol.py

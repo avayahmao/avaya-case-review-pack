@@ -19,7 +19,7 @@
 - `docs/MANAGER_ONBOARDING_GUIDE.md` / `.html`: manager-facing report description.
 - `docs/TECHNICAL_DESIGN_DOCUMENT.md` / `.html`: technical contract and validation design.
 - `docs/RELEASE_NOTES.md` / `.html`: Unreleased behavioral change record.
-- `tools/appsscript/Code.gs`: Google Docs/Sheets output and webhook payload parity.
+- `examples/optional-appsscript/Code.gs`: optional Google Docs/Sheets output and webhook payload parity reference.
 
 ### Task 1: Lock the New Output Contract with Failing Tests
 
@@ -57,7 +57,7 @@ def test_appendix_is_last_and_body_has_no_evidence_markers(self):
     template = extract_report_template(self.skill)
     appendix = template.index("## Appendix A — Evidence Register")
     order = [
-        template.index("## Verdict"),
+        template.index("## Executive Summary"),
         template.index("## Technical & Incident Assessment"),
         template.index("## Progress Summary"),
         template.index("## Ownership & Next Step"),
@@ -159,8 +159,20 @@ Use this exact section skeleton:
 # Case Review - <Case ID>
 <Case header fields>
 
-## Verdict
-<Evidence-supported verdict with no citation marker>
+## Executive Summary
+### Core Incident Details
+- **What happened:** <clear event or issue statement>
+- **When and where:** <exact date, time, and location>
+- **Who was affected:** <evidenced scope>
+
+### Impact and Response
+- **Business effect:** <evidenced impact>
+- **Actions taken:** <evidence-stated response>
+- **Root cause:** <confirmed cause or investigation status>
+
+### Next Steps
+- **Future prevention:** <evidence-backed prevention priorities>
+- **Status:** <current mitigation or closure state>
 
 ## Technical & Incident Assessment
 <Exactly one single-issue or multi-problem structure>
@@ -205,7 +217,7 @@ Expected: both tests pass.
 - Modify: `docs/TECHNICAL_DESIGN_DOCUMENT.html`
 - Modify: `docs/RELEASE_NOTES.md`
 - Modify: `docs/RELEASE_NOTES.html`
-- Modify: `tools/appsscript/Code.gs`
+- Modify: `examples/optional-appsscript/Code.gs` (optional reference only)
 - Test: `tests/test_case_review_contract.py`
 
 - [x] **Step 1: Update README contract summaries**
@@ -236,7 +248,7 @@ Add above v1.4.0:
 
 Add the equivalent HTML block.
 
-- [x] **Step 5: Align Google Apps Script output**
+- [x] **Step 5: Align optional Google Apps Script reference output**
 
 Remove `risk_flags`, `recommended_actions`, the risk-count Sheet column, and generated risk/action Doc sections. Accept `data.evidence` rows and render `Appendix A — Evidence Register` with:
 
