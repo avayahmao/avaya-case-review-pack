@@ -14,9 +14,10 @@ RELEASE_MD = ROOT / "docs/RELEASE_NOTES.md"
 RELEASE_HTML = ROOT / "docs/RELEASE_NOTES.html"
 README_MD = ROOT / "README.md"
 README_HTML = ROOT / "README.html"
+RELEASE_MANIFEST = ROOT / "release-manifest.txt"
 PLUGIN_JSON = ROOT / "plugins/avaya-case-review/plugin.json"
 AGENTS_MD = ROOT / "AGENTS.md"
-APPS_SCRIPT = ROOT / "tools/appsscript/Code.gs"
+APPS_SCRIPT = ROOT / "examples/optional-appsscript/Code.gs"
 SCENARIOS = ROOT / "tests/case_review_scenarios.json"
 
 
@@ -29,6 +30,12 @@ def extract_report_template(skill: str) -> str:
     if not match:
         raise AssertionError("Rendered report template not found")
     return match.group(1)
+
+
+def extract_template_section(template: str, heading: str, next_heading: str) -> str:
+    start = template.index(heading) + len(heading)
+    end = template.index(next_heading, start)
+    return template[start:end]
 
 
 class CaseReviewContractTests(unittest.TestCase):
@@ -51,7 +58,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "Date",
             "Verbatim evidence / data",
             "Supports",
-            "output exactly `不知道`",
+            "output exactly `unknown`",
             "Do not split, duplicate, or invent evidence",
         ]
         for marker in required:
@@ -87,6 +94,26 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, self.skill)
 
+    def test_rendered_date_time_content_is_ascending(self):
+        for marker in [
+            "Chronological output order",
+            "ascending order (oldest first)",
+            "undated entries after all dated entries",
+            "Assign rendered `E1..EN` identifiers after this chronological sort",
+            "oldest first",
+            "ascending date/time order",
+        ]:
+            self.assertIn(marker, self.skill)
+        self.assertNotIn("newest first", self.skill)
+
+        for name, content in self.contract_docs.items():
+            with self.subTest(document=name):
+                self.assertIn("oldest to newest", content)
+
+        apps_script = read(APPS_SCRIPT)
+        self.assertIn("sortEvidenceByDateAscending", apps_script)
+        self.assertIn("parseEvidenceTimestamp", apps_script)
+
     def test_mitigation_maturity_prevents_false_production_claims(self):
         for marker in [
             "Proposed",
@@ -104,12 +131,72 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertNotIn("### [Structure A:", self.skill)
         self.assertNotIn("### [Structure B:", self.skill)
 
+    def test_executive_summary_is_one_layered_paragraph(self):
+        template = extract_report_template(self.skill)
+        summary = extract_template_section(
+            template,
+            "## Executive Summary",
+            "## Technical & Incident Assessment",
+        )
+        self.assertNotIn("Verdict", template)
+        self.assertNotIn("###", summary)
+        for marker in [
+            "Core Incident Details",
+            "Impact and Response",
+            "Next Steps",
+            "Future prevention",
+        ]:
+            self.assertNotIn(marker, summary)
+        for marker in [
+            "one natural-language paragraph of 6-8 sentences",
+            "one-sentence technical conclusion",
+            "`unknown`",
+            "conclusion-level information",
+        ]:
+            self.assertIn(marker, self.skill)
+
+    def test_technical_assessment_adds_reasoning_without_restatement(self):
+        template = extract_report_template(self.skill)
+        technical = extract_template_section(
+            template,
+            "## Technical & Incident Assessment",
+            "## Progress Summary",
+        )
+        self.assertIn("Start with problem clarification", technical)
+        for marker in [
+            "environment or affected-component detail",
+            "causal reasoning or an RCA-state explanation",
+            "solution, workaround, implementation, or verification detail",
+            "only paraphrases an Executive Summary sentence",
+            "Existing prevention controls",
+        ]:
+            self.assertIn(marker, self.skill)
+
+    def test_adm_expands_technical_depth_without_duplicate_sections(self):
+        template = extract_report_template(self.skill)
+        for marker in [
+            "ADM mode activates",
+            "Details/Findings",
+            "Problem Clarification",
+            "Cause",
+            "Solution",
+            "increases the depth of `Technical & Incident Assessment` only",
+        ]:
+            self.assertIn(marker, self.skill)
+        for heading in [
+            "## Details/Findings",
+            "## Problem Clarification",
+            "## Cause",
+            "## Solution",
+        ]:
+            self.assertNotIn(heading, template)
+
     def test_appendix_is_last_and_body_has_no_evidence_markers(self):
         template = extract_report_template(self.skill)
         self.assertIn("## Appendix A — Evidence Register", template)
         appendix = template.index("## Appendix A — Evidence Register")
         order = [
-            template.index("## Verdict"),
+            template.index("## Executive Summary"),
             template.index("## Technical & Incident Assessment"),
             template.index("## Progress Summary"),
             template.index("## Ownership & Next Step"),
@@ -126,7 +213,11 @@ class CaseReviewContractTests(unittest.TestCase):
             "| Ref | Date | Source | Verbatim evidence / data | Supports |",
             template,
         )
-        self.assertTrue(template.rstrip().endswith("<Evidence rows E1..EN>"))
+        self.assertTrue(
+            template.rstrip().endswith(
+                "<Evidence rows E1..EN in ascending date/time order; undated rows last>"
+            )
+        )
 
     def test_manager_judgment_sections_are_absent(self):
         template = extract_report_template(self.skill)
@@ -136,7 +227,8 @@ class CaseReviewContractTests(unittest.TestCase):
 
     def test_current_contract_docs_match_skill(self):
         required = [
-            "Appendix A — Evidence Register",
+            "Executive Summary",
+            "Appendix A",
             "Verbatim evidence / data",
             "Supports",
             "Case record freshness",
@@ -155,6 +247,11 @@ class CaseReviewContractTests(unittest.TestCase):
                     self.assertIn(marker, content)
                 for marker in prohibited:
                     self.assertNotIn(marker, content)
+
+    def test_readme_files_are_english_only(self):
+        for path in [README_MD, README_HTML]:
+            with self.subTest(document=path.name):
+                self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
     def test_release_metadata_targets_v1_6_0(self):
         release_md = read(RELEASE_MD)
@@ -228,6 +325,15 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(required, code)
 
+    def test_apps_script_is_optional_and_not_in_active_release(self):
+        self.assertTrue(APPS_SCRIPT.exists())
+        manifest = read(RELEASE_MANIFEST)
+        self.assertNotIn("tools/appsscript/Code.gs", manifest)
+        self.assertNotIn("examples/optional-appsscript/Code.gs", manifest)
+        optional_source = read(APPS_SCRIPT)
+        self.assertIn("not deployed by setup_env.ps1", optional_source)
+        self.assertIn("not part of the active", optional_source)
+
     def test_regression_matrix_covers_required_scenarios(self):
         scenarios = json.loads(read(SCENARIOS))
         ids = {scenario["id"] for scenario in scenarios}
@@ -237,6 +343,10 @@ class CaseReviewContractTests(unittest.TestCase):
             "multi_problem_case",
             "gmail_no_results",
             "status_pings_only",
+            "chronological_output_order",
+            "executive_summary_layering",
+            "executive_technical_deduplication",
+            "adm_technical_depth_without_duplicate_sections",
             "lab_success_not_production_confirmed",
             "required_tool_missing",
             "conflicting_sources",

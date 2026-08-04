@@ -77,7 +77,14 @@ Apply two separate orderings:
 
 Management display priority controls what the manager sees first. It must never override evidentiary authority.
 
-If sources disagree, preserve both evidence items, describe an **unresolved source conflict**, and answer `不知道` for the disputed conclusion unless stronger evidence resolves it.
+### Chronological output order
+
+- Any rendered list or table that contains dates or timestamps — including Progress Summary, Timeline, Appendix A, ADM chronology, and dated log excerpts — must be sorted by normalized date/time in ascending order (oldest first).
+- For equal timestamps, preserve the ledger/source order. Place `not stated` or otherwise undated entries after all dated entries.
+- Assign rendered `E1..EN` identifiers after this chronological sort so appendix row numbering follows display order.
+- This is a presentation rule only: `Last substantive progress age` still uses the newest dated evidence internally for freshness and stall calculations.
+
+If sources disagree, preserve both evidence items, describe an **unresolved source conflict**, and answer `unknown` for the disputed conclusion unless stronger evidence resolves it.
 
 **Do not discard status pings before analysis.** Retain them to detect activity without substantive progress, but omit them from the displayed timeline unless the ping creates a commitment, owner, deadline, or escalation.
 
@@ -100,7 +107,7 @@ Apply staleness only to open work:
 #### Ownership, impact, and escalation
 
 - Identify the current assignee, last concrete action taker, stated next action, next-action owner, and due date.
-- Use `unassigned`, `not stated`, or `不知道` when evidence does not provide a value. Never invent an owner or ETA.
+- Use `unassigned`, `not stated`, or `unknown` when evidence does not provide a value. Never invent an owner or ETA.
 - Quote customer-impact wording verbatim when it exists.
 - Identify related/reopened records and open product or management escalations, including the evidence-backed blocker and ETA state.
 
@@ -140,6 +147,37 @@ Use the vendor handoff matrix only after the failing component is evidenced:
   - **None Active**
 - A lab test, one repaired record, a scheduled rollout, or an engineer's success report without post-change production evidence **must not be described as production resolution**.
 
+### Layered Executive and Technical Content
+
+The **Executive Summary** owns conclusion-level information, while **Technical & Incident Assessment** owns the explanation. The summary states the conclusion; the technical assessment explains why that conclusion is justified by the evidence.
+
+#### Executive Summary contract
+
+- Write one natural-language paragraph of 6-8 sentences with no subheadings, bullets, field labels, or citation markers.
+- Cover the following conclusion-level information in this order, combining adjacent points when needed to stay within 6-8 sentences: the incident with its evidenced time and location; affected scope; business or customer impact; key response; a one-sentence technical conclusion stating the RCA state or supported cause; mitigation maturity and production outcome; current status; and the next evidenced checkpoint with owner and ETA.
+- Use lowercase `unknown` for an unsupported detail. Do not substitute a plausible assumption or silently omit a required conclusion-level point.
+- Exclude raw logs, detailed troubleshooting, configuration detail, extended cause analysis, and prevention content. `Future prevention` does not belong in the Executive Summary.
+
+#### Technical & Incident Assessment contract
+
+- Start with problem clarification, then explain the evidence and reasoning needed to support or qualify the summary conclusion.
+- Every paragraph must add at least one of the following: environment or affected-component detail; a finding or interpreted log excerpt; causal reasoning or an RCA-state explanation; a ruled-out alternative, unresolved gap, or missing validation; solution, workaround, implementation, or verification detail; or **Existing prevention controls** already stated, committed, or implemented in the evidence.
+- Remove any paragraph that only paraphrases an Executive Summary sentence. Do not repeat the full incident, impact, response, status, owner, or ETA unless the technical explanation requires a specific distinction.
+- Existing prevention controls appear only in the technical assessment under the relevant problem and only when the evidence already states, commits, or implements them. Omit them when absent; never generate a prevention recommendation.
+
+#### Adaptive ADM depth
+
+- ADM mode activates only when the user explicitly requests `ADM` or `Avaya Diagnostic Methodology`, matched case-insensitively.
+- ADM mode increases the depth of `Technical & Incident Assessment` only; it must not lengthen the Executive Summary or create a second ADM block.
+- When evidence permits, cover **Details/Findings**, **Problem Clarification**, **Cause**, and **Solution** as analytical dimensions inside the chosen technical structure. Adapt the prose to the case; it is not required to display four mechanical ADM headings.
+
+#### Generation order
+
+1. Complete the evidence ledger, RCA state, mitigation maturity, production-outcome assessment, and case classification.
+2. Draft the Technical & Incident Assessment from problem clarification through evidence, reasoning, solution or validation, and unresolved gaps.
+3. Extract only the conclusion-level information needed for the Executive Summary.
+4. Deduplicate in both directions: remove technical detail from the summary and remove technical paragraphs that add no explanation beyond the summary.
+
 ### Step 5 - Enforce the Evidence Gate
 
 Every factual answer must pass the internal evidence gate before rendering:
@@ -149,8 +187,8 @@ Every factual answer must pass the internal evidence gate before rendering:
 - Every factual body claim must map internally to at least one appendix row.
 - The `Supports` column performs reverse mapping from evidence to the exact body section and conclusion or field.
 - The rendered body must contain no Evidence IDs, footnotes, source suffixes, or citation brackets.
-- Answer only the portion supported by evidence. For an unsupported field or disputed conclusion, write `不知道`.
-- If no verifiable case-specific evidence exists, **output exactly `不知道`** and stop. Do not emit the report template.
+- Answer only the portion supported by evidence. For an unsupported field or disputed conclusion, write `unknown`.
+- If no verifiable case-specific evidence exists, **output exactly `unknown`** and stop. Do not emit the report template.
 - **Do not split, duplicate, or invent evidence** to increase the evidence count.
 - Domain references may explain evidence but do not count as case-specific evidence by themselves.
 - `Appendix A — Evidence Register` is the final section of every rendered review.
@@ -167,7 +205,12 @@ Before rendering:
 6. Confirm `Ownership & Next Step` only restates actions, owners, and dates already present in evidence; it must never generate a new recommendation.
 7. Confirm the rendered body contains no Evidence ID or citation suffix.
 8. Confirm the appendix is last and reverse-maps every evidence row through `Supports`.
-9. Confirm the zero-evidence response is exactly `不知道`.
+9. Confirm the zero-evidence response is exactly `unknown`.
+10. Confirm every rendered list or table containing dates or timestamps is in ascending date/time order, with undated entries last.
+11. Confirm the Executive Summary is one 6-8 sentence paragraph with no subheadings or prevention content.
+12. Confirm its root-cause statement uses at most one sentence as the one-sentence technical conclusion; keep detailed cause analysis only in Technical & Incident Assessment.
+13. Remove any technical paragraph that merely paraphrases the summary without adding a finding, mechanism, validation result, or unresolved gap.
+14. When explicit ADM mode applies, confirm all four analytical dimensions are covered inside Technical & Incident Assessment without a second outline or ADM block.
 
 ### Step 7 - Produce the Review
 
@@ -175,47 +218,48 @@ After the evidence gate passes, use this common structure:
 
 ```markdown
 # Case Review - <Case ID>
-**Title:** <evidence-backed title or 不知道>
-**Status:** <status or 不知道> | **Priority:** <priority or 不知道> | **Assignee:** <assignee or 不知道>
+**Title:** <evidence-backed title or unknown>
+**Status:** <status or unknown> | **Priority:** <priority or unknown> | **Assignee:** <assignee or unknown>
 **Source:** <actual source system and record type>
 **Case record freshness:** <N days / date unavailable>
 **Last substantive progress age:** <N days / no substantive progress evidenced>
-**Customer:** <account/site/contact or 不知道>
+**Customer:** <account/site/contact or unknown>
 
-## Verdict
-<On track, At Risk, or Stalled, stated without citation markers.>
-Overall health: Healthy / At Risk / Stalled / 不知道
+## Executive Summary
+<Write one natural-language paragraph of 6-8 sentences covering the conclusion-level incident with time and location, affected scope, impact, key response, one-sentence technical conclusion, mitigation and production outcome, current status, and the next evidenced checkpoint with owner and ETA; use lowercase unknown for unsupported details; exclude raw logs, detailed diagnostics, configuration detail, extended cause analysis, and prevention content.>
 
 ## Technical & Incident Assessment
-<Choose exactly one structure: multi-problem Problem Statement OR single-issue Incident & RCA Summary.>
+<Start with problem clarification; add environment or affected-component detail, findings or interpreted log evidence, causal or RCA-state reasoning, solution or workaround implementation and verification, and unresolved gaps or missing validation; do not fully restate the event, impact, response, or status from the Executive Summary.>
 
 ## Progress Summary
-<Three to five substantive milestones, newest first, without citation markers.>
+<Three to five substantive milestones, oldest first, without citation markers.>
 
 ## Ownership & Next Step
-- **Current assignee:** <name / unassigned / 不知道>
-- **Last concrete action:** <actor, action, date / 不知道>
-- **Stated next action:** <evidence-stated action / not stated / 不知道>
-- **Next-action owner:** <name/role / unassigned / 不知道>
-- **Next SLA/update due:** <date / not stated / 不知道>
+- **Current assignee:** <name / unassigned / unknown>
+- **Last concrete action:** <actor, action, date / unknown>
+- **Stated next action:** <evidence-stated action / not stated / unknown>
+- **Next-action owner:** <name/role / unassigned / unknown>
+- **Next SLA/update due:** <date / not stated / unknown>
 
 ## Timeline
 | Date | By | Source | What changed |
 |---|---|---|---|
-<Substantive entries only. Status pings remain part of the activity-trend analysis.>
+<Substantive entries only, in ascending date/time order. Status pings remain part of the activity-trend analysis.>
 
 ## Appendix A — Evidence Register
 | Ref | Date | Source | Verbatim evidence / data | Supports |
 |---|---|---|---|---|
-<Evidence rows E1..EN>
+<Evidence rows E1..EN in ascending date/time order; undated rows last>
 ```
 
 For the conditional technical section:
 
-- **Multi-problem:** use `Problem Statement`, then `Problem 1 - <Record ID>`, `Problem 2 - <Record ID>`, and include symptom, evidence-backed RCA state/finding, affected components, and mitigation maturity.
-- **Single issue:** use `Incident & RCA Summary` with symptom, affected components, RCA state/finding, and mitigation maturity.
+- Choose exactly one structure for the section.
+- **Multi-problem:** use `Problem Statement`, then `Problem 1 - <Record ID>`, `Problem 2 - <Record ID>`, and so on. For each problem, cover problem clarification, evidence-backed findings, cause or RCA-state reasoning, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
+- **Single issue:** use `Incident & RCA Summary` and cover the same semantic sequence: problem clarification, evidence-backed findings, cause or RCA-state reasoning, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
+- Put **Existing prevention controls** only under the relevant problem and only when evidenced as already stated, committed, or implemented.
 
-Do not render both conditional structures. Do not create a standalone telemetry section.
+Do not render both conditional structures. Do not create a standalone telemetry section or a second ADM block.
 
 ---
 
@@ -229,6 +273,9 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 - Closed/Resolved records are not stale merely because they are old.
 - Domain rules are conditionally activated and never substitute for case evidence.
 - Production success requires post-change production evidence.
-- The report must not generate risk lists, risk scores, manager directives, or recommended actions.
+- The report must not generate risk lists, risk scores, manager directives, prevention priorities, or recommendations.
+- Existing prevention controls belong only in Technical & Incident Assessment, under the relevant problem, and only when already evidenced.
+- The Executive Summary states the conclusion; Technical & Incident Assessment explains the evidence, mechanism, reasoning, validation, and unresolved gaps that justify or qualify it.
 - The main body stays citation-free; the final appendix preserves the audit chain.
-- The manager should understand the verdict, evidence basis, owner, ETA state, RCA state, and mitigation maturity without rereading the raw case.
+- Rendered date/time lists and tables are ordered oldest to newest; undated items follow dated items.
+- The manager should understand the Executive Summary, evidence basis, owner, ETA state, RCA state, mitigation maturity, production outcome, and next checkpoint without rereading the raw case.

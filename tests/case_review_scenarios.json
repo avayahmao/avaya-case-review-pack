@@ -30,6 +30,30 @@
     "contract_markers": ["Do not discard status pings before analysis", "Last substantive progress age"]
   },
   {
+    "id": "chronological_output_order",
+    "input": "The review contains dated milestones, timeline events, evidence rows, and ADM diagnostic chronology.",
+    "expected": "Render every dated or timestamped list and table from oldest to newest, placing undated entries last.",
+    "contract_markers": ["Chronological output order", "ascending date/time order", "oldest to newest"]
+  },
+  {
+    "id": "executive_summary_layering",
+    "input": "A mixed VP and technical audience needs one concise incident summary before the detailed assessment.",
+    "expected": "Use one natural-language 6-8 sentence conclusion-only paragraph and exclude future prevention and detailed diagnostics.",
+    "contract_markers": ["one natural-language paragraph of 6-8 sentences", "conclusion-level information", "Future prevention"]
+  },
+  {
+    "id": "executive_technical_deduplication",
+    "input": "The same evidence and findings are available to both the Executive Summary and Technical & Incident Assessment.",
+    "expected": "State the headline once in the summary, then use the technical assessment for mechanism, evidence, validation, and unresolved gaps.",
+    "contract_markers": ["only paraphrases an Executive Summary sentence", "environment or affected-component detail", "solution, workaround, implementation, or verification detail"]
+  },
+  {
+    "id": "adm_technical_depth_without_duplicate_sections",
+    "input": "The user explicitly requests ADM or Avaya Diagnostic Methodology analysis.",
+    "expected": "Deepen the technical assessment across Details/Findings, Problem Clarification, Cause, and Solution without creating a second four-heading report or expanding the Executive Summary.",
+    "contract_markers": ["ADM mode activates", "increases the depth of `Technical & Incident Assessment` only", "not required to display four mechanical ADM headings"]
+  },
+  {
     "id": "lab_success_not_production_confirmed",
     "input": "A workaround succeeded in a lab or one controlled test, but production deployment or outcome is unverified.",
     "expected": "Label the mitigation Lab Validated and explicitly state that production resolution is not confirmed.",
@@ -45,13 +69,13 @@
     "id": "conflicting_sources",
     "input": "The official case record and a Gmail message disagree on status, ownership, or outcome.",
     "expected": "Show both sourced claims, mark the conflict unresolved, and answer unknown for the disputed conclusion.",
-    "contract_markers": ["unresolved source conflict", "answer `不知道` for the disputed conclusion"]
+    "contract_markers": ["unresolved source conflict", "answer `unknown` for the disputed conclusion"]
   },
   {
     "id": "zero_case_evidence",
     "input": "No verifiable case-specific evidence was retrieved.",
-    "expected": "Output exactly: 不知道",
-    "contract_markers": ["output exactly `不知道`", "Do not emit the report template"]
+    "expected": "Output exactly: unknown",
+    "contract_markers": ["output exactly `unknown`", "Do not emit the report template"]
   },
   {
     "id": "appendix_reverse_mapping",
