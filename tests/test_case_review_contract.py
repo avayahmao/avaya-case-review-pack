@@ -433,6 +433,7 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_adm_spec_and_presentation_follow_layered_contract(self):
         adm_spec = read(ADM_SPEC)
         presentation = read(PRESENTATION_HTML)
+        presentation_lower = presentation.lower()
 
         for marker in [
             "Executive Summary remains one 6-8 sentence paragraph",
@@ -445,19 +446,69 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertIn(marker, adm_spec)
 
         for marker in [
-            "6-8 Sentence Executive Summary",
-            "Technical &amp; Incident Assessment",
-            "Evidence Appendix",
+            "Evidence-Grounded Technical Review",
+            "Evidence-Grounded Technical Assessment",
+            "does not guarantee completeness or prevent outages",
+            "manager judgment",
+            "Single Managed Edge Broker",
+            "serializes browser ownership for multiple Gmail MCP clients",
+            "edge_broker_profile",
+            "legacy_playwright",
+            "explicit rollback",
+            "Conditional Managed Edge Sign-In",
+            "gmail_brokerctl.py login",
+            "authentication required",
+            "persistent session",
+            "evidence-triggered guidance",
+            "API Method Reference Check",
+            "compares case usage with official Javadoc",
+            "requested, attached, or analyzed",
+            "Faster Preparation",
+            "Evidence Traceability",
+            "Earlier Escalation Signals",
         ]:
             self.assertIn(marker, presentation)
+
+        structure_start = presentation.index(
+            "<h2>Standardized Executive Review Report Structure</h2>"
+        )
+        structure_end = presentation.index("<!-- SLIDE 11 -->", structure_start)
+        structure = presentation[structure_start:structure_end]
+        section_headings = [
+            "1. 6-8 Sentence Executive Summary",
+            "2. Technical &amp; Incident Assessment",
+            "3. Progress Summary",
+            "4. Ownership &amp; Next Step",
+            "5. Timeline",
+            "6. Appendix A — Evidence Register",
+        ]
+        positions = []
+        for heading in section_headings:
+            marker = f"<h3>{heading}</h3>"
+            self.assertEqual(1, structure.count(marker))
+            positions.append(structure.index(marker))
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn("Progress Summary &amp; Timeline", structure)
+        self.assertNotIn("<h3>5. Evidence Appendix</h3>", structure)
+
         for marker in [
-            "Risk Flag",
-            "Risk Flags & Sanity Audit",
-            "Risk Flags &amp; Sanity Audit",
-            "Recommended Manager Actions",
+            "risk flag",
+            "recommended manager actions",
             "prevention priorities",
+            "manager action directive",
+            "sanity & risk auditor",
+            "zero technical blind spots",
+            "playwright gmail mcp",
+            "playwright headless browser automatically maintains local chrome session profile",
+            "one-time google sso",
+            "chrome window opens to authenticate",
+            "automatically verifies whether",
+            "enforces official javadoc path",
+            "80% time saved",
+            "zero blind spots",
+            "30% faster mttr",
         ]:
-            self.assertNotIn(marker, presentation)
+            self.assertNotIn(marker, presentation_lower)
 
         for path in [RELEASE_MD, RELEASE_HTML]:
             with self.subTest(document=path.name):

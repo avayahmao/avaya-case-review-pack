@@ -171,7 +171,7 @@
             <div style="background: var(--red-accent); width: 80px; height: 6px; margin-bottom: 30px;"></div>
             <h1>Avaya Case Review Suite</h1>
             <h2>& Intelligent Diagnostic Engine</h2>
-            <p>AI-Powered Case Governance, Off-System Email Synthesis & Automated Technical Direction Auditing</p>
+            <p>AI-Powered Case Governance, Off-System Email Synthesis & Evidence-Grounded Technical Assessment</p>
             <div style="margin-top: 40px; font-weight: 600; color: #ffffff;">Designed for Support Managers, Operations Leads, SDMs & Technical Escalation Managers</div>
         </div>
     </div>
@@ -222,28 +222,28 @@
             <div class="grid-2">
                 <div class="card dark">
                     <h3>The Avaya Case Review Suite</h3>
-                    <p style="margin-bottom: 20px;">An automated governance layer combining 1-click execution, off-system email synthesis, and platform diagnostic intelligence.</p>
+                    <p style="margin-bottom: 20px;">An evidence-processing layer combining streamlined execution, off-system email synthesis, and product-reference context.</p>
                     <div style="margin-bottom: 15px;">
                         <strong style="color: var(--red-accent);">⚡ 1-Click Executive Synthesis</strong>
-                        <div style="font-size: 0.9rem;">Converts raw Siebel/ServiceNow case dumps into clean, executive-ready markdown briefs with clear verdicts.</div>
+                        <div style="font-size: 0.9rem;">Converts retrieved Siebel/ServiceNow case records into structured, evidence-layered Markdown briefs.</div>
                     </div>
                     <div style="margin-bottom: 15px;">
                         <strong style="color: var(--red-accent);">📧 Unified Off-System Visibility</strong>
-                        <div style="font-size: 0.9rem;">Playwright Gmail MCP integration automatically pulls SDM emails, OCD alerts, and customer threads into the timeline.</div>
+                        <div style="font-size: 0.9rem;">The Managed Edge Gmail broker searches case-bounded SDM emails, OCD alerts, and customer threads for inclusion in the evidence timeline.</div>
                     </div>
                     <div>
                         <strong style="color: var(--red-accent);">🧠 Embedded 10-Domain Debugger Engine</strong>
-                        <div style="font-size: 0.9rem;">Built-in Avaya UC/CC expert rules audit engineer technical direction, SA flags, and vendor handoffs automatically.</div>
+                        <div style="font-size: 0.9rem;">Avaya UC/CC references help compare retrieved evidence with product-specific checks and vendor handoff context; they do not prove case facts.</div>
                     </div>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 20px;">
                     <div class="card">
-                        <h3>🎯 Zero Technical Blind Spots</h3>
-                        <p>Managers no longer need to be CTI trace experts. The engine automatically catches misdirected investigations, invalid JTAPI PEAs, and wrong vendor assignments before they cause prolonged outages.</p>
+                        <h3>🎯 Evidence-Grounded Technical Review</h3>
+                        <p>The suite highlights evidence-matched technical checks and source gaps for review, but it does not guarantee completeness or prevent outages.</p>
                     </div>
                     <div class="card">
                         <h3>🚀 Operational Velocity & Accountability</h3>
-                        <p>Identifies exact stall points (>7/30 days), missing next-step owners, unassigned task dispatches, and provides 2-4 concrete, prioritized manager action directives for instant execution.</p>
+                        <p>Surfaces evidence-backed case freshness, named ownership, dispatch status, and next-checkpoint visibility to support manager judgment.</p>
                     </div>
                 </div>
             </div>
@@ -273,9 +273,9 @@
                     <h3>CaseToMD & Gmail MCP</h3>
                     <ul>
                         <li>CaseToMD Server (Port 8000)</li>
-                        <li>Playwright Gmail MCP Server</li>
-                        <li>Local SSO profile persistence</li>
-                        <li>Secure corporate TLS/MFA</li>
+                        <li>Single Managed Edge Broker</li>
+                        <li>Serialized ownership for Gmail MCP clients</li>
+                        <li>Dedicated <code>edge_broker_profile</code> session</li>
                     </ul>
                 </div>
                 <div class="card">
@@ -285,7 +285,7 @@
                         <li>case-review skill</li>
                         <li>gmail-capability skill</li>
                         <li>10-Domain Avaya Ref Suite</li>
-                        <li>Sanity & Risk Auditor</li>
+                        <li>Evidence-Grounded Technical Assessment</li>
                     </ul>
                 </div>
                 <div class="card">
@@ -350,8 +350,8 @@ get_case_markdown(report_id: "1-23659220672")
         <div class="slide-body">
             <div style="display: flex; flex-direction: column; gap: 20px;">
                 <div class="card">
-                    <h3>Step 1: SSO Token Persistence</h3>
-                    <p>Playwright headless browser automatically maintains local Chrome session profile under <code>C:\Users\...\.gemini\tools\gmail\chrome_profile</code> with full Avaya Duo/MFA support.</p>
+                    <h3>Step 1: Single Managed Edge Broker</h3>
+                    <p>The Single Managed Edge Broker serializes browser ownership for multiple Gmail MCP clients and reuses the dedicated <code>edge_broker_profile</code> persistent session.</p>
                 </div>
                 <div class="card">
                     <h3>Step 2: Deep Inbox Cross-Search</h3>
@@ -359,7 +359,11 @@ get_case_markdown(report_id: "1-23659220672")
                 </div>
                 <div class="card">
                     <h3>Step 3: Off-System Signal Extraction</h3>
-                    <p>Extracts critical management signals: OCD 'UNASSIGNABLE' dispatch failures, executive customer commitments, and informal engineering workarounds.</p>
+                    <p>Surfaces retrieved management signals when present, including OCD 'UNASSIGNABLE' dispatch failures, customer commitments, and documented engineering workarounds.</p>
+                </div>
+                <div class="card">
+                    <h3>Step 4: Explicit Legacy Rollback</h3>
+                    <p>The <code>legacy_playwright</code> backend and <code>chrome_profile</code> remain available only as an explicit rollback; they are not the active default.</p>
                 </div>
             </div>
         </div>
@@ -421,20 +425,20 @@ get_case_markdown(report_id: "1-23659220672")
     <div class="slide">
         <div class="slide-header">
             <div class="kicker">AVAYA CASE REVIEW SUITE</div>
-            <h2>Automated Technical Direction Auditing (The Engine Brain)</h2>
+            <h2>Evidence-Grounded Technical Assessment (The Engine Brain)</h2>
         </div>
         <div class="slide-body">
             <div class="grid-2">
                 <div class="card">
                     <h3>How Technical Auditing Works</h3>
                     <p><strong>🧠 Layer-by-Layer Verification</strong><br>
-                    Checks if engineers blame application layer (JTAPI nulls) when the issue is platform configuration (CM ASAI snapshot returning T####).</p>
-                    <p><strong>🧠 Platform Attribute Validation</strong><br>
-                    Automatically verifies whether CM system-features SA9114 and SA9124 are enabled for park/unpark trunk CLI loss.</p>
-                    <p><strong>🧠 Correct API Path Enforcer</strong><br>
-                    Enforces official Javadoc path: LucentV5CallInfo.getUCID() over zeroed originalCallInfo.ucid.</p>
+                    Compares supplied application and platform evidence across layers. A matching pattern guides interpretation but does not establish a proven cause.</p>
+                    <p><strong>🧠 Platform Configuration Evidence Check</strong><br>
+                    Provides evidence-triggered guidance to verify CM system-features SA9114 and SA9124 when park/unpark trunk CLI loss is reported; it does not inspect the live platform.</p>
+                    <p><strong>🧠 API Method Reference Check</strong><br>
+                    The assessment compares case usage with official Javadoc, such as LucentV5CallInfo.getUCID() versus originalCallInfo.ucid, without treating the comparison as causal proof.</p>
                     <p><strong>🧠 Log Sufficiency Check</strong><br>
-                    Cross-checks case trace requests against log-collection.md matrix to ensure getlogs/csta_trace are attached.</p>
+                    Identifies whether expected logs were requested, attached, or analyzed and records evidence gaps; it does not ensure collection or attachment.</p>
                 </div>
                 <div class="card dark">
                     <h3>Technical Assessment Example</h3>
@@ -496,7 +500,7 @@ Solution / validation state:
             <h2>Standardized Executive Review Report Structure</h2>
         </div>
         <div class="slide-body">
-            <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="grid-2" style="gap: 12px;">
                 <div class="card" style="padding: 12px 20px;">
                     <h3>1. 6-8 Sentence Executive Summary</h3>
                     <p style="margin: 0;">One paragraph covering conclusion-level incident, impact, response, RCA state, mitigation, status, and next checkpoint.</p>
@@ -506,16 +510,20 @@ Solution / validation state:
                     <p style="margin: 0;">Problem clarification, findings, cause reasoning, solution validation, and unresolved technical gaps without repeating the summary.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>3. Progress Summary &amp; Timeline</h3>
-                    <p style="margin: 0;">Substantive milestones from the case record, Gmail, supplied documents, and logs, ordered oldest to newest.</p>
+                    <h3>3. Progress Summary</h3>
+                    <p style="margin: 0;">Key substantive progress and validation outcomes synthesized across the available sources.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
                     <h3>4. Ownership &amp; Next Step</h3>
                     <p style="margin: 0;">Evidence-stated assignee, last concrete action, next action, owner, and due date.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>5. Evidence Appendix</h3>
-                    <p style="margin: 0;">Final reverse-mapped audit table preserving the evidence chain, with no inline citations.</p>
+                    <h3>5. Timeline</h3>
+                    <p style="margin: 0;">Dated substantive events ordered oldest to newest, followed by any undated events.</p>
+                </div>
+                <div class="card" style="padding: 12px 20px;">
+                    <h3>6. Appendix A — Evidence Register</h3>
+                    <p style="margin: 0;">Final reverse-mapped evidence table preserving the audit chain without inline citations.</p>
                 </div>
             </div>
         </div>
@@ -533,8 +541,8 @@ Solution / validation state:
                     <h3>1-Click Automated Setup</h3>
                     <p><strong>🚀 Run setup_env.ps1</strong><br>
                     Automated PowerShell script installs Python mcp/playwright libraries and deploys plugins.</p>
-                    <p><strong>🚀 One-Time Google SSO</strong><br>
-                    Chrome window opens to authenticate @avaya.com Gmail for inbox searching.</p>
+                    <p><strong>🚀 Conditional Managed Edge Sign-In</strong><br>
+                    Run <code>gmail_brokerctl.py login</code> only when <code>gmail_brokerctl.py status</code> reports authentication required; otherwise the persistent session is reused.</p>
                     <p><strong>🚀 Restart Antigravity</strong><br>
                     Antigravity Desktop App automatically loads case-review and gmail-capability skills.</p>
                 </div>
@@ -555,21 +563,21 @@ Solution / validation state:
     <div class="slide">
         <div class="slide-header">
             <div class="kicker">AVAYA CASE REVIEW SUITE</div>
-            <h2>Business Impact & Key Takeaways for Management</h2>
+            <h2>Operational Capabilities & Key Takeaways for Management</h2>
         </div>
         <div class="slide-body">
             <div class="grid-3" style="margin-bottom: 25px;">
                 <div class="stat-box">
-                    <div class="num">80% Time Saved</div>
-                    <div class="desc">Case review prep time reduced from 45 mins to under 2 mins per case.</div>
+                    <div class="num">Faster Preparation</div>
+                    <div class="desc">Brings retrieved case and email evidence into one structured review with less manual source switching.</div>
                 </div>
                 <div class="stat-box">
-                    <div class="num">Zero Blind Spots</div>
-                    <div class="desc">Complete synthesis of Siebel/ServiceNow logs and Gmail email communications.</div>
+                    <div class="num">Evidence Traceability</div>
+                    <div class="desc">Maps rendered conclusions to a final evidence register so the supporting source record can be inspected.</div>
                 </div>
                 <div class="stat-box">
-                    <div class="num">30% Faster MTTR</div>
-                    <div class="desc">Eliminates misdirected PEAs and dead-end engineering investigations.</div>
+                    <div class="num">Earlier Escalation Signals</div>
+                    <div class="desc">Surfaces dated ownership, dispatch, staleness, and source-gap signals for review without claiming a resolution outcome.</div>
                 </div>
             </div>
             <div class="card">
