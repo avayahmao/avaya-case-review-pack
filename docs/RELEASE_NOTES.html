@@ -114,7 +114,8 @@
     <!-- UNRELEASED -->
     <div>
         <span class="version-tag">Unreleased</span>
-        <p>No unreleased changes.</p>
+        <p>Orders all rendered date/time content — Progress Summary, Timeline, ADM chronology, and Evidence Appendix rows — from oldest to newest, with undated entries last. Replaces the standalone Verdict section with a structured Executive Summary covering incident details, impact, response, one-sentence RCA state or conclusion, mitigation, current status, and next checkpoint. Moves the unused Google Apps Script governance prototype out of the active runtime and release manifest, preserving it under <code>examples/optional-appsscript/</code> as a manually deployed reference only.</p>
+        <p>Applies layered disclosure: a one-paragraph, 6-8 sentence Executive Summary states conclusion-level information while Technical &amp; Incident Assessment supplies technical reasoning and validation. Future prevention is excluded from Executive Summary; evidence-confirmed Existing prevention controls remain in the relevant technical problem only, while planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or implemented control. ADM depth stays inside Technical &amp; Incident Assessment instead of appending a duplicate ADM outline or lengthening Executive Summary.</p>
     </div>
 
     <!-- VERSION 1.6.0 -->
@@ -141,7 +142,7 @@
             <li>Removes inline Evidence annotations from the executive body.</li>
             <li>Removes generated risk lists and recommended actions so Managers retain judgment ownership.</li>
             <li>Keeps the internal evidence gate, source-conflict handling, and production-confirmation safeguards unchanged.</li>
-            <li>Aligns Google Docs/Sheets integration with the appendix contract and migrates the previous eight-column tracker schema.</li>
+            <li>Aligns the optional Google Apps Script reference for Google Docs/Sheets output with the appendix contract and migrates the previous eight-column tracker schema.</li>
         </ul>
     </div>
 
@@ -155,7 +156,7 @@
             <li><strong>Dynamic Evidence Gate</strong>:
                 <ul>
                     <li>Adds <code>Evidence 1..N</code> entries with Source, Date, Verbatim evidence / data, and Supports.</li>
-                    <li>Answers only evidence-supported questions; zero case-specific evidence outputs exactly <code>不知道</code>.</li>
+                    <li>Answers only evidence-supported questions; zero case-specific evidence outputs exactly <code>unknown</code>.</li>
                     <li>Prevents evidence splitting, duplication, or invention.</li>
                 </ul>
             </li>
@@ -254,9 +255,9 @@
         
         <h3>🚀 New Features & Modules</h3>
         <ul>
-            <li><strong>Google Apps Script & Workspace Governance Integration (<code>tools/appsscript/Code.gs</code>)</strong>:
+            <li><strong>Optional Google Apps Script & Workspace Governance Reference (<code>examples/optional-appsscript/Code.gs</code>)</strong>:
                 <ul>
-                    <li><strong>HTTP Webhook (<code>doPost</code>)</strong>: Endpoint to receive Antigravity case review JSON payloads in the cloud.</li>
+                    <li><strong>HTTP Webhook (<code>doPost</code>)</strong>: Reference endpoint for a separately deployed governance workflow; not installed or invoked by the active runtime.</li>
                     <li><strong>Google Sheets Governance Dashboard (<code>updateCaseTrackingSheet</code>)</strong>: Appends and updates case review records with conditional status highlighting (<span style="color: green;">🟢 Healthy</span>, <span style="color: orange;">🟡 At Risk</span>, <span style="color: red;">🔴 Stalled</span>).</li>
                     <li><strong>Google Docs Brief Generator (<code>createGoogleDocReport</code>)</strong>: Automatically creates structured executive case briefs in Google Drive.</li>
                     <li><strong>Scheduled Email Digest (<code>sendDailyManagerDigest</code>)</strong>: Automated trigger function that sweeps the tracking sheet daily and emails HTML alert digests to management for all stalled or at-risk cases.</li>

@@ -6,7 +6,12 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
-No unreleased changes.
+* Orders all rendered date/time content — Progress Summary, Timeline, ADM chronology, and Evidence Appendix rows — from oldest to newest, with undated entries last.
+* Replaces the standalone Verdict section with a structured Executive Summary covering incident details, impact, response, one-sentence RCA state or conclusion, mitigation, current status, and next checkpoint.
+* Moves the unused Google Apps Script governance prototype out of the active runtime and release manifest, preserving it under `examples/optional-appsscript/` as a manually deployed reference only.
+* Applies layered disclosure: a one-paragraph, 6-8 sentence Executive Summary states conclusion-level information while Technical & Incident Assessment supplies technical reasoning and validation.
+* Removes Future prevention from Executive Summary; evidence-confirmed Existing prevention controls remain in the relevant technical problem only, while planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or implemented control.
+* Keeps ADM depth inside Technical & Incident Assessment instead of appending a duplicate ADM outline or lengthening Executive Summary.
 
 ---
 
@@ -28,7 +33,7 @@ No unreleased changes.
 * Removes inline Evidence annotations from the executive body.
 * Removes generated risk lists and recommended actions so Managers retain judgment ownership.
 * Keeps the internal evidence gate, source-conflict handling, and production-confirmation safeguards unchanged.
-* Aligns Google Docs/Sheets integration with the appendix contract and migrates the previous eight-column tracker schema.
+* Aligns the optional Google Apps Script reference for Google Docs/Sheets output with the appendix contract and migrates the previous eight-column tracker schema.
 
 ---
 
@@ -38,7 +43,7 @@ No unreleased changes.
 
 * **Dynamic Evidence Gate**
   * Adds `Evidence 1..N` entries with Source, Date, Verbatim evidence / data, and Supports.
-  * Answers only evidence-supported questions; when no verifiable case-specific evidence exists, outputs exactly `不知道`.
+  * Answers only evidence-supported questions; when no verifiable case-specific evidence exists, outputs exactly `unknown`.
   * Prevents evidence splitting, duplication, or invention to reach a target count.
 * **Source Retrieval & Conflict Handling**
   * Restores raw Case ID handling for INC, SR, Activity, CTASK, CHG, and PRJTASK.
@@ -102,7 +107,7 @@ No unreleased changes.
 
 ## [v1.2.0] - 2026-07-26: Governance & Technical Specifications
 
-* Added Google Apps Script webhook, tracking-sheet, Google Docs brief, and scheduled digest modules.
+* Added an optional Google Apps Script webhook, tracking-sheet, Google Docs brief, and scheduled digest reference module; it was not part of the active installer/runtime.
 * Added the PowerPoint and interactive HTML presentation decks.
 * Published [Technical Design Markdown](TECHNICAL_DESIGN_DOCUMENT.md) and [HTML](TECHNICAL_DESIGN_DOCUMENT.html).
 * Centralized project documentation under `docs/`.

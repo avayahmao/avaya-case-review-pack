@@ -13,6 +13,8 @@ TDD_MD = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.md"
 TDD_HTML = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.html"
 RELEASE_MD = ROOT / "docs/RELEASE_NOTES.md"
 RELEASE_HTML = ROOT / "docs/RELEASE_NOTES.html"
+ADM_SPEC = ROOT / "docs/superpowers/specs/2026-08-02-adm-adaptive-integration-design.md"
+PRESENTATION_HTML = ROOT / "docs/PRESENTATION.html"
 README_MD = ROOT / "README.md"
 README_HTML = ROOT / "README.html"
 RELEASE_MANIFEST = ROOT / "release-manifest.txt"
@@ -427,6 +429,40 @@ class CaseReviewContractTests(unittest.TestCase):
                     self.assertIn(marker, contract)
                 self.assertRegex(contract, r"timing(?:/| and )location")
                 self.assertNotIn(old_summary, contract)
+
+    def test_adm_spec_and_presentation_follow_layered_contract(self):
+        adm_spec = read(ADM_SPEC)
+        presentation = read(PRESENTATION_HTML)
+
+        for marker in [
+            "Executive Summary remains one 6-8 sentence paragraph",
+            "Future prevention is excluded from Executive Summary",
+            "Existing prevention controls",
+            "does not append another set of ADM sections",
+            "Existing prevention controls require evidence confirming implementation",
+            "Planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or an implemented control",
+        ]:
+            self.assertIn(marker, adm_spec)
+
+        for marker in [
+            "6-8 Sentence Executive Summary",
+            "Technical &amp; Incident Assessment",
+            "Evidence Appendix",
+        ]:
+            self.assertIn(marker, presentation)
+        for marker in [
+            "Risk Flags & Sanity Audit",
+            "Risk Flags &amp; Sanity Audit",
+            "Recommended Manager Actions",
+            "prevention priorities",
+        ]:
+            self.assertNotIn(marker, presentation)
+
+        for path in [RELEASE_MD, RELEASE_HTML]:
+            with self.subTest(document=path.name):
+                content = read(path)
+                self.assertIn("layered disclosure", content.lower())
+                self.assertIn("6-8 sentence Executive Summary", content)
 
     def test_tdd_contract_unconditionally_forbids_generated_recommendations(self):
         sections = {
