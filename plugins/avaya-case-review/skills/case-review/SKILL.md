@@ -156,20 +156,22 @@ The **Executive Summary** owns conclusion-level information, while **Technical &
 - Write one natural-language paragraph of 6-8 sentences with no subheadings, bullets, field labels, or citation markers.
 - Cover the following conclusion-level information in this order, combining adjacent points when needed to stay within 6-8 sentences: the incident with its evidenced time and location; affected scope; business or customer impact; key response; a one-sentence technical conclusion stating the RCA state or supported cause; mitigation maturity and production outcome; current status; and the next evidenced checkpoint with owner and ETA.
 - Use lowercase `unknown` for an unsupported detail. Do not substitute a plausible assumption or silently omit a required conclusion-level point.
-- Exclude raw logs, detailed troubleshooting, configuration detail, extended cause analysis, and prevention content. `Future prevention` does not belong in the Executive Summary.
+- No dedicated `Future prevention` field, recommendation, or prevention narrative belongs in the Executive Summary. Exclude raw logs, detailed troubleshooting, configuration detail, and extended cause analysis.
+- An evidence-stated next action or checkpoint may appear in the Executive Summary and `Ownership & Next Step`, even when preventive in purpose, but describe it only as an existing commitment or current planned work with its evidenced owner and ETA—never as an agent recommendation or implemented control.
 
 #### Technical & Incident Assessment contract
 
 - Start with problem clarification, then explain the evidence and reasoning needed to support or qualify the summary conclusion.
-- Every paragraph must add at least one of the following: environment or affected-component detail; a finding or interpreted log excerpt; causal reasoning or an RCA-state explanation; a ruled-out alternative, unresolved gap, or missing validation; solution, workaround, implementation, or verification detail; or **Existing prevention controls** already stated, committed, or implemented in the evidence.
+- Every paragraph must add at least one of the following: environment or affected-component detail; a finding or interpreted log excerpt; causal reasoning or an RCA-state explanation; a ruled-out alternative, unresolved gap, or missing validation; solution, workaround, implementation, or verification detail; or **Existing prevention controls** already implemented and evidenced.
 - Remove any paragraph that only paraphrases an Executive Summary sentence. Do not repeat the full incident, impact, response, status, owner, or ETA unless the technical explanation requires a specific distinction.
-- Existing prevention controls appear only in the technical assessment under the relevant problem and only when the evidence already states, commits, or implements them. Omit them when absent; never generate a prevention recommendation.
+- Existing prevention controls appear only in the technical assessment under the relevant problem and only when evidence shows they are implemented. Planned or committed preventive work that is not implemented must not be labeled an Existing prevention control; describe it only as planned or committed work or as the next committed checkpoint. Omit controls when absent and never generate a prevention recommendation.
 
 #### Adaptive ADM depth
 
 - ADM mode activates only when the user explicitly requests `ADM` or `Avaya Diagnostic Methodology`, matched case-insensitively.
 - ADM mode increases the depth of `Technical & Incident Assessment` only; it must not lengthen the Executive Summary or create a second ADM block.
 - When evidence permits, cover **Details/Findings**, **Problem Clarification**, **Cause**, and **Solution** as analytical dimensions inside the chosen technical structure. Adapt the prose to the case; it is not required to display four mechanical ADM headings.
+- For each of the four ADM dimensions, provide evidence-supported content when available; when a dimension is relevant but the evidence cannot support a conclusion, state an explicit unresolved evidence or investigation gap. Omit genuinely inapplicable dimensions and never add rigid filler or invention.
 
 #### Generation order
 
@@ -202,15 +204,15 @@ Before rendering:
 3. Confirm unresolved conflicts remain visible and are not silently resolved.
 4. Confirm mitigation maturity does not overstate lab or planned work as production success.
 5. Confirm owners are evidence-backed or explicitly `unassigned`.
-6. Confirm `Ownership & Next Step` only restates actions, owners, and dates already present in evidence; it must never generate a new recommendation.
+6. Confirm `Ownership & Next Step` only restates actions, owners, and dates already present in evidence, including preventive commitments; it must never generate a new recommendation or label planned work as an implemented control.
 7. Confirm the rendered body contains no Evidence ID or citation suffix.
 8. Confirm the appendix is last and reverse-maps every evidence row through `Supports`.
 9. Confirm the zero-evidence response is exactly `unknown`.
 10. Confirm every rendered list or table containing dates or timestamps is in ascending date/time order, with undated entries last.
-11. Confirm the Executive Summary is one 6-8 sentence paragraph with no subheadings or prevention content.
+11. Confirm the Executive Summary is one 6-8 sentence paragraph with no subheadings, dedicated prevention field, recommendation, or prevention narrative; an evidence-stated preventive checkpoint may appear only as an existing commitment or current planned work.
 12. Confirm its root-cause statement uses at most one sentence as the one-sentence technical conclusion; keep detailed cause analysis only in Technical & Incident Assessment.
 13. Remove any technical paragraph that merely paraphrases the summary without adding a finding, mechanism, validation result, or unresolved gap.
-14. When explicit ADM mode applies, confirm all four analytical dimensions are covered inside Technical & Incident Assessment without a second outline or ADM block.
+14. When explicit ADM mode applies, verify: For each of the four ADM dimensions, include evidence-supported content or, when relevant evidence is unavailable, an explicit unresolved evidence or investigation gap; omit inapplicable dimensions, never add rigid filler or invention, and do not create a second outline or ADM block.
 
 ### Step 7 - Produce the Review
 
@@ -226,10 +228,10 @@ After the evidence gate passes, use this common structure:
 **Customer:** <account/site/contact or unknown>
 
 ## Executive Summary
-<Write one natural-language paragraph of 6-8 sentences covering the conclusion-level incident with time and location, affected scope, impact, key response, one-sentence technical conclusion, mitigation and production outcome, current status, and the next evidenced checkpoint with owner and ETA; use lowercase unknown for unsupported details; exclude raw logs, detailed diagnostics, configuration detail, extended cause analysis, and prevention content.>
+<Write one natural-language paragraph of 6-8 sentences covering the conclusion-level incident with time and location, affected scope, impact, key response, one-sentence technical conclusion, mitigation and production outcome, current status, and the next evidenced checkpoint with owner and ETA; use lowercase unknown for unsupported details; exclude raw logs, detailed diagnostics, configuration detail, extended cause analysis, and any dedicated prevention field, recommendation, or narrative; an evidence-stated preventive next checkpoint is allowed only as an existing commitment or current planned work, never as an agent recommendation or implemented control.>
 
 ## Technical & Incident Assessment
-<Start with problem clarification; add environment or affected-component detail, findings or interpreted log evidence, causal or RCA-state reasoning, solution or workaround implementation and verification, and unresolved gaps or missing validation; do not fully restate the event, impact, response, or status from the Executive Summary.>
+<Start with problem clarification; add environment or affected-component detail, findings or interpreted log evidence, causal or RCA-state reasoning, solution or workaround implementation and verification, and unresolved gaps or missing validation; distinguish planned preventive work from implemented controls; do not fully restate the event, impact, response, or status from the Executive Summary.>
 
 ## Progress Summary
 <Three to five substantive milestones, oldest first, without citation markers.>
@@ -254,10 +256,10 @@ After the evidence gate passes, use this common structure:
 
 For the conditional technical section:
 
-- Choose exactly one structure for the section.
+- Choose exactly one structure for the section; the multi-problem and single-issue structures are mutually exclusive.
 - **Multi-problem:** use `Problem Statement`, then `Problem 1 - <Record ID>`, `Problem 2 - <Record ID>`, and so on. For each problem, cover problem clarification, evidence-backed findings, cause or RCA-state reasoning, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
 - **Single issue:** use `Incident & RCA Summary` and cover the same semantic sequence: problem clarification, evidence-backed findings, cause or RCA-state reasoning, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
-- Put **Existing prevention controls** only under the relevant problem and only when evidenced as already stated, committed, or implemented.
+- Put **Existing prevention controls** only under the relevant problem and only when evidence confirms they are implemented. Describe evidence-stated but not-yet-implemented preventive work as planned or committed work, not as an existing control.
 
 Do not render both conditional structures. Do not create a standalone telemetry section or a second ADM block.
 
@@ -274,7 +276,8 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 - Domain rules are conditionally activated and never substitute for case evidence.
 - Production success requires post-change production evidence.
 - The report must not generate risk lists, risk scores, manager directives, prevention priorities, or recommendations.
-- Existing prevention controls belong only in Technical & Incident Assessment, under the relevant problem, and only when already evidenced.
+- Evidence-stated preventive next actions or checkpoints may appear in the Executive Summary and `Ownership & Next Step` only as existing commitments or current planned work, never as agent recommendations or implemented controls.
+- Existing prevention controls belong only in Technical & Incident Assessment under the relevant problem and only when evidence confirms implementation; planned or committed work is not an existing control.
 - The Executive Summary states the conclusion; Technical & Incident Assessment explains the evidence, mechanism, reasoning, validation, and unresolved gaps that justify or qualify it.
 - The main body stays citation-free; the final appendix preserves the audit chain.
 - Rendered date/time lists and tables are ordered oldest to newest; undated items follow dated items.

@@ -125,7 +125,17 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertIn(marker, self.skill)
 
     def test_conditional_schema_and_manager_judgment_boundary(self):
-        self.assertIn("Choose exactly one structure", self.skill)
+        conditional = extract_template_section(
+            self.skill,
+            "For the conditional technical section:",
+            "\n---\n\n## Non-Negotiable Rules",
+        )
+        self.assertEqual(1, conditional.count("**Multi-problem:**"))
+        self.assertEqual(1, conditional.count("**Single issue:**"))
+        self.assertIn("Choose exactly one structure", conditional)
+        self.assertIn("mutually exclusive", conditional)
+        self.assertIn("Do not render both conditional structures", conditional)
+        self.assertIn("second ADM block", conditional)
         self.assertIn("must never generate a new recommendation", self.skill)
         self.assertNotIn("All action items must live exclusively", self.skill)
         self.assertNotIn("### [Structure A:", self.skill)
@@ -133,27 +143,42 @@ class CaseReviewContractTests(unittest.TestCase):
 
     def test_executive_summary_is_one_layered_paragraph(self):
         template = extract_report_template(self.skill)
+        self.assertEqual(1, template.count("## Executive Summary"))
+        self.assertEqual(1, template.count("## Technical & Incident Assessment"))
         summary = extract_template_section(
             template,
             "## Executive Summary",
             "## Technical & Incident Assessment",
         )
+        content_lines = [line.strip() for line in summary.splitlines() if line.strip()]
+        self.assertEqual(1, len(content_lines))
         self.assertNotIn("Verdict", template)
-        self.assertNotIn("###", summary)
+        self.assertNotRegex(summary, r"(?m)^\s*#{1,6}\s+")
+        self.assertNotRegex(summary, r"(?m)^\s*[-*+]\s+")
+        self.assertNotRegex(
+            summary,
+            r"(?m)^\s*(?:[-*+]\s+)?(?:\*\*)?[A-Za-z][A-Za-z &/()-]{0,40}:(?:\*\*)?\s*",
+        )
         for marker in [
             "Core Incident Details",
             "Impact and Response",
             "Next Steps",
             "Future prevention",
+            "Existing prevention controls",
         ]:
             self.assertNotIn(marker, summary)
+        executive_contract = extract_template_section(
+            self.skill,
+            "#### Executive Summary contract",
+            "#### Technical & Incident Assessment contract",
+        )
         for marker in [
             "one natural-language paragraph of 6-8 sentences",
             "one-sentence technical conclusion",
             "`unknown`",
             "conclusion-level information",
         ]:
-            self.assertIn(marker, self.skill)
+            self.assertIn(marker, executive_contract)
 
     def test_technical_assessment_adds_reasoning_without_restatement(self):
         template = extract_report_template(self.skill)
@@ -163,6 +188,11 @@ class CaseReviewContractTests(unittest.TestCase):
             "## Progress Summary",
         )
         self.assertIn("Start with problem clarification", technical)
+        technical_contract = extract_template_section(
+            self.skill,
+            "#### Technical & Incident Assessment contract",
+            "#### Adaptive ADM depth",
+        )
         for marker in [
             "environment or affected-component detail",
             "causal reasoning or an RCA-state explanation",
@@ -170,10 +200,15 @@ class CaseReviewContractTests(unittest.TestCase):
             "only paraphrases an Executive Summary sentence",
             "Existing prevention controls",
         ]:
-            self.assertIn(marker, self.skill)
+            self.assertIn(marker, technical_contract)
 
     def test_adm_expands_technical_depth_without_duplicate_sections(self):
         template = extract_report_template(self.skill)
+        adaptive_adm = extract_template_section(
+            self.skill,
+            "#### Adaptive ADM depth",
+            "#### Generation order",
+        )
         for marker in [
             "ADM mode activates only when the user explicitly requests `ADM` or `Avaya Diagnostic Methodology`, matched case-insensitively.",
             "Details/Findings",
@@ -182,7 +217,11 @@ class CaseReviewContractTests(unittest.TestCase):
             "Solution",
             "increases the depth of `Technical & Incident Assessment` only",
         ]:
-            self.assertIn(marker, self.skill)
+            self.assertIn(marker, adaptive_adm)
+        self.assertNotRegex(
+            template,
+            r"(?m)^## (?:ADM\b|Avaya Diagnostic Methodology\b)",
+        )
         for heading in [
             "## Details/Findings",
             "## Problem Clarification",
@@ -190,6 +229,78 @@ class CaseReviewContractTests(unittest.TestCase):
             "## Solution",
         ]:
             self.assertNotIn(heading, template)
+
+    def test_adm_sparse_evidence_uses_gaps_without_invention(self):
+        adaptive_adm = extract_template_section(
+            self.skill,
+            "#### Adaptive ADM depth",
+            "#### Generation order",
+        )
+        reflection = extract_template_section(
+            self.skill,
+            "### Step 6 - Reflection and Coverage Review",
+            "### Step 7 - Produce the Review",
+        )
+        self.assertIn("When evidence permits, cover", adaptive_adm)
+        for marker in [
+            "For each of the four ADM dimensions",
+            "evidence-supported content",
+            "explicit unresolved evidence or investigation gap",
+            "rigid filler or invention",
+        ]:
+            self.assertIn(marker, adaptive_adm)
+            self.assertIn(marker, reflection)
+        self.assertNotIn(
+            "confirm all four analytical dimensions are covered",
+            reflection.lower(),
+        )
+
+    def test_preventive_next_checkpoint_is_commitment_not_control(self):
+        template = extract_report_template(self.skill)
+        summary = extract_template_section(
+            template,
+            "## Executive Summary",
+            "## Technical & Incident Assessment",
+        )
+        ownership = extract_template_section(
+            template,
+            "## Ownership & Next Step",
+            "## Timeline",
+        )
+        executive_contract = extract_template_section(
+            self.skill,
+            "#### Executive Summary contract",
+            "#### Technical & Incident Assessment contract",
+        )
+        technical_contract = extract_template_section(
+            self.skill,
+            "#### Technical & Incident Assessment contract",
+            "#### Adaptive ADM depth",
+        )
+        conditional = extract_template_section(
+            self.skill,
+            "For the conditional technical section:",
+            "\n---\n\n## Non-Negotiable Rules",
+        )
+
+        self.assertIn("Stated next action", ownership)
+        self.assertIn("evidence-stated preventive next checkpoint", summary)
+        self.assertNotIn("Future prevention", summary)
+        self.assertNotIn("Existing prevention controls", summary)
+        for marker in [
+            "No dedicated `Future prevention` field, recommendation, or prevention narrative",
+            "evidence-stated next action or checkpoint",
+            "existing commitment or current planned work",
+            "never as an agent recommendation or implemented control",
+        ]:
+            self.assertIn(marker, executive_contract)
+        for marker in [
+            "only when evidence shows they are implemented",
+            "Planned or committed preventive work that is not implemented must not be labeled an Existing prevention control",
+        ]:
+            self.assertIn(marker, technical_contract)
+        self.assertIn("only under the relevant problem", conditional)
+        self.assertIn("only when evidence confirms they are implemented", conditional)
 
     def test_appendix_is_last_and_body_has_no_evidence_markers(self):
         template = extract_report_template(self.skill)
@@ -347,6 +458,8 @@ class CaseReviewContractTests(unittest.TestCase):
             "executive_summary_layering",
             "executive_technical_deduplication",
             "adm_technical_depth_without_duplicate_sections",
+            "adm_sparse_evidence",
+            "preventive_next_checkpoint",
             "lab_success_not_production_confirmed",
             "required_tool_missing",
             "conflicting_sources",

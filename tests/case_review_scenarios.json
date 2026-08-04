@@ -54,6 +54,18 @@
     "contract_markers": ["ADM mode activates", "increases the depth of `Technical & Incident Assessment` only", "not required to display four mechanical ADM headings"]
   },
   {
+    "id": "adm_sparse_evidence",
+    "input": "The user explicitly requests ADM, but the record supports findings while cause and solution evidence are unavailable.",
+    "expected": "Report the supported findings and explicit missing-evidence or investigation gaps for relevant unsupported dimensions without inventing a cause, solution, or rigid filler.",
+    "contract_markers": ["For each of the four ADM dimensions", "explicit unresolved evidence or investigation gap", "rigid filler or invention"]
+  },
+  {
+    "id": "preventive_next_checkpoint",
+    "input": "Evidence states a future preventive validation or change with an owner and ETA, but it has not been implemented.",
+    "expected": "The Executive Summary may state it only as the next committed checkpoint, Ownership restates the commitment, and the technical assessment distinguishes planned work from implemented controls without recommendation language.",
+    "contract_markers": ["evidence-stated next action or checkpoint", "existing commitment or current planned work", "must not be labeled an Existing prevention control"]
+  },
+  {
     "id": "lab_success_not_production_confirmed",
     "input": "A workaround succeeded in a lab or one controlled test, but production deployment or outcome is unverified.",
     "expected": "Label the mitigation Lab Validated and explicitly state that production resolution is not confirmed.",
