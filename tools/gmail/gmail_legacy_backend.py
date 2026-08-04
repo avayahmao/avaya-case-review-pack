@@ -61,6 +61,44 @@ def _required_string(params: dict[str, Any], name: str, default: str = "") -> st
     return value
 
 
+def _required_nonempty_string(params: dict[str, Any], name: str) -> str:
+    value = _required_string(params, name)
+    if not value.strip():
+        raise ValueError(f"Gmail parameter {name} must be non-empty")
+    return value
+
+
+def _optional_string(params: dict[str, Any], name: str) -> str:
+    value = params.get(name, "")
+    if not isinstance(value, str):
+        raise ValueError(f"Gmail parameter {name} must be a string")
+    return value
+
+
+def _bounded_int(
+    params: dict[str, Any],
+    name: str,
+    minimum: int,
+    maximum: int,
+) -> int:
+    value = params.get(name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"Gmail parameter {name} must be an integer")
+    if value < minimum or value > maximum:
+        raise ValueError(
+            f"Gmail parameter {name} must be between {minimum} and {maximum}"
+        )
+    return value
+
+
+def _encoded_parameters(params: dict[str, str]) -> str:
+    return "".join(
+        f"&{name}={urllib.parse.quote(value)}"
+        for name, value in params.items()
+        if value != ""
+    )
+
+
 async def legacy_query(method: str, params: dict[str, Any]) -> str:
     """Map the stable Gmail method contract to the legacy Apps Script URL."""
 
@@ -84,6 +122,33 @@ async def legacy_query(method: str, params: dict[str, Any]) -> str:
             + urllib.parse.quote(subject)
             + "&body="
             + urllib.parse.quote(body),
+        )
+    if method == "gmail_list_threads":
+        return await query_apps_script(
+            "list_threads",
+            _encoded_parameters(
+                {
+                    "q": _required_nonempty_string(params, "query"),
+                    "snapshot_before": _optional_string(params, "snapshot_before"),
+                    "page_token": _optional_string(params, "page_token"),
+                    "max_results": str(
+                        _bounded_int(params, "max_results", 1, 100)
+                    ),
+                }
+            ),
+        )
+    if method == "gmail_read_thread_page":
+        return await query_apps_script(
+            "read_thread_page",
+            _encoded_parameters(
+                {
+                    "thread_id": _required_nonempty_string(params, "thread_id"),
+                    "snapshot_before": _required_nonempty_string(
+                        params, "snapshot_before"
+                    ),
+                    "cursor": _optional_string(params, "cursor"),
+                }
+            ),
         )
     raise ValueError(f"Unsupported Gmail method: {method}")
 

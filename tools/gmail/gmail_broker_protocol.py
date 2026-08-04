@@ -18,6 +18,8 @@ ALLOWED_METHODS = frozenset(
         "gmail_search",
         "gmail_read",
         "gmail_send",
+        "gmail_list_threads",
+        "gmail_read_thread_page",
         "auth_login",
         "shutdown",
     }

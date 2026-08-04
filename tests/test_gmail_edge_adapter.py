@@ -9,6 +9,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from tools.gmail.gmail_edge_broker import (
+    _SAFE_READ_METHODS,
     BrowserAdapterError,
     BrowserApplicationError,
     BrowserAuthRequired,
@@ -220,7 +221,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(playwright.stop_calls, 1)
 
     async def test_maps_all_gmail_methods_and_creates_one_page_per_execute(self):
-        pages = [FakePage(body=f"response-{index}") for index in range(3)]
+        pages = [FakePage(body=f"response-{index}") for index in range(5)]
         context = FakeContext(*pages)
         adapter, _starter, playwright = self.make_adapter(context)
         await adapter.start()
@@ -232,10 +233,30 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                 "gmail_send",
                 {"to": "user+tag@example.com", "subject": "A & B", "body": "line 1\nline 2"},
             ),
+            await adapter.execute(
+                "gmail_list_threads",
+                {
+                    "query": "subject:1-2 & owner",
+                    "snapshot_before": "2026-08-05T00:00:00Z",
+                    "page_token": "page-2",
+                    "max_results": 25,
+                },
+            ),
+            await adapter.execute(
+                "gmail_read_thread_page",
+                {
+                    "thread_id": "thread/123",
+                    "snapshot_before": "2026-08-05T00:00:00Z",
+                    "cursor": "cursor-2",
+                },
+            ),
         ]
 
-        self.assertEqual(results, ["response-0", "response-1", "response-2"])
-        self.assertEqual(len(context.created_pages), 3)
+        self.assertEqual(
+            results,
+            ["response-0", "response-1", "response-2", "response-3", "response-4"],
+        )
+        self.assertEqual(len(context.created_pages), 5)
         self.assertEqual(len(playwright.chromium.launches), 1)
         expected = [
             ("search", {"q": ["subject:1-2 & owner"]}),
@@ -248,6 +269,23 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                     "body": ["line 1\nline 2"],
                 },
             ),
+            (
+                "list_threads",
+                {
+                    "q": ["subject:1-2 & owner"],
+                    "snapshot_before": ["2026-08-05T00:00:00Z"],
+                    "page_token": ["page-2"],
+                    "max_results": ["25"],
+                },
+            ),
+            (
+                "read_thread_page",
+                {
+                    "thread_id": ["thread/123"],
+                    "snapshot_before": ["2026-08-05T00:00:00Z"],
+                    "cursor": ["cursor-2"],
+                },
+            ),
         ]
         for page, (action, params) in zip(pages, expected):
             url = page.goto_calls[0][0]
@@ -258,6 +296,34 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertLess(page.events.index("wait:networkidle"), page.events.index("body"))
             self.assertEqual(page.close_calls, 1)
 
+        await adapter.close()
+
+    async def test_omits_empty_optional_thread_context_parameters(self):
+        pages = [FakePage(), FakePage()]
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(*pages))
+        await adapter.start()
+
+        await adapter.execute(
+            "gmail_list_threads",
+            {"query": "case", "max_results": 1},
+        )
+        await adapter.execute(
+            "gmail_read_thread_page",
+            {"thread_id": "thread-1", "snapshot_before": "snapshot", "cursor": ""},
+        )
+
+        self.assertEqual(
+            parse_qs(urlparse(pages[0].goto_calls[0][0]).query),
+            {"action": ["list_threads"], "q": ["case"], "max_results": ["1"]},
+        )
+        self.assertEqual(
+            parse_qs(urlparse(pages[1].goto_calls[0][0]).query),
+            {
+                "action": ["read_thread_page"],
+                "thread_id": ["thread-1"],
+                "snapshot_before": ["snapshot"],
+            },
+        )
         await adapter.close()
 
     async def test_classifies_microsoft_redirect_before_reading_response_body(self):
@@ -319,6 +385,16 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             ("gmail_search", {}),
             ("gmail_read", {"message_id": 123}),
             ("gmail_send", {"to": "a", "subject": "b"}),
+            ("gmail_list_threads", {"query": "case", "max_results": True}),
+            ("gmail_list_threads", {"query": "case"}),
+            ("gmail_list_threads", {"query": "case", "max_results": 0}),
+            ("gmail_list_threads", {"query": "case", "max_results": 101}),
+            ("gmail_list_threads", {"query": "", "max_results": 1}),
+            ("gmail_list_threads", {"query": "case", "page_token": 1, "max_results": 1}),
+            ("gmail_read_thread_page", {"snapshot_before": "snapshot"}),
+            ("gmail_read_thread_page", {"thread_id": "", "snapshot_before": "snapshot"}),
+            ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": ""}),
+            ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": "snapshot", "cursor": 1}),
             ("health", {}),
         ):
             with self.subTest(method=method, params=params):
@@ -327,6 +403,19 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.created_pages, [])
         await adapter.close()
+
+    def test_marks_thread_context_operations_safe_to_retry(self):
+        self.assertEqual(
+            _SAFE_READ_METHODS,
+            frozenset(
+                {
+                    "gmail_search",
+                    "gmail_read",
+                    "gmail_list_threads",
+                    "gmail_read_thread_page",
+                }
+            ),
+        )
 
     def test_default_profile_is_dedicated_and_common_guard_is_applied(self):
         home = self.root / "home"

@@ -89,7 +89,14 @@ INTERACTIVE_LOGIN_TIMEOUT_SECONDS = 300
 LOGIN_POLL_INTERVAL_MS = 1_000
 LOGIN_VERIFY_QUERY = "subject:__avaya_gmail_edge_broker_verify__"
 
-_SAFE_READ_METHODS = frozenset({"gmail_search", "gmail_read"})
+_SAFE_READ_METHODS = frozenset(
+    {
+        "gmail_search",
+        "gmail_read",
+        "gmail_list_threads",
+        "gmail_read_thread_page",
+    }
+)
 _GMAIL_METHODS = _SAFE_READ_METHODS | {"gmail_send"}
 _AUTH_REQUIRED_STATES = frozenset(
     {
@@ -107,7 +114,7 @@ class BrowserAdapter(Protocol):
 
     async def close(self) -> None: ...
 
-    async def execute(self, method: str, params: dict[str, str]) -> str: ...
+    async def execute(self, method: str, params: dict[str, Any]) -> str: ...
 
     async def interactive_login(self) -> AuthState: ...
 
@@ -207,7 +214,7 @@ class ManagedEdgeAdapter:
     async def close(self) -> None:
         await self._close_resources()
 
-    async def execute(self, method: str, params: dict[str, str]) -> str:
+    async def execute(self, method: str, params: dict[str, Any]) -> str:
         context = self._context
         if context is None:
             raise BrowserAdapterError("Managed Edge is not started")
@@ -375,7 +382,7 @@ class ManagedEdgeAdapter:
             base_url=self._app_script_url,
         )
 
-    def _build_method_url(self, method: str, params: dict[str, str]) -> str:
+    def _build_method_url(self, method: str, params: dict[str, Any]) -> str:
         if not isinstance(params, dict):
             raise BrowserApplicationError("Gmail request parameters are invalid")
         if method == "gmail_search":
@@ -391,14 +398,65 @@ class ManagedEdgeAdapter:
                 "subject": self._required_string(params, "subject"),
                 "body": self._required_string(params, "body"),
             }
+        elif method == "gmail_list_threads":
+            action = "list_threads"
+            mapped = {
+                "q": self._required_nonempty_string(params, "query"),
+                "snapshot_before": self._optional_string(params, "snapshot_before"),
+                "page_token": self._optional_string(params, "page_token"),
+                "max_results": str(
+                    self._bounded_int(params, "max_results", 1, 100)
+                ),
+            }
+        elif method == "gmail_read_thread_page":
+            action = "read_thread_page"
+            mapped = {
+                "thread_id": self._required_nonempty_string(params, "thread_id"),
+                "snapshot_before": self._required_nonempty_string(
+                    params, "snapshot_before"
+                ),
+                "cursor": self._optional_string(params, "cursor"),
+            }
         else:
             raise BrowserApplicationError("Unsupported Gmail browser method")
-        return build_action_url(action, mapped, base_url=self._app_script_url)
+        return build_action_url(
+            action,
+            {key: value for key, value in mapped.items() if value != ""},
+            base_url=self._app_script_url,
+        )
 
     @staticmethod
-    def _required_string(params: dict[str, str], name: str) -> str:
+    def _required_string(params: dict[str, Any], name: str) -> str:
         value = params.get(name)
         if not isinstance(value, str):
+            raise BrowserApplicationError("Gmail request parameters are invalid")
+        return value
+
+    @staticmethod
+    def _required_nonempty_string(params: dict[str, Any], name: str) -> str:
+        value = ManagedEdgeAdapter._required_string(params, name)
+        if not value.strip():
+            raise BrowserApplicationError("Gmail request parameters are invalid")
+        return value
+
+    @staticmethod
+    def _optional_string(params: dict[str, Any], name: str) -> str:
+        value = params.get(name, "")
+        if not isinstance(value, str):
+            raise BrowserApplicationError("Gmail request parameters are invalid")
+        return value
+
+    @staticmethod
+    def _bounded_int(
+        params: dict[str, Any],
+        name: str,
+        minimum: int,
+        maximum: int,
+    ) -> int:
+        value = params.get(name)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise BrowserApplicationError("Gmail request parameters are invalid")
+        if value < minimum or value > maximum:
             raise BrowserApplicationError("Gmail request parameters are invalid")
         return value
 
