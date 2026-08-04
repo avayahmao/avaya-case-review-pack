@@ -79,6 +79,7 @@ function loadBridge({ listPages = {}, threads = {}, legacyThreads = [], legacyMe
       return Buffer.from(bytes).toString("base64url");
     },
     base64DecodeWebSafe(value) {
+      if (!/^[A-Za-z0-9_-]*={0,2}$/.test(value)) throw new Error("invalid base64");
       return Array.from(Buffer.from(value, "base64url"));
     },
     computeDigest(_algorithm, value) {
@@ -103,11 +104,14 @@ function loadBridge({ listPages = {}, threads = {}, legacyThreads = [], legacyMe
         Threads: {
           list(userId, options) {
             calls.list.push({ userId, options: { ...options } });
-            return structuredClone(listPages[options.pageToken || "first"] || { threads: [] });
+            const pageKey = options.pageToken || "first";
+            const hasPage = Object.prototype.hasOwnProperty.call(listPages, pageKey);
+            return structuredClone(hasPage ? listPages[pageKey] : { threads: [] });
           },
           get(userId, threadId, options) {
             calls.get.push({ userId, threadId, options: { ...options } });
-            return structuredClone(threads[threadId] || { id: threadId, messages: [] });
+            const hasThread = Object.prototype.hasOwnProperty.call(threads, threadId);
+            return structuredClone(hasThread ? threads[threadId] : { id: threadId, messages: [] });
           },
         },
       },
@@ -256,6 +260,12 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
     parts: [
       { mimeType: "text/html", body: { data: webSafe("<p>HTML fallback</p>") } },
       {
+        mimeType: "text/plain",
+        filename: "notes.txt",
+        attachmentId: "attachment-1",
+        body: { data: webSafe("attachment text must not become the message body") },
+      },
+      {
         mimeType: "multipart/alternative",
         parts: [{ mimeType: "text/plain", body: { data: webSafe("Plain body") } }],
       },
@@ -270,8 +280,9 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
   assert.equal(api.normalizeMessage(htmlOnly).body_chunks.join(""), "Hello world\nagain & more");
   const normalized = api.normalizeMessage(multipart);
   assert.deepEqual(Array.from(normalized.body_chunks), ["Plain body"]);
-  assert.deepEqual(Array.from(normalized.attachment_names), ["evidence.pdf"]);
+  assert.deepEqual(Array.from(normalized.attachment_names), ["notes.txt", "evidence.pdf"]);
   assert.equal(normalized.body_chunks.join("").includes("attachment payload"), false);
+  assert.equal(normalized.body_chunks.join("").includes("attachment text"), false);
 });
 
 test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting code points", () => {
@@ -322,7 +333,65 @@ test("read_thread_page returns at most four segments and advances a server-issue
   assert.equal(second.segments.length, 1);
   assert.equal(second.segments[0].message_id, "message-4");
   assert.equal(second.complete, true);
+  assert.equal(second.messages_completed, 5);
   assert.equal(second.next_cursor, null);
+});
+
+test("malformed Gmail responses, messages, and MIME data fail closed with sanitized errors", () => {
+  const snapshot = "2026-08-04T11:00:00Z";
+  const nullThread = loadBridge({ threads: { "thread-null": null } });
+  assert.throws(
+    () => nullThread.api.readThreadPage({ thread_id: "thread-null", snapshot_before: snapshot }),
+    /INVALID_THREAD_RESPONSE/,
+  );
+  const malformedMessage = loadBridge({
+    threads: {
+      "thread-malformed": {
+        messages: [{ id: "missing-payload", threadId: "thread-malformed", internalDate: "1785841200000" }],
+      },
+    },
+  });
+  assert.throws(
+    () => malformedMessage.api.readThreadPage({ thread_id: "thread-malformed", snapshot_before: snapshot }),
+    /INVALID_MESSAGE/,
+  );
+  const malformedMessageResponse = JSON.parse(malformedMessage.context.doGet({
+    parameter: { action: "read_thread_page", thread_id: "thread-malformed", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(malformedMessageResponse, { success: false, error: "APP_ERROR" });
+
+  const decodeFailure = loadBridge({
+    threads: {
+      "thread-decode": {
+        messages: [{
+          id: "bad-body",
+          threadId: "thread-decode",
+          internalDate: "1785841200000",
+          payload: { mimeType: "text/plain", body: { data: "%%%" }, headers: [] },
+        }],
+      },
+    },
+  });
+  assert.throws(
+    () => decodeFailure.api.readThreadPage({ thread_id: "thread-decode", snapshot_before: snapshot }),
+    /INVALID_BODY_ENCODING/,
+  );
+  const decodeResponse = JSON.parse(decodeFailure.context.doGet({
+    parameter: { action: "read_thread_page", thread_id: "thread-decode", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(decodeResponse, { success: false, error: "APP_ERROR" });
+
+  const malformedList = loadBridge({ listPages: { first: null } });
+  const listResponse = JSON.parse(malformedList.context.doGet({
+    parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(listResponse, { success: false, error: "APP_ERROR" });
+
+  const malformedListShape = loadBridge({ listPages: { first: {} } });
+  const malformedListShapeResponse = JSON.parse(malformedListShape.context.doGet({
+    parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(malformedListShapeResponse, { success: false, error: "APP_ERROR" });
 });
 
 test("legacy actions retain their search, read, and send contract", () => {

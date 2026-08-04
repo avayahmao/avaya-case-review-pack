@@ -106,11 +106,15 @@ function listThreads_(parameters) {
   };
   if (parameters.page_token) options.pageToken = String(parameters.page_token);
 
-  var response = Gmail.Users.Threads.list("me", options) || {};
+  var response = Gmail.Users.Threads.list("me", options);
+  validateListResponse_(response);
   var threads = Array.isArray(response.threads) ? response.threads : [];
   var threadIds = [];
   for (var index = 0; index < threads.length; index += 1) {
-    if (threads[index] && threads[index].id) threadIds.push(String(threads[index].id));
+    if (!threads[index] || typeof threads[index] !== "object" || !threads[index].id) {
+      throw new Error("INVALID_THREAD_RESPONSE");
+    }
+    threadIds.push(String(threads[index].id));
   }
   var nextPageToken = response.nextPageToken || null;
   return {
@@ -122,6 +126,18 @@ function listThreads_(parameters) {
     next_page_token: nextPageToken,
     complete: !nextPageToken,
   };
+}
+
+function validateListResponse_(response) {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    throw new Error("INVALID_THREAD_RESPONSE");
+  }
+  if (response.threads === undefined && typeof response.resultSizeEstimate !== "number") {
+    throw new Error("INVALID_THREAD_RESPONSE");
+  }
+  if (response.threads !== undefined && !Array.isArray(response.threads)) {
+    throw new Error("INVALID_THREAD_RESPONSE");
+  }
 }
 
 function boundedListResults_(value) {
@@ -174,12 +190,14 @@ function readThreadPage_(parameters) {
   var threadId = requireThreadId_(parameters.thread_id);
   var snapshotBefore = normalizeSnapshot_(parameters.snapshot_before);
   var snapshotMillis = new Date(snapshotBefore).getTime();
-  var thread = Gmail.Users.Threads.get("me", threadId, { format: "full" }) || {};
+  var thread = Gmail.Users.Threads.get("me", threadId, { format: "full" });
+  validateThreadResponse_(thread);
   var sourceMessages = Array.isArray(thread.messages) ? thread.messages : [];
   var messages = [];
   for (var index = 0; index < sourceMessages.length; index += 1) {
     var source = sourceMessages[index];
-    if (source && Number(source.internalDate) <= snapshotMillis) {
+    validateMessage_(source);
+    if (Number(source.internalDate) <= snapshotMillis) {
       messages.push(normalizeMessage_(source, threadId));
     }
   }
@@ -217,6 +235,12 @@ function readThreadPage_(parameters) {
   };
 }
 
+function validateThreadResponse_(thread) {
+  if (!thread || typeof thread !== "object" || Array.isArray(thread) || !Array.isArray(thread.messages)) {
+    throw new Error("INVALID_THREAD_RESPONSE");
+  }
+}
+
 function requireThreadId_(value) {
   if (typeof value !== "string" || !value) throw new Error("INVALID_THREAD_ID");
   return value;
@@ -241,7 +265,7 @@ function compareMessages_(left, right) {
 
 function emitSegments_(messages, messageIndex, chunkIndex) {
   var segments = [];
-  var messagesCompleted = 0;
+  var messagesCompleted = messageIndex;
   var currentMessage = messageIndex;
   var currentChunk = chunkIndex;
   while (currentMessage < messages.length && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
@@ -279,6 +303,7 @@ function emitSegments_(messages, messageIndex, chunkIndex) {
 }
 
 function normalizeMessage_(message, fallbackThreadId) {
+  validateMessage_(message);
   var payload = message && message.payload ? message.payload : {};
   var headers = lowerCaseHeaders_(payload.headers);
   var body = normalizedBody_(payload);
@@ -296,6 +321,18 @@ function normalizeMessage_(message, fallbackThreadId) {
     body_chunks: splitUtf8_(body),
     attachment_names: attachmentNames_(payload),
   };
+}
+
+function validateMessage_(message) {
+  if (!message || typeof message !== "object" || Array.isArray(message) ||
+      typeof message.id !== "string" || !message.id ||
+      typeof message.threadId !== "string" || !message.threadId ||
+      message.internalDate === undefined || message.internalDate === null || message.internalDate === "" ||
+      !isFinite(Number(message.internalDate)) ||
+      !message.payload || typeof message.payload !== "object" || Array.isArray(message.payload) ||
+      typeof message.payload.mimeType !== "string" || !message.payload.mimeType) {
+    throw new Error("INVALID_MESSAGE");
+  }
 }
 
 function internalDateIso_(value) {
@@ -340,6 +377,7 @@ function normalizedBody_(payload) {
 
 function collectTextParts_(part, plainParts, htmlParts) {
   if (!part) return;
+  if (isAttachmentPart_(part)) return;
   var mimeType = String(part.mimeType || "").toLowerCase();
   var text = partBody_(part);
   if (text !== null) {
@@ -355,10 +393,26 @@ function collectTextParts_(part, plainParts, htmlParts) {
 function partBody_(part) {
   if (!part.body || typeof part.body.data !== "string") return null;
   try {
-    return utf8FromBytes_(Utilities.base64DecodeWebSafe(part.body.data));
+    if (!/^[A-Za-z0-9_-]*={0,2}$/.test(part.body.data)) throw new Error("invalid base64");
+    var bytes = Utilities.base64DecodeWebSafe(part.body.data);
+    if (!bytes || typeof bytes.length !== "number") throw new Error("invalid decoded bytes");
+    return utf8FromBytes_(bytes);
   } catch (error) {
-    return "";
+    throw new Error("INVALID_BODY_ENCODING");
   }
+}
+
+function isAttachmentPart_(part) {
+  if (!part || typeof part !== "object") return false;
+  if (part.filename) return true;
+  if (part.attachmentId !== undefined && part.attachmentId !== null && String(part.attachmentId)) return true;
+  var headers = Array.isArray(part.headers) ? part.headers : [];
+  for (var index = 0; index < headers.length; index += 1) {
+    var header = headers[index];
+    if (header && String(header.name || "").toLowerCase() === "content-disposition" &&
+        /\battachment\b/i.test(String(header.value || ""))) return true;
+  }
+  return false;
 }
 
 function attachmentNames_(part) {
@@ -369,11 +423,27 @@ function attachmentNames_(part) {
 
 function collectAttachmentNames_(part, names) {
   if (!part) return;
-  if (part.filename) names.push(String(part.filename));
+  if (part.filename) addAttachmentName_(names, String(part.filename));
+  var headers = Array.isArray(part.headers) ? part.headers : [];
+  for (var headerIndex = 0; headerIndex < headers.length; headerIndex += 1) {
+    var header = headers[headerIndex];
+    if (header && String(header.name || "").toLowerCase() === "content-disposition") {
+      var match = String(header.value || "").match(/filename\s*=\s*"?([^";]+)"?/i);
+      if (match && match[1]) addAttachmentName_(names, String(match[1]).trim());
+    }
+  }
   var children = Array.isArray(part.parts) ? part.parts : [];
   for (var index = 0; index < children.length; index += 1) {
     collectAttachmentNames_(children[index], names);
   }
+}
+
+function addAttachmentName_(names, name) {
+  if (!name) return;
+  for (var index = 0; index < names.length; index += 1) {
+    if (names[index] === name) return;
+  }
+  names.push(name);
 }
 
 function htmlToText_(html) {
