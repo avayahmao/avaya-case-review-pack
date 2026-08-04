@@ -68,6 +68,9 @@ function loadBridge({ listPages = {}, threads = {}, legacyThreads = [], legacyMe
     DigestAlgorithm: { SHA_256: "SHA_256" },
     newBlob(value) {
       calls.blob += 1;
+      if (Array.isArray(value) && value.some((byte) => byte > 127 || byte < -128)) {
+        throw new Error("Apps Script Byte[] must use signed octets");
+      }
       const bytes = Array.isArray(value) || Buffer.isBuffer(value)
         ? Buffer.from(value)
         : Buffer.from(String(value), "utf8");

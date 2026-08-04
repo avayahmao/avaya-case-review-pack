@@ -549,11 +549,12 @@ function percentEncodedBytes_(value) {
 
 function decodeFilenameBytes_(bytes, charset) {
   var requestedCharset = charset || "UTF-8";
+  var signedBytes = signedByteArray_(bytes);
   try {
-    return sanitizedAttachmentName_(Utilities.newBlob(bytes).getDataAsString(requestedCharset));
+    return sanitizedAttachmentName_(Utilities.newBlob(signedBytes).getDataAsString(requestedCharset));
   } catch (error) {
     try {
-      return sanitizedAttachmentName_(Utilities.newBlob(bytes).getDataAsString("UTF-8"));
+      return sanitizedAttachmentName_(Utilities.newBlob(signedBytes).getDataAsString("UTF-8"));
     } catch (fallbackError) {
       var safe = "";
       for (var index = 0; index < bytes.length; index += 1) safe += bytes[index] < 0x80 ? String.fromCharCode(bytes[index]) : "\uFFFD";
@@ -708,8 +709,18 @@ function utf8Bytes_(value) {
   return Utilities.newBlob(String(value)).getBytes();
 }
 
+function signedByteArray_(bytes) {
+  var signed = [];
+  for (var index = 0; index < bytes.length; index += 1) {
+    var byte = Number(bytes[index]);
+    if (byte > 127) byte -= 256;
+    signed.push(byte);
+  }
+  return signed;
+}
+
 function utf8FromBytes_(bytes) {
-  return Utilities.newBlob(bytes).getDataAsString("UTF-8");
+  return Utilities.newBlob(signedByteArray_(bytes)).getDataAsString("UTF-8");
 }
 
 function utf8CodePointByteLength_(codePoint) {
