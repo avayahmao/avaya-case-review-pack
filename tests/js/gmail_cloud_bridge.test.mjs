@@ -167,7 +167,7 @@ test("list_threads uses an exact snapshot query and preserves Gmail pagination",
   assert.equal(first.next_page_token, "opaque-next");
   assert.equal(first.complete, false);
   assert.deepEqual(Array.from(second.thread_ids), ["thread-c"]);
-  assert.equal(second.next_page_token, null);
+  assert.equal(second.next_page_token, "");
   assert.equal(second.complete, true);
   assert.equal(calls.list[0].userId, "me");
   assert.equal(calls.list[0].options.q, '"1-23508794022" before:1785838531');
@@ -182,7 +182,7 @@ test("list_threads handles zero results and rejects non-record queries", () => {
 
   assert.deepEqual(Array.from(response.thread_ids), []);
   assert.equal(response.complete, true);
-  assert.equal(response.next_page_token, null);
+  assert.equal(response.next_page_token, "");
   assert.equal(calls.list[0].options.maxResults, 1);
   assert.throws(
     () => api.listThreads({ q: "1-23 OR is:unread", snapshot_before: "2026-08-04T10:15:30Z" }),
@@ -266,6 +266,10 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
         body: { data: webSafe("attachment text must not become the message body") },
       },
       {
+        mimeType: "text/plain",
+        body: { attachmentId: "body-attachment-1", data: webSafe("ATTACHED SECRET") },
+      },
+      {
         mimeType: "multipart/alternative",
         parts: [{ mimeType: "text/plain", body: { data: webSafe("Plain body") } }],
       },
@@ -283,6 +287,7 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
   assert.deepEqual(Array.from(normalized.attachment_names), ["notes.txt", "evidence.pdf"]);
   assert.equal(normalized.body_chunks.join("").includes("attachment payload"), false);
   assert.equal(normalized.body_chunks.join("").includes("attachment text"), false);
+  assert.equal(normalized.body_chunks.join("").includes("ATTACHED SECRET"), false);
 });
 
 test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting code points", () => {
@@ -392,6 +397,33 @@ test("malformed Gmail responses, messages, and MIME data fail closed with saniti
     parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
   }).data);
   assert.deepEqual(malformedListShapeResponse, { success: false, error: "APP_ERROR" });
+
+  const malformedParts = loadBridge({
+    threads: {
+      "thread-parts": {
+        messages: [{
+          id: "bad-parts",
+          threadId: "thread-parts",
+          internalDate: "1785841200000",
+          payload: { mimeType: "multipart/mixed", parts: { malformed: true }, headers: [] },
+        }],
+      },
+    },
+  });
+  assert.throws(
+    () => malformedParts.api.readThreadPage({ thread_id: "thread-parts", snapshot_before: snapshot }),
+    /INVALID_MIME_STRUCTURE/,
+  );
+  const malformedPartsResponse = JSON.parse(malformedParts.context.doGet({
+    parameter: { action: "read_thread_page", thread_id: "thread-parts", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(malformedPartsResponse, { success: false, error: "APP_ERROR" });
+
+  const malformedToken = loadBridge({ listPages: { first: { threads: [], nextPageToken: 42 } } });
+  const malformedTokenResponse = JSON.parse(malformedToken.context.doGet({
+    parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(malformedTokenResponse, { success: false, error: "APP_ERROR" });
 });
 
 test("legacy actions retain their search, read, and send contract", () => {

@@ -116,7 +116,7 @@ function listThreads_(parameters) {
     }
     threadIds.push(String(threads[index].id));
   }
-  var nextPageToken = response.nextPageToken || null;
+  var nextPageToken = response.nextPageToken === undefined ? "" : response.nextPageToken;
   return {
     success: true,
     bridge_version: GMAIL_BRIDGE_VERSION,
@@ -136,6 +136,9 @@ function validateListResponse_(response) {
     throw new Error("INVALID_THREAD_RESPONSE");
   }
   if (response.threads !== undefined && !Array.isArray(response.threads)) {
+    throw new Error("INVALID_THREAD_RESPONSE");
+  }
+  if (response.nextPageToken !== undefined && typeof response.nextPageToken !== "string") {
     throw new Error("INVALID_THREAD_RESPONSE");
   }
 }
@@ -305,6 +308,7 @@ function emitSegments_(messages, messageIndex, chunkIndex) {
 function normalizeMessage_(message, fallbackThreadId) {
   validateMessage_(message);
   var payload = message && message.payload ? message.payload : {};
+  validateMimeStructure_(payload);
   var headers = lowerCaseHeaders_(payload.headers);
   var body = normalizedBody_(payload);
   var bodyBytes = utf8Bytes_(body).length;
@@ -332,6 +336,18 @@ function validateMessage_(message) {
       !message.payload || typeof message.payload !== "object" || Array.isArray(message.payload) ||
       typeof message.payload.mimeType !== "string" || !message.payload.mimeType) {
     throw new Error("INVALID_MESSAGE");
+  }
+}
+
+function validateMimeStructure_(part) {
+  if (!part || typeof part !== "object" || Array.isArray(part)) {
+    throw new Error("INVALID_MIME_STRUCTURE");
+  }
+  if (part.parts !== undefined) {
+    if (!Array.isArray(part.parts)) throw new Error("INVALID_MIME_STRUCTURE");
+    for (var index = 0; index < part.parts.length; index += 1) {
+      validateMimeStructure_(part.parts[index]);
+    }
   }
 }
 
@@ -406,6 +422,8 @@ function isAttachmentPart_(part) {
   if (!part || typeof part !== "object") return false;
   if (part.filename) return true;
   if (part.attachmentId !== undefined && part.attachmentId !== null && String(part.attachmentId)) return true;
+  if (part.body && part.body.attachmentId !== undefined && part.body.attachmentId !== null &&
+      String(part.body.attachmentId)) return true;
   var headers = Array.isArray(part.headers) ? part.headers : [];
   for (var index = 0; index < headers.length; index += 1) {
     var header = headers[index];
