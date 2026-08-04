@@ -27,9 +27,15 @@ if hasattr(sys.stderr, "reconfigure"):
 
 DEFAULT_BACKEND = "edge_broker"
 LEGACY_BACKEND = "legacy_playwright"
+_CONTEXT_METHODS = frozenset({"gmail_list_threads", "gmail_read_thread_page"})
+_CONTEXT_BACKEND_ERROR_TEXT = (
+    "[Gmail backend error: APP_ERROR] Gmail backend operation failed"
+)
 _USAGE = (
     "Usage: python gmail_mcp_server.py "
-    "<search|read|send|list-threads|read-thread-page> [args...]"
+    "<search|read|send|list-threads|read-thread-page> [args...]\n"
+    "list-threads first-page probes: --snapshot-before=<value> "
+    "--page-token=<value> --max-results=<1-100>"
 )
 _BROKER_ERROR_MESSAGES = {
     "AUTH_REQUIRED": "Interactive Gmail authentication is required; run gmail_brokerctl.py login",
@@ -59,18 +65,22 @@ def _broker_error_text(error: BrokerClientError) -> str:
 async def query_backend(method: str, params: dict[str, Any]) -> str:
     """Execute a Gmail method through the selected backend without fallback."""
 
-    backend = get_backend_name()
-    if backend == DEFAULT_BACKEND:
-        try:
+    try:
+        backend = get_backend_name()
+        if backend == DEFAULT_BACKEND:
             result = await asyncio.to_thread(BrokerClient().request, method, params)
-        except BrokerClientError as error:
-            return _broker_error_text(error)
-        if not isinstance(result, str):
-            return "[Gmail broker error: APP_ERROR] Gmail broker returned an invalid result"
-        return result
-    if backend == LEGACY_BACKEND:
-        return await legacy_query(method, params)
-    raise RuntimeError(f"Unsupported GMAIL_BACKEND: {backend}")
+            if not isinstance(result, str):
+                return "[Gmail broker error: APP_ERROR] Gmail broker returned an invalid result"
+            return result
+        if backend == LEGACY_BACKEND:
+            return await legacy_query(method, params)
+        raise RuntimeError(f"Unsupported GMAIL_BACKEND: {backend}")
+    except BrokerClientError as error:
+        return _broker_error_text(error)
+    except Exception:
+        if method in _CONTEXT_METHODS:
+            return _CONTEXT_BACKEND_ERROR_TEXT
+        raise
 
 
 def _parse_max_results(value: Any) -> int:
@@ -85,6 +95,69 @@ def _parse_max_results(value: Any) -> int:
     if not 1 <= max_results <= 100:
         raise ValueError("max_results must be between 1 and 100")
     return max_results
+
+
+def _parse_list_threads_args(args: list[Any]) -> dict[str, Any]:
+    """Parse positional and PowerShell-safe named list-threads arguments."""
+
+    if len(args) < 2 or not isinstance(args[1], str) or not args[1].strip():
+        raise ValueError("query is required")
+    query = args[1]
+    remaining = list(args[2:])
+    if any(isinstance(value, str) and value.startswith("--") for value in remaining):
+        snapshot_before = ""
+        page_token = ""
+        max_results_value: Any = "100"
+        seen: set[str] = set()
+        index = 0
+        while index < len(remaining):
+            value = remaining[index]
+            if not isinstance(value, str):
+                raise ValueError("list-threads options must be strings")
+            if value.startswith("--snapshot-before="):
+                option = "snapshot_before"
+                parsed_value = value.split("=", 1)[1]
+            elif value.startswith("--page-token="):
+                option = "page_token"
+                parsed_value = value.split("=", 1)[1]
+            elif value.startswith("--max-results="):
+                option = "max_results"
+                parsed_value = value.split("=", 1)[1]
+            elif value in {"--snapshot-before", "--page-token", "--max-results"}:
+                option = value[2:].replace("-", "_")
+                index += 1
+                if index >= len(remaining) or not isinstance(remaining[index], str):
+                    raise ValueError(f"{value} requires a value")
+                parsed_value = remaining[index]
+            else:
+                raise ValueError("unknown list-threads option")
+            if option in seen:
+                raise ValueError(f"duplicate {option} option")
+            seen.add(option)
+            if option == "snapshot_before":
+                snapshot_before = parsed_value
+            elif option == "page_token":
+                page_token = parsed_value
+            else:
+                max_results_value = parsed_value
+            index += 1
+        max_results = _parse_max_results(max_results_value)
+    else:
+        if len(remaining) > 3:
+            raise ValueError("too many list-threads arguments")
+        snapshot_before = remaining[0] if len(remaining) > 0 else ""
+        page_token = remaining[1] if len(remaining) > 1 else ""
+        max_results = _parse_max_results(remaining[2] if len(remaining) > 2 else "100")
+    return {
+        "query": query,
+        "snapshot_before": snapshot_before,
+        "page_token": page_token,
+        "max_results": max_results,
+    }
+
+
+def _is_context_error(result: str) -> bool:
+    return result.startswith(("[Gmail backend error:", "[Gmail broker error:"))
 
 
 app = Server("gmail")
@@ -211,7 +284,12 @@ async def call_tool(name: str, arguments: dict[str, Any]):
         }
     else:
         raise ValueError(f"Unknown tool: {name}")
-    result = await query_backend(name, params)
+    try:
+        result = await query_backend(name, params)
+    except Exception:
+        if name not in _CONTEXT_METHODS:
+            raise
+        result = _CONTEXT_BACKEND_ERROR_TEXT
     return [TextContent(type="text", text=result)]
 
 
@@ -231,40 +309,44 @@ async def main(argv: list[str] | None = None):
                 {"to": args[1], "subject": args[2], "body": args[3]},
             )
         elif action == "list-threads":
-            query = args[1] if len(args) > 1 else ""
-            snapshot_before = args[2] if len(args) > 2 else ""
-            page_token = args[3] if len(args) > 3 else ""
             try:
-                max_results = _parse_max_results(args[4] if len(args) > 4 else "100")
+                params = _parse_list_threads_args(args)
             except ValueError:
                 print(_USAGE)
-                return
-            result = await query_backend(
-                "gmail_list_threads",
-                {
-                    "query": query,
-                    "snapshot_before": snapshot_before,
-                    "page_token": page_token,
-                    "max_results": max_results,
-                },
-            )
+                return 2
+            try:
+                result = await query_backend("gmail_list_threads", params)
+            except Exception:
+                print(_CONTEXT_BACKEND_ERROR_TEXT)
+                return 1
+            print(result)
+            return 1 if _is_context_error(result) else 0
         elif action == "read-thread-page":
             thread_id = args[1] if len(args) > 1 else ""
             snapshot_before = args[2] if len(args) > 2 else ""
             cursor = args[3] if len(args) > 3 else ""
-            result = await query_backend(
-                "gmail_read_thread_page",
-                {
-                    "thread_id": thread_id,
-                    "snapshot_before": snapshot_before,
-                    "cursor": cursor,
-                },
-            )
+            try:
+                result = await query_backend(
+                    "gmail_read_thread_page",
+                    {
+                        "thread_id": thread_id,
+                        "snapshot_before": snapshot_before,
+                        "cursor": cursor,
+                    },
+                )
+            except Exception:
+                print(_CONTEXT_BACKEND_ERROR_TEXT)
+                return 1
+            print(result)
+            return 1 if _is_context_error(result) else 0
+        elif action in {"--help", "-h"}:
+            print(_USAGE)
+            return 0
         else:
             print(_USAGE)
-            return
+            return 2
         print(result)
-        return
+        return 0
 
     async with stdio_server() as streams:
         await app.run(
@@ -272,15 +354,18 @@ async def main(argv: list[str] | None = None):
             streams[1],
             app.create_initialization_options(),
         )
+    return 0
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))
 
 
 __all__ = [
     "DEFAULT_BACKEND",
     "LEGACY_BACKEND",
+    "_CONTEXT_BACKEND_ERROR_TEXT",
+    "_parse_list_threads_args",
     "_parse_max_results",
     "app",
     "call_tool",

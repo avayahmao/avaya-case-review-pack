@@ -2,6 +2,7 @@ import asyncio
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import unittest
@@ -144,6 +145,55 @@ class BackendRoutingTests(unittest.TestCase):
         self.assertIn("AUTH_REQUIRED", text)
         self.assertNotIn("<html>", text)
         self.assertNotIn("login page secret", text)
+
+    def test_context_backend_errors_are_stable_and_do_not_echo_request_secrets(self):
+        sentinels = {
+            "record": "RECORD-ID-SENTINEL",
+            "token": "PAGE-TOKEN-SENTINEL",
+            "cursor": "CURSOR-SENTINEL",
+        }
+
+        async def exercise(method, params):
+            with patch.object(
+                gmail_mcp_server,
+                "get_backend_name",
+                return_value="legacy_playwright",
+            ):
+                with patch.object(
+                    gmail_mcp_server,
+                    "legacy_query",
+                    side_effect=RuntimeError(
+                        "page.goto failed for https://example.invalid/exec?"
+                        + "&".join(sentinels.values())
+                    ),
+                ):
+                    return await gmail_mcp_server.query_backend(method, params)
+
+        requests = (
+            (
+                "gmail_list_threads",
+                {
+                    "query": sentinels["record"],
+                    "snapshot_before": "2026-08-04T10:15:30Z",
+                    "page_token": sentinels["token"],
+                    "max_results": 100,
+                },
+            ),
+            (
+                "gmail_read_thread_page",
+                {
+                    "thread_id": sentinels["record"],
+                    "snapshot_before": "2026-08-04T10:15:30Z",
+                    "cursor": sentinels["cursor"],
+                },
+            ),
+        )
+        for method, params in requests:
+            with self.subTest(method=method):
+                result = asyncio.run(exercise(method, params))
+                self.assertEqual(result, gmail_mcp_server._CONTEXT_BACKEND_ERROR_TEXT)
+                for sentinel in sentinels.values():
+                    self.assertNotIn(sentinel, result)
 
 
 class ToolContractTests(unittest.TestCase):
@@ -380,6 +430,24 @@ class DirectCliTests(unittest.TestCase):
                 ),
             ),
             (
+                [
+                    "list-threads",
+                    "1-23508794022",
+                    "--snapshot-before=",
+                    "--page-token=",
+                    "--max-results=100",
+                ],
+                (
+                    "gmail_list_threads",
+                    {
+                        "query": "1-23508794022",
+                        "snapshot_before": "",
+                        "page_token": "",
+                        "max_results": 100,
+                    },
+                ),
+            ),
+            (
                 ["read-thread-page", "thread-1", "2026-08-04T10:15:30Z", ""],
                 (
                     "gmail_read_thread_page",
@@ -396,9 +464,10 @@ class DirectCliTests(unittest.TestCase):
                 with patch.object(gmail_mcp_server, "query_backend", side_effect=fake_query):
                     stdout = io.StringIO()
                     with redirect_stdout(stdout):
-                        asyncio.run(gmail_mcp_server.main(argv))
+                        status = asyncio.run(gmail_mcp_server.main(argv))
                 self.assertEqual(calls, [expected])
                 self.assertEqual(stdout.getvalue().strip(), "result")
+                self.assertEqual(status, 0)
 
     def test_list_threads_cli_rejects_invalid_max_results(self):
         async def fake_query(method, params):
@@ -411,13 +480,104 @@ class DirectCliTests(unittest.TestCase):
                 with patch.object(gmail_mcp_server, "query_backend", side_effect=fake_query):
                     stdout = io.StringIO()
                     with redirect_stdout(stdout):
-                        asyncio.run(
+                        status = asyncio.run(
                             gmail_mcp_server.main(
                                 ["list-threads", "1-23508794022", "", "", invalid]
                             )
                         )
                 self.assertEqual(calls, [])
                 self.assertIn("<search|read|send|list-threads|read-thread-page>", stdout.getvalue())
+                self.assertEqual(status, 2)
+
+    def test_context_cli_backend_errors_are_sanitized_and_nonzero(self):
+        sentinels = ("RECORD-ID-SENTINEL", "PAGE-TOKEN-SENTINEL", "CURSOR-SENTINEL")
+
+        async def failing_query(method, params):
+            raise RuntimeError("page.goto https://example.invalid/?" + "&".join(sentinels))
+
+        requests = (
+            [
+                "list-threads",
+                sentinels[0],
+                "--snapshot-before=",
+                "--page-token=" + sentinels[1],
+                "--max-results=100",
+            ],
+            ["read-thread-page", sentinels[0], "2026-08-04T10:15:30Z", sentinels[2]],
+        )
+        for argv in requests:
+            with self.subTest(argv=argv):
+                with patch.object(gmail_mcp_server, "query_backend", side_effect=failing_query):
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        status = asyncio.run(gmail_mcp_server.main(argv))
+                self.assertEqual(status, 1)
+                self.assertEqual(stdout.getvalue().strip(), gmail_mcp_server._CONTEXT_BACKEND_ERROR_TEXT)
+                for sentinel in sentinels:
+                    self.assertNotIn(sentinel, stdout.getvalue())
+
+    def test_powershell_first_page_named_flags_preserve_empty_fields(self):
+        powershell = shutil.which("powershell") or shutil.which("powershell.exe")
+        if powershell is None:
+            self.skipTest("Windows PowerShell is required for the native-argv contract")
+        root = Path(__file__).resolve().parents[1]
+        python_executable = str(Path(sys.executable).resolve()).replace("'", "''")
+        probe = (
+            "import asyncio,json;"
+            "from tools.gmail import gmail_mcp_server as m;"
+            "m.query_backend=lambda method,params: asyncio.sleep(0,result=json.dumps([method,params]));"
+            "asyncio.run(m.main())"
+        )
+        command = (
+            f"& '{python_executable}' -c '{probe}' list-threads 1-23508794022 "
+            "--snapshot-before= --page-token= --max-results=100"
+        )
+        completed = subprocess.run(
+            [powershell, "-NoProfile", "-Command", command],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=20,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        captures = [line for line in completed.stdout.splitlines() if line.startswith("[")]
+        self.assertEqual(len(captures), 1, completed.stdout)
+        self.assertEqual(
+            json.loads(captures[0]),
+            [
+                "gmail_list_threads",
+                {
+                    "query": "1-23508794022",
+                    "snapshot_before": "",
+                    "page_token": "",
+                    "max_results": 100,
+                },
+            ],
+        )
+
+    def test_invalid_cli_max_results_returns_nonzero_process_status(self):
+        root = Path(__file__).resolve().parents[1]
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "tools/gmail/gmail_mcp_server.py",
+                "list-threads",
+                "1-23508794022",
+                "--snapshot-before=",
+                "--page-token=",
+                "--max-results=not-a-number",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=10,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("<search|read|send|list-threads|read-thread-page>", completed.stdout)
 
     def test_direct_help_is_sanitized_and_does_not_import_a_browser(self):
         root = Path(__file__).resolve().parents[1]
