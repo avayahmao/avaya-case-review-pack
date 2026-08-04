@@ -450,10 +450,135 @@ function isAttachmentPart_(part) {
   var headers = Array.isArray(part.headers) ? part.headers : [];
   for (var index = 0; index < headers.length; index += 1) {
     var header = headers[index];
-    if (header && String(header.name || "").toLowerCase() === "content-disposition" &&
-        (/\battachment\b/i.test(String(header.value || "")) || /\bfilename\s*=/i.test(String(header.value || "")))) return true;
+    if (header && String(header.name || "").toLowerCase() === "content-disposition") {
+      var disposition = String(header.value || "");
+      var parameters = parseDispositionParameters_(disposition);
+      if (/\battachment\b/i.test(disposition) || hasFilenameParameter_(parameters)) return true;
+    }
   }
   return false;
+}
+
+function parseDispositionParameters_(value) {
+  var parameters = [];
+  var source = String(value || "");
+  var index = 0;
+  while (index < source.length) {
+    while (index < source.length && (source.charAt(index) === ";" || /\s/.test(source.charAt(index)))) index += 1;
+    if (index >= source.length) break;
+    var nameStart = index;
+    while (index < source.length && source.charAt(index) !== "=" && source.charAt(index) !== ";") index += 1;
+    var name = source.slice(nameStart, index).trim().toLowerCase();
+    while (index < source.length && /\s/.test(source.charAt(index))) index += 1;
+    if (!name || source.charAt(index) !== "=") {
+      while (index < source.length && source.charAt(index) !== ";") index += 1;
+      continue;
+    }
+    index += 1;
+    while (index < source.length && /\s/.test(source.charAt(index))) index += 1;
+    var parameterValue = "";
+    if (source.charAt(index) === '"') {
+      index += 1;
+      while (index < source.length) {
+        var character = source.charAt(index);
+        if (character === "\\" && index + 1 < source.length) {
+          parameterValue += source.charAt(index + 1);
+          index += 2;
+        } else if (character === '"') {
+          index += 1;
+          break;
+        } else {
+          parameterValue += character;
+          index += 1;
+        }
+      }
+    } else {
+      var valueStart = index;
+      while (index < source.length && source.charAt(index) !== ";") index += 1;
+      parameterValue = source.slice(valueStart, index).trim();
+    }
+    parameters.push({ name: name, value: parameterValue });
+  }
+  return parameters;
+}
+
+function isFilenameParameterName_(name) {
+  return name === "filename" || name === "filename*" || /^filename\*\d+\*?$/i.test(name);
+}
+
+function hasFilenameParameter_(parameters) {
+  for (var index = 0; index < parameters.length; index += 1) {
+    if (isFilenameParameterName_(parameters[index].name)) return true;
+  }
+  return false;
+}
+
+function safePercentDecode_(value) {
+  var source = String(value || "");
+  try {
+    return decodeURIComponent(source);
+  } catch (error) {
+    return source.replace(/%([0-9a-f]{2})/gi, function (match, hex) {
+      return String.fromCharCode(parseInt(hex, 16));
+    });
+  }
+}
+
+function sanitizedAttachmentName_(value) {
+  return String(value || "").replace(/[\u0000\r\n]/g, "").trim();
+}
+
+function decodeDispositionValue_(value, extended, stripCharset) {
+  var source = String(value || "");
+  if (extended && stripCharset) {
+    var charsetSeparator = source.indexOf("'");
+    var languageSeparator = charsetSeparator < 0 ? -1 : source.indexOf("'", charsetSeparator + 1);
+    if (languageSeparator >= 0) source = source.slice(languageSeparator + 1);
+  }
+  return sanitizedAttachmentName_(extended ? safePercentDecode_(source) : source);
+}
+
+function dispositionFilenames_(value) {
+  var parameters = parseDispositionParameters_(value);
+  var simpleName = "";
+  var extendedName = "";
+  var continuation = {};
+  var continuationIndexes = [];
+  for (var index = 0; index < parameters.length; index += 1) {
+    var parameter = parameters[index];
+    if (parameter.name === "filename") {
+      if (!simpleName) simpleName = decodeDispositionValue_(parameter.value, false, false);
+    } else if (parameter.name === "filename*") {
+      if (!extendedName) extendedName = decodeDispositionValue_(parameter.value, true, true);
+    } else {
+      var match = parameter.name.match(/^filename\*(\d+)(\*)?$/i);
+      if (match) {
+        var segmentIndex = Number(match[1]);
+        if (!continuation[segmentIndex]) continuationIndexes.push(segmentIndex);
+        continuation[segmentIndex] = {
+          value: parameter.value,
+          extended: !!match[2],
+        };
+      }
+    }
+  }
+  var names = [];
+  if (continuationIndexes.length) {
+    continuationIndexes.sort(function (left, right) { return left - right; });
+    var joined = "";
+    var expectedIndex = 0;
+    for (var segment = 0; segment < continuationIndexes.length; segment += 1) {
+      var currentIndex = continuationIndexes[segment];
+      if (currentIndex !== expectedIndex) break;
+      var current = continuation[currentIndex];
+      joined += decodeDispositionValue_(current.value, current.extended, current.extended && currentIndex === 0);
+      expectedIndex += 1;
+    }
+    if (expectedIndex > 0) names.push(sanitizedAttachmentName_(joined));
+  }
+  if (!names.length && extendedName) names.push(extendedName);
+  if (!names.length && simpleName) names.push(simpleName);
+  return names;
 }
 
 function attachmentNames_(part) {
@@ -469,8 +594,10 @@ function collectAttachmentNames_(part, names) {
   for (var headerIndex = 0; headerIndex < headers.length; headerIndex += 1) {
     var header = headers[headerIndex];
     if (header && String(header.name || "").toLowerCase() === "content-disposition") {
-      var match = String(header.value || "").match(/filename\s*=\s*"?([^";]+)"?/i);
-      if (match && match[1]) addAttachmentName_(names, String(match[1]).trim());
+      var dispositionNames = dispositionFilenames_(header.value);
+      for (var nameIndex = 0; nameIndex < dispositionNames.length; nameIndex += 1) {
+        addAttachmentName_(names, dispositionNames[nameIndex]);
+      }
     }
   }
   var children = Array.isArray(part.parts) ? part.parts : [];

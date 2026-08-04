@@ -285,6 +285,19 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
         body: { data: webSafe("INLINE SECRET") },
       },
       {
+        mimeType: "text/plain",
+        headers: [{ name: "Content-Disposition", value: "inline; filename*=UTF-8''secret%20extended.txt" }],
+        body: { data: webSafe("RFC2231 SECRET") },
+      },
+      {
+        mimeType: "text/plain",
+        headers: [{
+          name: "Content-Disposition",
+          value: "attachment; filename*0*=UTF-8''continuation-; filename*1*=name%2Etxt",
+        }],
+        body: { data: webSafe("CONTINUATION SECRET") },
+      },
+      {
         mimeType: "multipart/alternative",
         parts: [{ mimeType: "text/plain", body: { data: webSafe("Plain body") } }],
       },
@@ -299,11 +312,15 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
   assert.equal(api.normalizeMessage(htmlOnly).body_chunks.join(""), "Hello world\nagain & more \uD83D\uDE42");
   const normalized = api.normalizeMessage(multipart);
   assert.deepEqual(Array.from(normalized.body_chunks), ["Plain body"]);
-  assert.deepEqual(Array.from(normalized.attachment_names), ["notes.txt", "secret.txt", "evidence.pdf"]);
+  assert.deepEqual(Array.from(normalized.attachment_names), [
+    "notes.txt", "secret.txt", "secret extended.txt", "continuation-name.txt", "evidence.pdf",
+  ]);
   assert.equal(normalized.body_chunks.join("").includes("attachment payload"), false);
   assert.equal(normalized.body_chunks.join("").includes("attachment text"), false);
   assert.equal(normalized.body_chunks.join("").includes("ATTACHED SECRET"), false);
   assert.equal(normalized.body_chunks.join("").includes("INLINE SECRET"), false);
+  assert.equal(normalized.body_chunks.join("").includes("RFC2231 SECRET"), false);
+  assert.equal(normalized.body_chunks.join("").includes("CONTINUATION SECRET"), false);
 });
 
 test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting code points", () => {
