@@ -2,6 +2,7 @@ import html
 import json
 import re
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 
@@ -64,6 +65,32 @@ def extract_html_pre_after(content: str, anchor: str) -> str:
     if not match:
         raise AssertionError(f"HTML pre block not found after {anchor}")
     return html.unescape(match.group(1))
+
+
+def parse_html(content: str) -> None:
+    parser = HTMLParser()
+    parser.feed(content)
+    parser.close()
+
+
+def normalize_contract_item(value: str) -> str:
+    value = html.unescape(re.sub(r"<[^>]+>", "", value))
+    value = re.sub(r"(?:\*\*|`)", "", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def extract_markdown_list_items(section: str) -> list[str]:
+    return [
+        normalize_contract_item(match.group(1))
+        for match in re.finditer(r"(?m)^(?:\d+\.|-)\s+(.*)$", section)
+    ]
+
+
+def extract_html_list_items(section: str) -> list[str]:
+    return [
+        normalize_contract_item(item)
+        for item in re.findall(r"<li>(.*?)</li>", section, re.DOTALL)
+    ]
 
 
 def normalized_function_signatures(source: str) -> list[str]:
@@ -249,6 +276,21 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, technical_contract)
 
+    def test_progress_summary_count_follows_available_evidence(self):
+        template = extract_report_template(self.skill)
+        progress = extract_template_section(
+            template,
+            "## Progress Summary",
+            "## Ownership & Next Step",
+        )
+        for marker in [
+            "Up to five substantive milestones supported by evidence",
+            "render one when only one exists",
+            "Do not pad or repeat evidence",
+        ]:
+            self.assertIn(marker, progress)
+        self.assertNotIn("Three to five", progress)
+
     def test_adm_expands_technical_depth_without_duplicate_sections(self):
         template = extract_report_template(self.skill)
         adaptive_adm = extract_template_section(
@@ -433,6 +475,7 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_adm_spec_and_presentation_follow_layered_contract(self):
         adm_spec = read(ADM_SPEC)
         presentation = read(PRESENTATION_HTML)
+        parse_html(presentation)
         presentation_lower = presentation.lower()
 
         for marker in [
@@ -518,17 +561,170 @@ class CaseReviewContractTests(unittest.TestCase):
                 self.assertIn("layered disclosure", content.lower())
                 self.assertIn("6-8 sentence Executive Summary", content)
 
+    def test_tdd_key_capability_uses_evidence_triggered_direction_checks(self):
+        tdd_md = self.contract_docs["tdd_md"]
+        tdd_html = self.contract_docs["tdd_html"]
+        parse_html(tdd_html)
+        self.assertIn("### Key Capabilities", tdd_md)
+        self.assertIn("<strong>Key Architectural Goals:</strong>", tdd_html)
+        sections = {
+            "tdd_md": extract_template_section(
+                tdd_md,
+                "### Key Capabilities",
+                "\n---\n",
+            ),
+            "tdd_html": extract_template_section(
+                tdd_html,
+                "<strong>Key Architectural Goals:</strong>",
+                "</div>",
+            ),
+        }
+        required = [
+            "Evidence-Triggered Technical Direction Checks",
+            "compares retrieved evidence to conditional product references",
+            "documents validation gaps and handoff context",
+            "never proves cause or assigns a vendor itself",
+        ]
+        prohibited = [
+            "Automated Sanity Auditing",
+            "Detects engineer misdirection",
+            "verifies system attribute dependencies",
+            "enforces official Javadoc API methods",
+            "flags misdirected vendor escalations",
+        ]
+        for name, section in sections.items():
+            with self.subTest(document=name):
+                for marker in required:
+                    self.assertIn(marker, section)
+                for marker in prohibited:
+                    self.assertNotIn(marker, section)
+
+    def test_tdd_conditional_direction_checks_are_evidence_gated_and_in_parity(self):
+        tdd_md = self.contract_docs["tdd_md"]
+        tdd_html = self.contract_docs["tdd_html"]
+        parse_html(tdd_html)
+        md_heading = "#### Conditional Technical Direction Checks"
+        html_heading = "<h4>Conditional Technical Direction Checks</h4>"
+        self.assertIn(md_heading, tdd_md)
+        self.assertIn(html_heading, tdd_html)
+        sections = {
+            "tdd_md": extract_template_section(
+                tdd_md,
+                md_heading,
+                "#### Output Brief Schema",
+            ),
+            "tdd_html": extract_template_section(
+                tdd_html,
+                html_heading,
+                "<h4>Output Brief Schema</h4>",
+            ),
+        }
+        required = [
+            "retrieved case evidence matches a layer mismatch",
+            "compare platform and application hypotheses",
+            "identify the validation needed to distinguish them",
+            "Do not present CM configuration as causal without case evidence",
+            "conditional verification references only when park/unpark evidence triggers them",
+            "does not inspect the live system",
+            "compare case evidence with official Javadoc",
+            "does not enforce a method or prove causation",
+            "requested, collected, attached, and analyzed",
+            "identify evidence gaps",
+            "getlogs",
+            "conditional examples, not universal requirements",
+        ]
+        prohibited = [
+            "Risk Audit",
+            "underlying cause is",
+            "Assign to",
+            "ensure getlogs",
+            "Automated Sanity Auditing",
+        ]
+        for name, section in sections.items():
+            with self.subTest(document=name):
+                for marker in required:
+                    self.assertIn(marker, section)
+                for marker in prohibited:
+                    self.assertNotIn(marker, section)
+        self.assertEqual(
+            extract_markdown_list_items(sections["tdd_md"]),
+            extract_html_list_items(sections["tdd_html"]),
+        )
+
+    def test_tdd_vendor_handoff_matrix_is_reference_only_and_in_parity(self):
+        tdd_md = self.contract_docs["tdd_md"]
+        tdd_html = self.contract_docs["tdd_html"]
+        parse_html(tdd_html)
+        md_heading = "#### Vendor Handoff Reference Matrix"
+        html_heading = "<h4>Vendor Handoff Reference Matrix</h4>"
+        self.assertIn(md_heading, tdd_md)
+        self.assertIn(html_heading, tdd_html)
+        sections = {
+            "tdd_md": extract_template_section(
+                tdd_md,
+                md_heading,
+                "\n\n---\n",
+            ),
+            "tdd_html": extract_template_section(
+                tdd_html,
+                html_heading,
+                "<h3>3.4 Optional Google Apps Script Governance Extension",
+            ),
+        }
+        required = [
+            "only after case evidence establishes the failing component",
+            "Manager retains ownership and risk judgment",
+            "Evidence-confirmed CM / AES core defect",
+            "BBE PEA reference destination",
+        ]
+        for name, section in sections.items():
+            with self.subTest(document=name):
+                for marker in required:
+                    self.assertIn(marker, section)
+                self.assertNotIn("Assign to", section)
+        self.assertEqual(
+            extract_markdown_list_items(sections["tdd_md"]),
+            extract_html_list_items(sections["tdd_html"]),
+        )
+
+    def test_presentation_slide_two_frames_technical_direction_as_uncertainty(self):
+        presentation = read(PRESENTATION_HTML)
+        parse_html(presentation)
+        slide_two = extract_template_section(
+            presentation,
+            "<!-- SLIDE 2 -->",
+            "<!-- SLIDE 3 -->",
+        )
+        for marker in [
+            "Technical Direction Uncertainty",
+            "evidence may support competing hypotheses",
+            "Product references guide validation but do not prove cause",
+            "Vendor handoff remains unresolved until case evidence establishes the failing component",
+            "Missing logs or incomplete validation can delay a supported conclusion",
+        ]:
+            self.assertIn(marker, slide_two)
+        for marker in [
+            "blaming JTAPI SDK null returns instead of CM SA9114/SA9124 attributes",
+            "Misdirected Product Escalations",
+            "Wasted engineering weeks and prolonged customer outages due to invalid troubleshooting paths",
+        ]:
+            self.assertNotIn(marker, slide_two)
+        self.assertNotRegex(
+            slide_two.lower(),
+            r"\b(?:risk|directive|misdirection|misdirected)\b",
+        )
+
     def test_tdd_contract_unconditionally_forbids_generated_recommendations(self):
         sections = {
             "tdd_md": extract_template_section(
                 self.contract_docs["tdd_md"],
                 "#### Evidence Processing Contract",
-                "#### Vendor Escalation Handoff Matrix",
+                "#### Vendor Handoff Reference Matrix",
             ),
             "tdd_html": extract_template_section(
                 self.contract_docs["tdd_html"],
                 "<h4>Evidence Processing Contract</h4>",
-                "<h4>Vendor Escalation Handoff Verification Rules</h4>",
+                "<h4>Vendor Handoff Reference Matrix</h4>",
             ),
         }
         for name, section in sections.items():

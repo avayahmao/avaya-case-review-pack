@@ -8,8 +8,8 @@
   {
     "id": "single_issue_with_evidence",
     "input": "One incident supported by one case activity entry.",
-    "expected": "Use the single-issue structure, keep the body citation-free, and reverse-map the supporting row in the final appendix.",
-    "contract_markers": ["single-issue assessment", "E1..EN", "Answer only the portion supported by evidence"]
+    "expected": "Use the single-issue structure, render one supported Progress Summary milestone without padding or repeated evidence, keep the body citation-free, and reverse-map the supporting row in the final appendix.",
+    "contract_markers": ["single-issue assessment", "E1..EN", "Answer only the portion supported by evidence", "render one when only one exists", "Do not pad or repeat evidence"]
   },
   {
     "id": "multi_problem_case",

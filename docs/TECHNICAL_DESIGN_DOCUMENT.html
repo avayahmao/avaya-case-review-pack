@@ -139,14 +139,14 @@
 
     <h2>1. Executive Summary & System Objectives</h2>
     <p>The <strong>Avaya Case Review Suite</strong> is an enterprise-grade AI governance system designed for Avaya Support Managers, Operations Leads, Service Delivery Managers (SDMs), and Technical Escalation Managers.</p>
-    <p>The system automates the synthesis of raw ticket data (Siebel SRs and ServiceNow INCs) and off-system email communications (Google Workspace / Gmail), while executing <strong>automated technical direction auditing</strong> using an embedded 10-Domain Avaya UC/CC expert knowledge base.</p>
+    <p>The system automates the synthesis of raw ticket data (Siebel SRs and ServiceNow INCs) and off-system email communications (Google Workspace / Gmail), while applying <strong>evidence-triggered technical direction checks</strong> from an embedded 10-Domain Avaya UC/CC expert knowledge base.</p>
 
     <div class="card">
         <strong>Key Architectural Goals:</strong>
         <ul>
             <li><strong>1-Click Executive Case Brief Generation</strong>: Transforms hundreds of pages of raw database dumps into clean, executive-ready markdown reports.</li>
             <li><strong>Unified Off-System Email Synthesis</strong>: Integrates headless Playwright browser automation with Google Workspace to extract SDM threads, customer commitments, and auto-router (OCD) "UNASSIGNABLE" dispatch alerts.</li>
-            <li><strong>Automated Sanity Auditing</strong>: Detects engineer misdirection (e.g. blaming application SDKs for platform configuration issues), verifies system attribute dependencies (such as CM <code>SA9114</code>/<code>SA9124</code>), enforces official Javadoc API methods (<code>LucentV5CallInfo.getUCID()</code>), and flags misdirected vendor escalations (BBE vs CPE vs Verint vs Nuance).</li>
+            <li><strong>Evidence-Triggered Technical Direction Checks</strong>: The engine compares retrieved evidence to conditional product references, documents validation gaps and handoff context, and never proves cause or assigns a vendor itself.</li>
             <li><strong>Optional Workspace Governance Extension (not deployed)</strong>: The repository keeps a manually deployable Apps Script reference for Sheets/Docs/digest workflows. It is outside the active installer, MCP, and case-review runtime.</li>
         </ul>
     </div>
@@ -296,6 +296,14 @@
         </tbody>
     </table>
 
+    <h4>Conditional Technical Direction Checks</h4>
+    <ol>
+        <li><strong>Platform vs Application Layers</strong>: When retrieved case evidence matches a layer mismatch, compare platform and application hypotheses and identify the validation needed to distinguish them. Do not present CM configuration as causal without case evidence.</li>
+        <li><strong>System Attribute References</strong>: Treat <code>SA9114</code> and <code>SA9124</code> as conditional verification references only when park/unpark evidence triggers them. The review does not inspect the live system and must not claim it does.</li>
+        <li><strong>API Method Reference</strong>: When UCID evidence activates the check, compare case evidence with official Javadoc, including <code>LucentV5CallInfo.getUCID()</code>. This comparison does not enforce a method or prove causation.</li>
+        <li><strong>Log Evidence Sufficiency</strong>: Distinguish logs that were requested, collected, attached, and analyzed, then identify evidence gaps without assuming silence means absence. <code>getlogs</code>, <code>csta_trace</code>, and <code>g3trace</code> are conditional examples, not universal requirements.</li>
+    </ol>
+
     <h4>Output Brief Schema</h4>
     <ol>
         <li><strong>Executive Summary &amp; Status</strong>: One citation-free 6-8 sentence paragraph containing conclusion-level incident, timing/location, affected scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.</li>
@@ -308,7 +316,7 @@
         </li>
         <li><strong>Conditional Technical Assessment</strong>: Starts with problem clarification and adds technical reasoning through environment and findings, causal mechanism, solution and validation, and unresolved gaps. It uses exactly one multi-problem <code>Problem Statement</code> or single-issue <code>Incident &amp; RCA Summary</code>.</li>
         <li><strong>Mitigation Maturity</strong>: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.</li>
-        <li><strong>Unified Progress and Timeline</strong>: Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.</li>
+        <li><strong>Progress Summary and Timeline</strong>: Progress Summary renders up to five substantive milestones supported by evidence and renders one when only one exists; it never pads or repeats evidence. Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.</li>
         <li><strong>Ownership &amp; Next Step</strong>: Assignee, last concrete action, stated next action, owner, and due date. It only restates evidence-backed commitments.</li>
         <li><strong>Appendix A — Evidence Register</strong>: The final section, using <code>Ref | Date | Source | Verbatim evidence / data | Supports</code>.</li>
     </ol>
@@ -326,16 +334,17 @@
         <li>Generate Technical &amp; Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.</li>
         <li>Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.</li>
         <li>Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.</li>
+        <li>Progress Summary has no minimum count; its displayed milestone count follows the available substantive evidence and never pads or repeats evidence.</li>
     </ol>
 
-    <h4>Vendor Escalation Handoff Verification Rules</h4>
-
+    <h4>Vendor Handoff Reference Matrix</h4>
+    <p>Use this matrix only after case evidence establishes the failing component. It provides handoff context; the Manager retains ownership and risk judgment.</p>
     <ul>
-        <li><strong>CM / AES Core Software Bugs</strong> &rarr; Assign to <span class="badge">[BBE PEA]</span> (CM ASAI, AES service crash, crossID exhaustion).</li>
-        <li><strong>POM / AEP Product Code</strong> &rarr; Assign to <span class="badge">[CPE PEA]</span> (POM campaign engine, AEP application server, REST driver).</li>
-        <li><strong>Verint / WFO / RIS / WebLogic</strong> &rarr; Assign to <span class="badge">[Verint Support Ticket]</span> (ACRA recording failure, RIS connection, DMSA).</li>
-        <li><strong>Nuance MRCP / ASR / TTS</strong> &rarr; Assign to <span class="badge">[Nuance Support Ticket]</span> (Speech recognition grammar errors, MRCP v2 timeout).</li>
-        <li><strong>Customer Infrastructure</strong> &rarr; Assign to <span class="badge">[Customer / MSP Action]</span> (LDAP auth, SQL database, firewall ports).</li>
+        <li><strong>Evidence-confirmed CM / AES core defect</strong> &rarr; <strong>BBE PEA reference destination</strong> (CM ASAI, AES service crash, crossID exhaustion).</li>
+        <li><strong>Evidence-confirmed POM / AEP product-code defect</strong> &rarr; <strong>CPE PEA reference destination</strong> (POM campaign engine, AEP application server, REST driver).</li>
+        <li><strong>Evidence-confirmed Verint / WFO / RIS / WebLogic defect</strong> &rarr; <strong>Verint Support ticket reference destination</strong> (ACRA recording failure, RIS connection, DMSA).</li>
+        <li><strong>Evidence-confirmed Nuance MRCP / ASR / TTS defect</strong> &rarr; <strong>Nuance Support ticket reference destination</strong> (speech recognition grammar errors, MRCP v2 timeout).</li>
+        <li><strong>Evidence-confirmed customer-infrastructure issue</strong> &rarr; <strong>Customer / MSP reference destination</strong> (LDAP authentication, SQL database, firewall ports).</li>
     </ul>
 
     <h3>3.4 Optional Google Apps Script Governance Extension (<code>examples/optional-appsscript/Code.gs</code>)</h3>

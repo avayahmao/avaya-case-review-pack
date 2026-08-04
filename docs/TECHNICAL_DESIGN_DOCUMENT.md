@@ -6,12 +6,12 @@
 
 The **Avaya Case Review Suite** is an enterprise-grade AI governance system designed for Avaya Support Managers, Operations Leads, Service Delivery Managers (SDMs), and Technical Escalation Managers. 
 
-The system automates the synthesis of raw ticket data (Siebel SRs and ServiceNow INCs) and off-system email communications (Google Workspace / Gmail), while executing **automated technical direction auditing** using an embedded 10-Domain Avaya UC/CC expert knowledge base.
+The system automates the synthesis of raw ticket data (Siebel SRs and ServiceNow INCs) and off-system email communications (Google Workspace / Gmail), while applying **evidence-triggered technical direction checks** from an embedded 10-Domain Avaya UC/CC expert knowledge base.
 
 ### Key Capabilities
 1. **1-Click Executive Case Brief Generation**: Transforms hundreds of pages of raw database dumps into clean, executive-ready markdown reports.
 2. **Unified Off-System Email Synthesis**: Integrates headless Playwright browser automation with Google Workspace to extract SDM threads, customer commitments, and auto-router (OCD) "UNASSIGNABLE" dispatch alerts.
-3. **Automated Sanity Auditing**: Detects engineer misdirection (e.g. blaming application SDKs for platform configuration issues), verifies system attribute dependencies (such as CM `SA9114`/`SA9124`), enforces official Javadoc API methods (`LucentV5CallInfo.getUCID()`), and flags misdirected vendor escalations (BBE vs CPE vs Verint vs Nuance).
+3. **Evidence-Triggered Technical Direction Checks**: The engine compares retrieved evidence to conditional product references, documents validation gaps and handoff context, and never proves cause or assigns a vendor itself.
 4. **Optional Workspace Governance Extension (not deployed)**: The repository keeps a manually deployable Apps Script reference for Sheets/Docs/digest workflows. It is outside the active installer, MCP, and case-review runtime.
 
 ---
@@ -118,11 +118,11 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 | `ip-office.md` | IP Office (IPO), SSA, SysMonitor, SIP trunk registration, IPO Manager |
 | `log-collection.md` | `getlogs`, `csta_trace`, `g3trace`, `spi.log`, `acr.log`, `tcpdump` log matrix |
 
-#### Technical Sanity & Risk Audit Rules
-1. **Platform vs Application Misdirection**: Flags cases where engineers request application code changes (e.g. JTAPI SDK PEA) when the underlying cause is Communication Manager (CM) configuration (e.g. missing ASAI snapshot on 2nd unpark trunk).
-2. **System Attribute Verification**: Checks whether CM system-features `SA9114` and `SA9124` are required for trunk CLI retention across call park/unpark.
-3. **API Method Compliance**: Verifies that engineers use official Javadoc methods (`LucentV5CallInfo.getUCID()`) rather than deprecated or zeroed fields (`originalCallInfo.ucid`).
-4. **Log Sufficiency**: Cross-checks case logs against `log-collection.md` to ensure `getlogs`, `csta_trace`, and `g3trace` were requested before escalating.
+#### Conditional Technical Direction Checks
+1. **Platform vs Application Layers**: When retrieved case evidence matches a layer mismatch, compare platform and application hypotheses and identify the validation needed to distinguish them. Do not present CM configuration as causal without case evidence.
+2. **System Attribute References**: Treat `SA9114` and `SA9124` as conditional verification references only when park/unpark evidence triggers them. The review does not inspect the live system and must not claim it does.
+3. **API Method Reference**: When UCID evidence activates the check, compare case evidence with official Javadoc, including `LucentV5CallInfo.getUCID()`. This comparison does not enforce a method or prove causation.
+4. **Log Evidence Sufficiency**: Distinguish logs that were requested, collected, attached, and analyzed, then identify evidence gaps without assuming silence means absence. `getlogs`, `csta_trace`, and `g3trace` are conditional examples, not universal requirements.
 
 #### Output Brief Schema
 1. **Executive Summary & Status**: One citation-free 6-8 sentence paragraph containing conclusion-level incident, timing/location, affected scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.
@@ -132,7 +132,7 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
    - Closed/Resolved records are excluded from age-only staleness flags.
 3. **Conditional Technical Assessment**: Starts with problem clarification and adds technical reasoning through environment and findings, causal mechanism, solution and validation, and unresolved gaps. It uses exactly one multi-problem `Problem Statement` or single-issue `Incident & RCA Summary`.
 4. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
-5. **Unified Progress and Timeline**: Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.
+5. **Progress Summary and Timeline**: Progress Summary renders up to five substantive milestones supported by evidence and renders one when only one exists; it never pads or repeats evidence. Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.
 6. **Ownership & Next Step**: Assignee, last concrete action, stated next action, owner, and due date. It only restates evidence-backed commitments.
 7. **Appendix A — Evidence Register**: The final section, using `Ref | Date | Source | Verbatim evidence / data | Supports`.
 
@@ -148,15 +148,16 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 9. Generate Technical & Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.
 10. Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.
 11. Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
+12. Progress Summary has no minimum count; its displayed milestone count follows the available substantive evidence and never pads or repeats evidence.
 
-#### Vendor Escalation Handoff Matrix
-- **CM / AES Core Software Bugs** ➔ Assign to **[BBE PEA]** (CM ASAI, AES service crash, crossID exhaustion).
-- **POM / AEP Product Code** ➔ Assign to **[CPE PEA]** (POM campaign engine, AEP application server, REST driver).
-- **Verint / WFO / RIS / WebLogic** ➔ Assign to **[Verint Support Ticket]** (ACRA recording failure, RIS connection, DMSA).
-- **Nuance MRCP / ASR / TTS** ➔ Assign to **[Nuance Support Ticket]** (Speech recognition grammar errors, MRCP v2 timeout).
-- **Customer Infrastructure** ➔ Assign to **[Customer / MSP Action]** (LDAP auth, SQL database, firewall ports).
+#### Vendor Handoff Reference Matrix
+Use this matrix only after case evidence establishes the failing component. It provides handoff context; the Manager retains ownership and risk judgment.
 
-*The handoff matrix informs the technical assessment only; the Manager retains risk judgment.*
+- **Evidence-confirmed CM / AES core defect** → **BBE PEA reference destination** (CM ASAI, AES service crash, crossID exhaustion).
+- **Evidence-confirmed POM / AEP product-code defect** → **CPE PEA reference destination** (POM campaign engine, AEP application server, REST driver).
+- **Evidence-confirmed Verint / WFO / RIS / WebLogic defect** → **Verint Support ticket reference destination** (ACRA recording failure, RIS connection, DMSA).
+- **Evidence-confirmed Nuance MRCP / ASR / TTS defect** → **Nuance Support ticket reference destination** (speech recognition grammar errors, MRCP v2 timeout).
+- **Evidence-confirmed customer-infrastructure issue** → **Customer / MSP reference destination** (LDAP authentication, SQL database, firewall ports).
 
 
 ---

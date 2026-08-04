@@ -213,6 +213,7 @@ Before rendering:
 12. Confirm its root-cause statement uses at most one sentence as the one-sentence technical conclusion; keep detailed cause analysis only in Technical & Incident Assessment.
 13. Remove any technical paragraph that merely paraphrases the summary without adding a finding, mechanism, validation result, or unresolved gap.
 14. When explicit ADM mode applies, verify: For each of the four ADM dimensions, include evidence-supported content or, when relevant evidence is unavailable, an explicit unresolved evidence or investigation gap; omit inapplicable dimensions, never add rigid filler or invention, and do not create a second outline or ADM block.
+15. Confirm the displayed Progress Summary count follows the available substantive evidence: include up to five milestones, render one when only one exists, and do not pad or repeat evidence.
 
 ### Step 7 - Produce the Review
 
@@ -234,7 +235,7 @@ After the evidence gate passes, use this common structure:
 <Start with problem clarification; add environment or affected-component detail, findings or interpreted log evidence, causal or RCA-state reasoning, solution or workaround implementation and verification, and unresolved gaps or missing validation; distinguish planned preventive work from implemented controls; do not fully restate the event, impact, response, or status from the Executive Summary.>
 
 ## Progress Summary
-<Three to five substantive milestones, oldest first, without citation markers.>
+<Up to five substantive milestones supported by evidence, oldest first, without citation markers; render one when only one exists. Do not pad or repeat evidence.>
 
 ## Ownership & Next Step
 - **Current assignee:** <name / unassigned / unknown>
@@ -270,6 +271,7 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 - Evidence over opinion; unknown over invention.
 - Case-specific evidence is required for case-specific conclusions.
 - Evidence numbering is dynamic, not a three-item quota.
+- Progress Summary has no minimum count: render up to five evidence-supported substantive milestones, including one when only one exists, without padding or repeated evidence.
 - Evidentiary authority and Management display priority are separate.
 - Status pings inform stall detection even when omitted from the displayed timeline.
 - Closed/Resolved records are not stale merely because they are old.
