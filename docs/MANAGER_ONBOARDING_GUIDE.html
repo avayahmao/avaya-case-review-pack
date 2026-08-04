@@ -119,7 +119,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <h3>What the Generated Case Review Contains</h3>
 <p>The case review produces a structured, evidence-grounded executive report:</p>
 <ol>
-<li><strong>Top-Level Verdict</strong>: Bottom-line assessment (<code>Healthy</code>, <code>At Risk</code>, <code>Stalled</code>, or <code>不知道</code>) without citation markers.</li>
+<li><strong>Executive Summary</strong>: One citation-free 6-8 sentence paragraph for management and technical readers. It provides conclusion-level information on the incident, evidenced timing and location, affected scope, impact, key response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are <code>unknown</code>.</li>
 <li><strong>Two Freshness Clocks</strong>:
 <ul>
 <li><strong>Case record freshness</strong>: age of the official record's latest update.</li>
@@ -127,13 +127,13 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <li>Closed/Resolved records are not marked stale solely because they are old.</li>
 </ul>
 </li>
-<li><strong>Conditional Technical &amp; Incident Assessment</strong>: Exactly one of a multi-problem <code>Problem Statement</code> or a single-issue <code>Incident &amp; RCA Summary</code>. Telemetry calculations stay inside the relevant problem.</li>
+<li><strong>Conditional Technical &amp; Incident Assessment</strong>: Starts with problem clarification and adds technical reasoning through environment, findings, cause analysis, solution and validation, and unresolved gaps; it does not restate the complete incident or business impact. Exactly one of a multi-problem <code>Problem Statement</code> or a single-issue <code>Incident &amp; RCA Summary</code> is used. Future prevention is excluded from Executive Summary. Existing prevention controls appear only here and only when evidenced.</li>
 <li><strong>Mitigation Maturity</strong>: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.</li>
-<li><strong>Progress Summary and Timeline</strong>: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from display.</li>
+<li><strong>Progress Summary and Timeline</strong>: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from display. All dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.</li>
 <li><strong>Ownership &amp; Next Step</strong>: Assignee, last concrete action, stated next action, next-action owner, and due date. This section only restates evidence-backed commitments and does not generate advice.</li>
 <li><strong>Appendix A — Evidence Register</strong>: The final report section. Its table contains Ref, Date, Source, <strong>Verbatim evidence / data</strong>, and <strong>Supports</strong>; Supports reverse-maps each row to the exact body conclusion.</li>
 </ol>
-<p>The main body contains no Evidence IDs. Risk and action judgments remain with the Manager. If no verifiable case-specific evidence exists, the answer is exactly <code>不知道</code>.</p>
+<p>The main body contains no Evidence IDs. Risk and action judgments remain with the Manager. If no verifiable case-specific evidence exists, the answer is exactly <code>unknown</code>.</p>
 
 <hr />
 <h2>6. Troubleshooting &amp; FAQs</h2>

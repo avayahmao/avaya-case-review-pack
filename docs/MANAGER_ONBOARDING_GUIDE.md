@@ -100,18 +100,18 @@ To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigra
 
 The case review produces a structured, evidence-grounded executive report:
 
-1. **Top-Level Verdict**: Bottom-line assessment (`Healthy`, `At Risk`, `Stalled`, or `不知道`) without citation markers.
+1. **Executive Summary**: One citation-free 6-8 sentence paragraph for management and technical readers. It provides conclusion-level information on the incident, evidenced timing and location, affected scope, impact, key response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are `unknown`.
 2. **Two Freshness Clocks**:
    - **Case record freshness**: age of the official record's latest update.
    - **Last substantive progress age**: age of the latest concrete technical, mitigation, decision, or impact change.
    - Closed/Resolved records are not marked stale solely because they are old.
-3. **Conditional Technical & Incident Assessment**: Exactly one of a multi-problem `Problem Statement` or a single-issue `Incident & RCA Summary`. Telemetry calculations stay inside the relevant problem.
+3. **Conditional Technical & Incident Assessment**: Starts with problem clarification and adds technical reasoning through environment, findings, cause analysis, solution and validation, and unresolved gaps; it does not restate the complete incident or business impact. Exactly one of a multi-problem `Problem Statement` or a single-issue `Incident & RCA Summary` is used. Future prevention is excluded from Executive Summary. Existing prevention controls appear only here and only when evidenced.
 4. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.
-5. **Progress Summary and Timeline**: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from display.
+5. **Progress Summary and Timeline**: Substantive milestones from CaseToMD, Gmail, supplied documents, and logs. Routine status pings are retained for stall analysis but omitted from display. All dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.
 6. **Ownership & Next Step**: Assignee, last concrete action, stated next action, next-action owner, and due date. This section only restates evidence-backed commitments and does not generate advice.
 7. **Appendix A — Evidence Register**: The final report section. Its table contains Ref, Date, Source, **Verbatim evidence / data**, and **Supports**; Supports reverse-maps each row to the exact body conclusion.
 
-The main body contains no Evidence IDs. Risk and action judgments remain with the Manager. If no verifiable case-specific evidence exists, the answer is exactly `不知道`.
+The main body contains no Evidence IDs. Risk and action judgments remain with the Manager. If no verifiable case-specific evidence exists, the answer is exactly `unknown`.
 
 
 ---

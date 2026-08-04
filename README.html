@@ -108,15 +108,19 @@
 
     <h2>Evidence-Grounded Review Contract</h2>
     <ul>
-        <li>The executive body is citation-free; all supporting material appears in the final <strong>Appendix A — Evidence Register</strong>.</li>
+        <li>The executive body is citation-free; all supporting material appears in the final <strong>Appendix A - Evidence Register</strong>.</li>
+        <li>The report starts with one 6-8 sentence <strong>Executive Summary</strong> paragraph for management and technical readers. It contains conclusion-level incident, impact, response, RCA-state, mitigation, status, and next-checkpoint information.</li>
+        <li><strong>Technical &amp; Incident Assessment</strong> supplies the technical reasoning: environment, findings, causal mechanism, validation, and unresolved gaps without restating the summary.</li>
+        <li>Future prevention is excluded from Executive Summary. <strong>Existing prevention controls</strong> appear only in the technical assessment when supported by case evidence.</li>
         <li>The appendix table contains Ref, Date, Source, <strong>Verbatim evidence / data</strong>, and <strong>Supports</strong>. The Supports column reverse-maps each row to the body conclusion it validates.</li>
-        <li>The agent answers only what case-specific evidence supports. With zero verifiable case evidence, it outputs exactly <code>不知道</code>.</li>
+        <li>Any rendered list or table containing dates or timestamps is ordered oldest to newest; undated entries follow dated entries.</li>
+        <li>The agent answers only what case-specific evidence supports. With zero verifiable case evidence, it outputs exactly <code>unknown</code>.</li>
         <li><strong>Case record freshness</strong> and <strong>Last substantive progress age</strong> are reported separately; Closed/Resolved records are not stale solely because they are old.</li>
         <li>Mitigation maturity is one of Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.</li>
         <li>Risk and action judgments remain with the Manager. Ownership fields only restate commitments already present in evidence.</li>
     </ul>
 
-    <h2>🚀 Quick Setup (1-Click)</h2>
+    <h2>Quick Setup (1-Click)</h2>
     <p><strong>Recommended (works under corporate Group Policy):</strong></p>
     <ol>
         <li>Unzip the pack.</li>
@@ -133,8 +137,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
     <h3>Behind a corporate SSL-inspecting proxy?</h3>
     <p>The installer automatically works around common corporate SSL inspection (Zscaler / Netskope / Blue Coat) for:</p>
     <ul>
-        <li><strong>pip</strong> — via <code>--trusted-host pypi.org files.pythonhosted.org …</code></li>
-        <li><strong>Playwright Chromium download</strong> — via <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code>, applied only to that single command and restored immediately afterwards.</li>
+        <li><strong>pip</strong> - via <code>--trusted-host pypi.org files.pythonhosted.org ...</code></li>
+        <li><strong>Playwright Chromium download</strong> - via <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code>, applied only to that single command and restored immediately afterwards.</li>
     </ul>
     <p>If your org supplies a corporate CA bundle, prefer setting <code>NODE_EXTRA_CA_CERTS</code> to the <code>.pem</code> path <em>before</em> running <code>install.bat</code>:</p>
 <pre>$env:NODE_EXTRA_CA_CERTS = "C:\path\to\corp-ca-bundle.pem"
@@ -143,48 +147,48 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
     <h3>Gmail broker operations</h3>
     <p>The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> from <code>gmail_brokerctl.py</code>; see <a href="docs/GMAIL_EDGE_BROKER.md">docs/GMAIL_EDGE_BROKER.md</a>. The rollback switch is explicit (<code>GMAIL_BACKEND=legacy_playwright</code>) and there is no automatic fallback.</p>
 
-    <h2>📖 Complete Documentation Suite (<code>docs/</code>)</h2>
+    <h2>Complete Documentation Suite (<code>docs/</code>)</h2>
     <p>All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the <strong><a href="docs/">docs/</a></strong> directory:</p>
 
     <div class="card">
         <ul>
-            <li>📝 <strong>Release Notes & Version Track</strong>:
+            <li><strong>Release Notes &amp; Version Track</strong>:
                 <ul>
-                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> — v1.6.0 - latest release</li>
+                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> - v1.6.0 - latest release</li>
                 </ul>
             </li>
-            <li>📊 <strong>Executive Presentation</strong>:
+            <li><strong>Executive Presentation</strong>:
                 <ul>
-                    <li><a href="docs/PRESENTATION.html">docs/PRESENTATION.html</a> — Interactive Browser Slide Deck</li>
-                    <li><a href="docs/Avaya_Case_Review_Suite_Presentation.pptx">docs/Avaya_Case_Review_Suite_Presentation.pptx</a> — PowerPoint Presentation Deck</li>
+                    <li><a href="docs/PRESENTATION.html">docs/PRESENTATION.html</a> - Interactive Browser Slide Deck</li>
+                    <li><a href="docs/Avaya_Case_Review_Suite_Presentation.pptx">docs/Avaya_Case_Review_Suite_Presentation.pptx</a> - PowerPoint Presentation Deck</li>
                 </ul>
             </li>
-            <li>📐 <strong>Technical Architecture & Design</strong>:
+            <li><strong>Technical Architecture &amp; Design</strong>:
                 <ul>
-                    <li><a href="docs/TECHNICAL_DESIGN_DOCUMENT.html">docs/TECHNICAL_DESIGN_DOCUMENT.html</a> / <a href="docs/TECHNICAL_DESIGN_DOCUMENT.md">docs/TECHNICAL_DESIGN_DOCUMENT.md</a> — Complete Technical Design Document (TDD)</li>
+                    <li><a href="docs/TECHNICAL_DESIGN_DOCUMENT.html">docs/TECHNICAL_DESIGN_DOCUMENT.html</a> / <a href="docs/TECHNICAL_DESIGN_DOCUMENT.md">docs/TECHNICAL_DESIGN_DOCUMENT.md</a> - Complete Technical Design Document (TDD)</li>
                 </ul>
             </li>
-            <li>📖 <strong>Manager Onboarding & Operational Usage</strong>:
+            <li><strong>Manager Onboarding &amp; Operational Usage</strong>:
                 <ul>
-                    <li><a href="docs/MANAGER_ONBOARDING_GUIDE.html">docs/MANAGER_ONBOARDING_GUIDE.html</a> / <a href="docs/MANAGER_ONBOARDING_GUIDE.md">docs/MANAGER_ONBOARDING_GUIDE.md</a> — Support Manager Setup & Usage Guide</li>
+                    <li><a href="docs/MANAGER_ONBOARDING_GUIDE.html">docs/MANAGER_ONBOARDING_GUIDE.html</a> / <a href="docs/MANAGER_ONBOARDING_GUIDE.md">docs/MANAGER_ONBOARDING_GUIDE.md</a> - Support Manager Setup &amp; Usage Guide</li>
                 </ul>
             </li>
-            <li>💻 <strong>Desktop App Installation</strong>:
+            <li><strong>Desktop App Installation</strong>:
                 <ul>
-                    <li><a href="docs/ANTIGRAVITY_INSTALLATION_GUIDE.html">docs/ANTIGRAVITY_INSTALLATION_GUIDE.html</a> / <a href="docs/ANTIGRAVITY_INSTALLATION_GUIDE.md">docs/ANTIGRAVITY_INSTALLATION_GUIDE.md</a> — Antigravity App Installation & Login Guide</li>
+                    <li><a href="docs/ANTIGRAVITY_INSTALLATION_GUIDE.html">docs/ANTIGRAVITY_INSTALLATION_GUIDE.html</a> / <a href="docs/ANTIGRAVITY_INSTALLATION_GUIDE.md">docs/ANTIGRAVITY_INSTALLATION_GUIDE.md</a> - Antigravity App Installation &amp; Login Guide</li>
                 </ul>
             </li>
         </ul>
     </div>
 
-    <h2>🛠️ Package Structure</h2>
+    <h2>Package Structure</h2>
     <ul>
         <li><code>setup_env.ps1</code>: Automated environment installer script.</li>
         <li><code>docs/</code>: Centralized documentation suite (Release Notes, Guides, TDD, Presentations, PowerPoint).</li>
         <li><code>plugins/avaya-case-review/</code>: The Case Review plugin containing the <code>case-review</code> skill, <code>gmail-capability</code> skill, and <strong>10 embedded Avaya product domain reference guides</strong>.</li>
         <li><code>tools/casetomd/</code>: Python bridge for the CaseToMD server (<code>https://192.168.67.160:8000/mcp</code>).</li>
         <li><code>tools/gmail/</code>: Single Managed Edge broker, thin Gmail MCP adapter, and explicit legacy Playwright rollback backend.</li>
-        <li><code>tools/appsscript/</code>: Google Apps Script module (<code>Code.gs</code>) for Google Sheets/Docs/Email digest governance.</li>
+        <li><code>examples/optional-appsscript/</code>: Optional, manually deployed Google Apps Script reference for Sheets/Docs/Email digest governance. It is not installed or invoked by the active runtime.</li>
     </ul>
 
 </div>

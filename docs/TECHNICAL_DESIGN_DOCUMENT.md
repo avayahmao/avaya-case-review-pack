@@ -12,7 +12,7 @@ The system automates the synthesis of raw ticket data (Siebel SRs and ServiceNow
 1. **1-Click Executive Case Brief Generation**: Transforms hundreds of pages of raw database dumps into clean, executive-ready markdown reports.
 2. **Unified Off-System Email Synthesis**: Integrates headless Playwright browser automation with Google Workspace to extract SDM threads, customer commitments, and auto-router (OCD) "UNASSIGNABLE" dispatch alerts.
 3. **Automated Sanity Auditing**: Detects engineer misdirection (e.g. blaming application SDKs for platform configuration issues), verifies system attribute dependencies (such as CM `SA9114`/`SA9124`), enforces official Javadoc API methods (`LucentV5CallInfo.getUCID()`), and flags misdirected vendor escalations (BBE vs CPE vs Verint vs Nuance).
-4. **Google Apps Script & Sheet Governance Integration**: Webhook endpoint and scheduled trigger engine (`Code.gs`) that synchronizes case review verdicts into Google Sheets, generates Google Docs briefs, and fires email alerts to managers for stalled cases.
+4. **Optional Workspace Governance Extension (not deployed)**: The repository keeps a manually deployable Apps Script reference for Sheets/Docs/digest workflows. It is outside the active installer, MCP, and case-review runtime.
 
 ---
 
@@ -37,10 +37,10 @@ The architecture consists of five primary decoupled layers:
                    |                                           |
                    v                                           v
 +--------------------------------------+    +---------------------------------------+
-| 3. ENTERPRISE DATA SOURCES           |    | 4. GOOGLE WORKSPACE & APPS SCRIPT     |
+| 3. ENTERPRISE DATA SOURCES           |    | 4. GOOGLE WORKSPACE SERVICES            |
 |  * Siebel SR Database / ServiceNow   |    |  * @avaya.com Gmail Inbox             |
-|  * HTTPS Endpoint:                   |    |  * Google Apps Script (Code.gs)       |
-|    https://192.168.67.160:8000/mcp   |    |  * Google Sheet Governance Dashboard  |
+|  * HTTPS Endpoint:                   |    |  * Optional Apps Script governance    |
+|    https://192.168.67.160:8000/mcp   |    |    reference (manual deployment only) |
 +--------------------------------------+    +---------------------------------------+
                    |                                           |
                    +---------------------+---------------------+
@@ -125,25 +125,29 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 4. **Log Sufficiency**: Cross-checks case logs against `log-collection.md` to ensure `getlogs`, `csta_trace`, and `g3trace` were requested before escalating.
 
 #### Output Brief Schema
-1. **Executive Verdict & Overall Health**: Citation-free Healthy, At Risk, Stalled, or `不知道`.
+1. **Executive Summary & Status**: One citation-free 6-8 sentence paragraph containing conclusion-level incident, scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.
 2. **Freshness Model**:
    - **Case record freshness** measures the age of the official record update.
    - **Last substantive progress age** measures the age of the latest concrete technical or operational change.
    - Closed/Resolved records are excluded from age-only staleness flags.
-3. **Conditional Technical Assessment**: Exactly one multi-problem `Problem Statement` or single-issue `Incident & RCA Summary`. Telemetry remains inline with its sourced problem.
+3. **Conditional Technical Assessment**: Starts with problem clarification and adds technical reasoning through environment and findings, causal mechanism, solution and validation, and unresolved gaps. It uses exactly one multi-problem `Problem Statement` or single-issue `Incident & RCA Summary`.
 4. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
-5. **Unified Progress and Timeline**: Status pings remain available for stall analysis but are omitted from display when non-substantive.
+5. **Unified Progress and Timeline**: Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.
 6. **Ownership & Next Step**: Assignee, last concrete action, stated next action, owner, and due date. It only restates evidence-backed commitments.
 7. **Appendix A — Evidence Register**: The final section, using `Ref | Date | Source | Verbatim evidence / data | Supports`.
 
 #### Evidence Processing Contract
 1. **Evidentiary authority** is evaluated independently from management display priority.
 2. Direct logs and official record facts outrank summaries for factual conclusions.
-3. Source conflicts remain visible and disputed conclusions remain `不知道` until resolved.
+3. Source conflicts remain visible and disputed conclusions remain `unknown` until resolved.
 4. Evidence entries are never split, duplicated, or invented to reach a target count.
 5. A reference guide may explain case evidence but cannot replace it.
 6. The body contains no Evidence IDs; `Supports` reverse-maps each appendix row to exact body conclusions.
-7. The agent does not generate risk lists, scores, directives, or recommended actions.
+7. The agent does not generate risk lists, scores, directives, or unsupported recommendations.
+8. Any rendered list or table containing dates or timestamps is sorted ascending by normalized date/time; the freshness calculation still uses the newest dated evidence internally.
+9. Generate Technical & Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.
+10. Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.
+11. Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidenced.
 
 #### Vendor Escalation Handoff Matrix
 - **CM / AES Core Software Bugs** ➔ Assign to **[BBE PEA]** (CM ASAI, AES service crash, crossID exhaustion).
@@ -157,16 +161,16 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 
 ---
 
-### 3.4 Google Apps Script & Workspace Subsystem (`tools/appsscript/Code.gs`)
+### 3.4 Optional Google Apps Script Governance Extension (`examples/optional-appsscript/Code.gs`)
 
-Google Apps Script provides the cloud governance layer for tracking cases across Google Sheets, generating Google Docs briefs, and firing automated daily email digests.
+This file is a reference implementation for an optional Google Sheets/Docs governance workflow. It is not part of the active runtime: `setup_env.ps1` does not install it, no MCP server calls its `doPost()` handler, and the Gmail cloud `doGet(e)` endpoint is a separate application. It should be deployed manually only when persistent Sheets/Docs tracking or scheduled manager digests are an explicit requirement.
 
-#### Key Functions in `Code.gs`
+#### Optional capabilities
 
 ```javascript
 /**
  * 1. doPost(e): HTTP Webhook Endpoint
- * Receives JSON payload from Antigravity/Case Review Agent.
+ * Receives JSON payload from a separately configured caller.
  */
 function doPost(e) { ... }
 
@@ -178,7 +182,7 @@ function updateCaseTrackingSheet(caseData) { ... }
 
 /**
  * 3. createGoogleDocReport(caseData): Google Doc Brief Generator
- * Creates a formatted Google Doc brief with the Executive Verdict and Evidence Appendix.
+ * Creates a formatted Google Doc brief with the Executive Summary and Evidence Appendix.
  */
 function createGoogleDocReport(caseData) { ... }
 
@@ -188,6 +192,10 @@ function createGoogleDocReport(caseData) { ... }
  */
 function sendDailyManagerDigest() { ... }
 ```
+
+#### Activation requirements
+
+Before using this optional extension, configure its Google Apps Script project, set the spreadsheet/folder/email settings, deploy the Web App with an appropriate access policy, connect a caller that posts the payload, and create the manager-digest trigger. None of these steps are performed by the installer.
 
 #### JSON Payload Contract for `doPost` Webhook
 ```json
@@ -204,7 +212,7 @@ function sendDailyManagerDigest() { ... }
       "date": "2026-08-01",
       "source": "Case activity",
       "verbatim": "PEA review remains pending with no ETA.",
-      "supports": "Verdict — Stalled; Ownership — Next owner"
+      "supports": "Executive Summary — Status: Stalled; Ownership — Next owner"
     }
   ]
 }
@@ -251,5 +259,5 @@ playwright install chromium
 1. **Unit Testing**: Python MCP bridge validation via STDIO ping/pong test.
 2. **Contract Regression Matrix**: `tests/case_review_scenarios.json` covers closed/resolved age handling, single-issue and multi-problem structures, Gmail no-result behavior, status-only activity, lab-versus-production mitigation, missing required tools, conflicting sources, zero evidence, and appendix reverse mapping.
 3. **Contract Validator**: `python -m unittest tests.test_case_review_contract -v` verifies the runtime skill, MD/HTML parity, release state, and portable links.
-4. **Google Apps Script Validation**: Execute the `doGet()` health check and a controlled `doPost()` test payload.
+4. **Optional Apps Script Validation**: Only when the governance extension is separately deployed, execute its `doGet()` health check, a controlled `doPost()` test payload, and the configured trigger. This is not part of the standard release validation.
 5. **Presentation & Doc Generation**: Validate the PowerPoint and interactive HTML artifacts when those files change.

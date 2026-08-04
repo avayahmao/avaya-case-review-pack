@@ -359,6 +359,24 @@ class CaseReviewContractTests(unittest.TestCase):
                 for marker in prohibited:
                     self.assertNotIn(marker, content)
 
+    def test_contract_docs_describe_layered_disclosure(self):
+        required = [
+            "6-8 sentence",
+            "conclusion-level",
+            "technical reasoning",
+            "Future prevention is excluded from Executive Summary",
+            "Existing prevention controls",
+        ]
+        old_summary = (
+            "Executive Summary covering the incident, timing and location, affected "
+            "scope, business effect, response, root cause, prevention priorities"
+        )
+        for name, content in self.contract_docs.items():
+            with self.subTest(document=name):
+                for marker in required:
+                    self.assertIn(marker, content)
+                self.assertNotIn(old_summary, content)
+
     def test_readme_files_are_english_only(self):
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
