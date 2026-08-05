@@ -105,13 +105,13 @@
     "id": "multipage_gmail_threads",
     "input": "A record-ID Gmail search returns several pages and duplicate threads across IDs.",
     "expected": "Follow every next page token, deduplicate by thread ID, preserve match provenance, and do not analyze until all queries complete.",
-    "contract_markers": ["next_page_token", "thread_id", "record_id_queries_completed"]
+    "contract_markers": ["next_page_token", "thread_id", "record_id_queries_completed", "unique_threads_discovered"]
   },
   {
     "id": "every_message_in_thread",
     "input": "A matched Gmail thread contains multiple messages and one large chunked body.",
     "expected": "Read every message and body chunk, verify counts and SHA-256, then mark the thread complete.",
-    "contract_markers": ["gmail_read_thread_page", "body_hashes_verified", "gmail_threads_read_complete"]
+    "contract_markers": ["gmail_read_thread_page", "body_hashes_verified", "gmail_threads_read_complete", "threads_read_complete", "messages_expected", "messages_completed", "message_chunks_expected", "message_chunks_completed"]
   },
   {
     "id": "incomplete_context_blocks_review",

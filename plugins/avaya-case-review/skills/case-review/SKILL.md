@@ -68,10 +68,10 @@ Before generating any review content, process **every discrete Case note** retur
 1. On the first frozen-ID query, call `gmail_list_threads(query: "<record ID>", snapshot_before: "", page_token: "", max_results: 100)` and retain the server-returned `snapshot_before`. Reuse that one shared snapshot for every later list and read call in the run.
 2. For every frozen record ID, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Record each successful page in `query_pages_completed`, and increment `record_id_queries_completed` only after that ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
 3. Track tokens within each query chain. A missing completion field or a malformed, **repeated or regressing** page token or cursor is a **protocol failure**; never infer completion and never impose an arbitrary thread limit.
-4. Deduplicate the union by `thread_id` while retaining match provenance: every record-ID query that returned each thread.
+4. Deduplicate the union by `thread_id` while retaining match provenance: every record-ID query that returned each thread. Record the canonical deduplicated count as `unique_threads_discovered`; `gmail_threads_discovered` and `gmail_threads_enumerated` are collection-detail aliases that must resolve to the same deduplicated set before reads begin.
 5. For every unique thread, call `gmail_read_thread_page(thread_id: "<thread ID>", snapshot_before: "<shared snapshot>", cursor: "")`, then pass each real `next_cursor` unchanged until `next_cursor` is absent and `complete=true`. Read every message in the thread at or before the shared snapshot, even when an individual message does not contain the searched ID.
 6. Track cursors per thread and reject missing, malformed, repeated, or regressing values. If a listed thread **disappears or becomes unreadable** before completion, the gate fails.
-7. Deduplicate by `message_id`, retain thread/query provenance, derive `gmail_messages_expected` from each stable thread message count and `body_chunks_expected` from each message's stable chunk count, and reassemble every message body from all ordered chunks. Verify the reassembled normalized UTF-8 body against the advertised `body_bytes` and SHA-256 `body_sha256`; count every verified message and chunk.
+7. Deduplicate by `message_id`, retain thread/query provenance, derive canonical `messages_expected` from each stable thread message count and `message_chunks_expected` from each message's stable chunk count, and reassemble every message body from all ordered chunks. Verify the reassembled normalized UTF-8 body against the advertised `body_bytes` and SHA-256 `body_sha256`; increment canonical `messages_completed` and `message_chunks_completed` only after successful completion. The `gmail_messages_expected`, `gmail_messages_read`, `body_chunks_expected`, and `body_chunks_read` collection-detail aliases must mirror those canonical counters exactly.
 8. Require the ordered message count and `manifest_sha256` to remain identical on every page for a thread. Any changed manifest, count mismatch, chunk gap, byte mismatch, or hash mismatch blocks the review.
 9. **Attachment metadata** such as filename and MIME type may be recorded, but attachment payloads are out of scope and are not fetched; unread attachment content does not block completeness.
 10. Messages received after `snapshot_before` are intentionally excluded from the current run. Messages received at or before the shared snapshot are all in scope.
@@ -89,6 +89,14 @@ case_notes_processed
 record_ids_planned
 record_id_queries_completed
 query_pages_completed
+unique_threads_discovered
+threads_read_complete
+messages_expected
+messages_completed
+message_chunks_expected
+message_chunks_completed
+body_hashes_verified
+snapshot_before
 gmail_threads_discovered
 gmail_threads_enumerated
 gmail_threads_read_complete
@@ -96,21 +104,21 @@ gmail_messages_expected
 gmail_messages_read
 body_chunks_expected
 body_chunks_read
-body_hashes_verified
 manifest_hashes_stable
-snapshot_before
 ```
 
 The complete-context gate passes only when all of these checks succeed:
 
 - `case_notes_discovered == case_notes_processed`.
 - `record_ids_planned == record_id_queries_completed`, and all query pagination chains ended with `complete=true`; `query_pages_completed` contains every successfully traversed page.
-- `gmail_threads_discovered == gmail_threads_enumerated` after deduplication with match provenance retained.
-- `gmail_threads_discovered == gmail_threads_read_complete`.
-- `gmail_messages_expected == gmail_messages_read`.
-- `body_chunks_expected == body_chunks_read`.
-- `body_hashes_verified == gmail_messages_read`.
-- `manifest_hashes_stable == gmail_threads_read_complete`.
+- `unique_threads_discovered == threads_read_complete`.
+- `messages_expected == messages_completed`.
+- `message_chunks_expected == message_chunks_completed`.
+- `body_hashes_verified == messages_completed`.
+- Confirm that all thread manifest hashes were stable; equivalently, `manifest_hashes_stable == threads_read_complete`.
+- The collection-detail aliases must also satisfy `gmail_threads_discovered == gmail_threads_enumerated == unique_threads_discovered` and `gmail_threads_read_complete == threads_read_complete`.
+- The message and chunk aliases must satisfy `gmail_messages_expected == messages_expected`, `gmail_messages_read == messages_completed`, `body_chunks_expected == message_chunks_expected`, and `body_chunks_read == message_chunks_completed`.
+- Therefore `gmail_threads_discovered == gmail_threads_read_complete`, `gmail_messages_expected == gmail_messages_read`, `body_chunks_expected == body_chunks_read`, `body_hashes_verified == gmail_messages_read`, and `manifest_hashes_stable == gmail_threads_read_complete` must also hold.
 - `snapshot_before` is non-empty and identical on every Gmail list and read call.
 
 Duplicate thread or message discovery is expected and must be deduplicated before these equalities; duplication never permits a source item to be skipped. No analysis or report drafting may begin until every equality and completion flag passes.
@@ -269,8 +277,8 @@ Every factual answer must pass the internal evidence gate before rendering:
 Before rendering:
 
 1. Revalidate `case_notes_discovered == case_notes_processed` and `record_ids_planned == record_id_queries_completed`, with every query pagination chain ending in `complete=true`.
-2. Revalidate `gmail_threads_discovered == gmail_threads_enumerated == gmail_threads_read_complete` and `gmail_messages_expected == gmail_messages_read`.
-3. Revalidate `body_chunks_expected == body_chunks_read`, `body_hashes_verified == gmail_messages_read`, stable manifest hashes for every thread, and one identical non-empty `snapshot_before` across all Gmail calls.
+2. Revalidate the canonical equalities `unique_threads_discovered == threads_read_complete`, `messages_expected == messages_completed`, and `message_chunks_expected == message_chunks_completed`.
+3. Revalidate `body_hashes_verified == messages_completed`, confirm all thread manifest hashes were stable, verify every Gmail/thread/message/chunk alias still equals its canonical counter, and confirm one identical non-empty `snapshot_before` across all Gmail calls.
 4. If any coverage check fails during reflection, discard the draft and emit only the prescribed context-collection blocking output.
 5. Map every factual body claim to at least one appendix row.
 6. Confirm dates, IDs, names, quotes, calculations, owners, and ETA values against the ledger.

@@ -249,10 +249,31 @@ class CaseReviewContractTests(unittest.TestCase):
             "### Complete Context Before Analysis",
             "### Step 4 - Analyze Only What the Evidence Supports",
         )
+        ledger_fields = set(
+            extract_fenced_block_after(
+                retrieve,
+                "Maintain this internal **Context Coverage Ledger**",
+                "text",
+            ).splitlines()
+        )
+        for field in [
+            "unique_threads_discovered",
+            "threads_read_complete",
+            "messages_expected",
+            "messages_completed",
+            "message_chunks_expected",
+            "message_chunks_completed",
+        ]:
+            self.assertIn(field, ledger_fields)
         for marker in [
             "case_notes_discovered == case_notes_processed",
             "record_ids_planned == record_id_queries_completed",
             "query_pages_completed",
+            "unique_threads_discovered == threads_read_complete",
+            "messages_expected == messages_completed",
+            "message_chunks_expected == message_chunks_completed",
+            "body_hashes_verified == messages_completed",
+            "all thread manifest hashes were stable",
             "gmail_threads_discovered == gmail_threads_enumerated",
             "gmail_threads_discovered == gmail_threads_read_complete",
             "gmail_messages_expected == gmail_messages_read",
