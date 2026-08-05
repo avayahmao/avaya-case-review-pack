@@ -482,6 +482,10 @@ class CaseReviewContractTests(unittest.TestCase):
             "complete=true",
             "stable snapshot",
             "page-token chain",
+            "repeated or regressing token",
+            "missing `complete` field",
+            "quota/timeout",
+            "15-minute verification deadline",
             "multi-message thread",
             "cursor exhaustion",
             "hash/count checks",
@@ -521,14 +525,34 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertIn(marker, runbook)
 
         rollback = extract_between(runbook, "## Rollback", "Keep the exhaustive Agent gate inactive")
-        rollback_offsets = [
-            rollback.index("Stop Antigravity"),
-            rollback.index("$McpCtl = Join-Path"),
-            rollback.index("python $McpCtl stop"),
-            rollback.index("Get-CimInstance Win32_Process"),
-            rollback.index("Rerun the prior package's installer"),
+        self._assert_rollback_safety_contract(rollback)
+
+    def _assert_rollback_safety_contract(self, rollback: str) -> None:
+        ordered_markers = [
+            "python $McpCtl stop",
+            "poll for at most 15 seconds",
+            "Get-CimInstance Win32_Process",
+            "$lockFree = Test-BrokerLockFree $LockFile",
+            "if ($statePresent -or $stateProcess.Count -gt 0 -or $dedicatedProcesses.Count -gt 0 -or -not $lockFree)",
+            "Rerun the prior package's installer",
         ]
-        self.assertEqual(rollback_offsets, sorted(rollback_offsets))
+        for marker in ordered_markers:
+            self.assertIn(marker, rollback)
+        offsets = [rollback.index(marker) for marker in ordered_markers]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertIn("$stopExit = $LASTEXITCODE", rollback)
+        self.assertIn("if ($stopExit -notin @(0, 20))", rollback)
+        self.assertIn("Start-Sleep -Milliseconds 250", rollback)
+        self.assertIn("while ((Get-Date).ToUniversalTime() -lt $deadline)", rollback)
+        self.assertIn(
+            "if (-not $statePresent -and $stateProcess.Count -eq 0 -and $dedicatedProcesses.Count -eq 0 -and $lockFree) { break }",
+            rollback,
+        )
+        self.assertIn(
+            "throw 'FAIL: broker state, PID, lock, or Managed Edge process remains active'",
+            rollback,
+        )
+        self.assertIn("do not replace files until the check passes", rollback)
         self.assertNotIn("%USERPROFILE%", rollback)
         self.assertNotIn("gmail_brokerctl.py status", rollback)
         stop_command = rollback.index("python $McpCtl stop")
@@ -536,6 +560,25 @@ class CaseReviewContractTests(unittest.TestCase):
             rollback[stop_command:],
             r"(?i)python\s+[^`\r\n]*gmail_brokerctl\.py\s+status\b",
         )
+
+    def test_rollback_safety_contract_rejects_guard_or_order_mutations(self):
+        runbook = read(GMAIL_CLOUD_BRIDGE_MD)
+        rollback = extract_between(runbook, "## Rollback", "Keep the exhaustive Agent gate inactive")
+        mutated_guard = rollback.replace(
+            "if ($statePresent -or $stateProcess.Count -gt 0 -or $dedicatedProcesses.Count -gt 0 -or -not $lockFree) {\n       throw 'FAIL: broker state, PID, lock, or Managed Edge process remains active'\n   }",
+            "",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self._assert_rollback_safety_contract(mutated_guard)
+
+        mutated_order = rollback.replace(
+            "Get-CimInstance Win32_Process",
+            "Rerun the prior package's installer\nGet-CimInstance Win32_Process",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self._assert_rollback_safety_contract(mutated_order)
 
     def test_cloud_bridge_verification_examples_are_exhaustive_and_sanitized(self):
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)
@@ -561,6 +604,18 @@ class CaseReviewContractTests(unittest.TestCase):
             "at least one multi-message thread exercised",
             "response bodies, IDs, tokens, cursors, and secrets were not printed or logged",
             "Out-Null",
+            "$verificationDeadline",
+            "AddMinutes(15)",
+            "Assert-VerificationDeadline",
+            "seenPageTokens",
+            "seenCursors",
+            "repeated or regressing page token",
+            "repeated or regressing cursor",
+            "list response includes complete",
+            "thread response includes complete",
+            "-TimeoutSec 60",
+            "timeout/quota/error",
+            "do not activate local Agent SKILL",
         ]:
             self.assertIn(marker, verification)
         for forbidden in [
@@ -571,6 +626,45 @@ class CaseReviewContractTests(unittest.TestCase):
             "BEGIN PRIVATE KEY",
         ]:
             self.assertNotIn(forbidden, verification)
+
+    def test_cloud_bridge_verification_bounds_and_advances_each_pagination_chain(self):
+        runbook = read(GMAIL_CLOUD_BRIDGE_MD)
+        verification = extract_between(
+            runbook,
+            "## Sanitized verification examples",
+            "## Collection contract",
+        )
+        self.assertLess(
+            verification.index("$verificationDeadline"),
+            verification.index("function Invoke-Bridge"),
+        )
+        self.assertLess(
+            verification.index("$seenPageTokens = @{}"),
+            verification.index("if ($pageToken)"),
+        )
+        self.assertLess(
+            verification.index("$seenCursors = @{}"),
+            verification.index("if ($nextCursor)"),
+        )
+        page_loop = verification.index("if ($pageToken)")
+        next_page_call = verification.index("$page = Invoke-Bridge @{", page_loop)
+        self.assertLess(
+            verification.index("repeated or regressing page token", page_loop),
+            next_page_call,
+        )
+        cursor_loop = verification.index("if ($nextCursor)")
+        self.assertLess(
+            verification.index("repeated or regressing cursor", cursor_loop),
+            verification.index("$cursor = $nextCursor", cursor_loop),
+        )
+        for marker in [
+            "deadline expiry",
+            "quota",
+            "timeout",
+            "missing `complete`",
+            "do not activate the local Agent SKILL",
+        ]:
+            self.assertIn(marker, runbook)
 
     def test_cloud_deployment_precedes_local_install_and_activation_in_each_core_doc(self):
         readme_md = read(README_MD)

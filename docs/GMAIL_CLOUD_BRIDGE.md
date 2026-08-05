@@ -15,8 +15,8 @@ Complete these steps in order:
 5. Select **Deploy > Manage deployments**, edit the existing Web App, select **New version**, and deploy it.
 6. Keep the existing deployment URL; do not create or distribute a replacement endpoint URL.
 7. Complete controlled authorization if Google requests the newly required Gmail scopes. Confirm the expected account and scopes before allowing access.
-8. Verify a zero-result `list_threads` request returns `complete=true`. Then run a real case query and confirm that it retains one stable snapshot across the complete page-token chain.
-9. Verify one multi-message thread through cursor exhaustion and complete the documented hash/count checks for its manifest, messages, and body chunks.
+8. Verify a zero-result `list_threads` request returns `complete=true`. Then run a real case query and confirm that it retains one stable snapshot across the complete page-token chain. Track every `next_page_token`; a repeated or regressing token, a missing `complete` field, a quota/timeout, or a 15-minute verification deadline is a failure.
+9. Verify one multi-message thread through cursor exhaustion and complete the documented hash/count checks for its manifest, messages, and body chunks. Track every `next_cursor` with the same repeated/regressing-token, missing-`complete`, quota/timeout, and deadline guards.
 10. **Only then** deploy the updated local Gmail MCP modules and Agent SKILL.
 
 If the Advanced Gmail Service cannot be enabled, authorization cannot be
@@ -34,6 +34,7 @@ cursor, or message body is stored in this repository.
 ```powershell
 $ErrorActionPreference = "Stop"
 $Utf8 = [System.Text.UTF8Encoding]::new($false)
+$verificationDeadline = (Get-Date).ToUniversalTime().AddMinutes(15)
 $requiredInputs = @(
     "GMAIL_VERIFY_WEB_APP_URL",
     "GMAIL_VERIFY_CASE_ID",
@@ -49,13 +50,19 @@ $CaseId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_CASE_ID")
 $ZeroResultId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_ZERO_RESULT_ID")
 
 function Assert-Equal([string]$Name, $Actual, $Expected) {
-    if ($Actual -ne $Expected) { throw "FAIL: $Name" }
+    if ($Actual -ne $Expected) { throw "FAIL: $Name; do not activate local Agent SKILL" }
     Write-Host "PASS: $Name"
 }
 
 function Assert-True([string]$Name, [bool]$Condition) {
-    if (-not $Condition) { throw "FAIL: $Name" }
+    if (-not $Condition) { throw "FAIL: $Name; do not activate local Agent SKILL" }
     Write-Host "PASS: $Name"
+}
+
+function Assert-VerificationDeadline([string]$Name) {
+    if ((Get-Date).ToUniversalTime() -ge $verificationDeadline) {
+        throw "FAIL: verification deadline exceeded during $Name; do not activate local Agent SKILL"
+    }
 }
 
 function Get-Sha256([string]$Value) {
@@ -72,6 +79,7 @@ function Get-Utf8ByteCount([string]$Value) {
 }
 
 function Invoke-Bridge([hashtable]$Parameters) {
+    Assert-VerificationDeadline "cloud request"
     $pairs = @(
         foreach ($entry in $Parameters.GetEnumerator()) {
             "{0}={1}" -f [Uri]::EscapeDataString([string]$entry.Key), [Uri]::EscapeDataString([string]$entry.Value)
@@ -80,9 +88,14 @@ function Invoke-Bridge([hashtable]$Parameters) {
     $uri = $WebAppUrl.TrimEnd([char[]]"?&") + "?" + ($pairs -join "&")
     try {
         # Never pipe this response to Format-* or ConvertTo-Json: segments contain body text.
-        return Invoke-RestMethod -Method Get -Uri $uri -ErrorAction Stop
+        $response = Invoke-RestMethod -Method Get -Uri $uri -TimeoutSec 60 -ErrorAction Stop
+        if ($null -eq $response -or $response.success -ne $true) {
+            throw "cloud response failed"
+        }
+        Assert-VerificationDeadline "cloud response"
+        return $response
     } catch {
-        throw "FAIL: cloud request unavailable during sanitized verification"
+        throw "FAIL: cloud request timeout/quota/error; do not activate local Agent SKILL"
     }
 }
 
@@ -98,8 +111,10 @@ $snapshot = [string]$page.snapshot_before
 Assert-True "real-case snapshot is non-empty" (-not [string]::IsNullOrWhiteSpace($snapshot))
 $threadIds = @()
 $seenThreads = @{}
+$seenPageTokens = @{}
 $pageToken = ""
 do {
+    Assert-VerificationDeadline "list page"
     Assert-Equal "page snapshot reused" ([string]$page.snapshot_before) $snapshot
     foreach ($threadIdValue in @($page.thread_ids)) {
         $threadId = [string]$threadIdValue
@@ -108,9 +123,15 @@ do {
             $threadIds += $threadId
         }
     }
+    Assert-True "list response includes complete" ($null -ne $page.complete)
+    Assert-True "list response includes next page token" ($null -ne $page.next_page_token)
     $pageToken = [string]$page.next_page_token
     Assert-Equal "page complete flag matches next token" ([bool]$page.complete) ([string]::IsNullOrEmpty($pageToken))
     if ($pageToken) {
+        if ($seenPageTokens.ContainsKey($pageToken)) {
+            throw "FAIL: repeated or regressing page token; do not activate local Agent SKILL"
+        }
+        $seenPageTokens[$pageToken] = $true
         $page = Invoke-Bridge @{
             action = "list_threads"
             q = $CaseId
@@ -129,6 +150,7 @@ $multiMessageFound = $false
 foreach ($threadId in $threadIds) {
     $cursor = ""
     $cursorHistory = @{}
+    $seenCursors = @{}
     $firstThreadPage = $true
     $expectedMessageCount = 0
     $messagesCompleted = 0
@@ -139,6 +161,7 @@ foreach ($threadId in $threadIds) {
     $bodyBytesById = @{}
     $bodyHashById = @{}
     do {
+        Assert-VerificationDeadline "thread cursor"
         if ($cursor -and $cursorHistory.ContainsKey($cursor)) { throw "FAIL: cursor did not advance" }
         if ($cursor) { $cursorHistory[$cursor] = $true }
         $readParameters = @{
@@ -149,6 +172,8 @@ foreach ($threadId in $threadIds) {
         if ($cursor) { $readParameters.cursor = $cursor }
         $threadPage = Invoke-Bridge $readParameters
         Assert-Equal "thread snapshot reused" ([string]$threadPage.snapshot_before) $snapshot
+        Assert-True "thread response includes complete" ($null -ne $threadPage.complete)
+        Assert-True "thread response includes next cursor" ($null -ne $threadPage.next_cursor)
         $messageCount = [int]$threadPage.message_count
         if ($firstThreadPage) {
             $expectedMessageCount = $messageCount
@@ -171,6 +196,12 @@ foreach ($threadId in $threadIds) {
         $messagesCompleted = [int]$threadPage.messages_completed
         $nextCursor = [string]$threadPage.next_cursor
         Assert-Equal "cursor complete flag matches next cursor" ([bool]$threadPage.complete) ([string]::IsNullOrEmpty($nextCursor))
+        if ($nextCursor) {
+            if ($seenCursors.ContainsKey($nextCursor)) {
+                throw "FAIL: repeated or regressing cursor; do not activate local Agent SKILL"
+            }
+            $seenCursors[$nextCursor] = $true
+        }
         $cursor = $nextCursor
         $firstThreadPage = $false
     } while ($cursor)
@@ -205,11 +236,13 @@ python $McpCli read-thread-page $env:GMAIL_VERIFY_THREAD_ID $env:GMAIL_VERIFY_SN
 if ($LASTEXITCODE -ne 0) { throw "FAIL: local CLI read smoke check" }
 ```
 
-The check passes only when every `Assert-...` line reports `PASS`. Any
-exception is a failure: do not activate the Agent gate. The script keeps
-response objects in memory solely to compare counts, manifest hashes, UTF-8
-byte counts, and body hashes; it never prints message bodies or writes tokens,
-IDs, cookies, or credentials to logs.
+The check passes only when every `Assert-...` line reports `PASS`. Any repeated
+or regressing page token/cursor, missing `complete`, deadline expiry, quota,
+timeout, count/hash mismatch, or remaining process/state is a failure; do not activate the local Agent SKILL.
+The script keeps response objects in memory solely to compare counts, manifest
+hashes, UTF-8 byte counts, and body hashes;
+it never prints message bodies or writes tokens, IDs, cookies, or credentials
+to logs.
 
 ## Collection contract
 
