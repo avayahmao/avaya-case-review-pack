@@ -1270,10 +1270,11 @@ class CaseReviewContractTests(unittest.TestCase):
             "Every Case note",
             "Every message in every matched Gmail thread",
             "Incomplete collection blocks the review",
-            "Attachments are excluded",
+            "Attachment payloads are excluded; filenames and MIME metadata may be recorded.",
         ]:
             with self.subTest(marker=marker):
                 self.assertIn(marker, visible_text)
+        self.assertNotIn("Attachments are excluded", visible_text)
 
         limited_collection = re.compile(
             r"(?:only\s+)?(?:key|relevant|prioriti[sz]ed)\s+"

@@ -244,11 +244,12 @@ class PresentationPptxContractTests(unittest.TestCase):
             "Every Case note",
             "Every message in every matched Gmail thread",
             "Incomplete collection blocks the review",
-            "Attachments are excluded",
+            "Attachment payloads are excluded; filenames and MIME metadata may be recorded.",
         )
         for phrase in required:
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.visible_deck_text)
+        self.assertNotIn("Attachments are excluded", self.visible_deck_text)
 
         limited_collection = re.compile(
             r"(?:only\s+)?(?:key|relevant|prioriti[sz]ed)\s+"
