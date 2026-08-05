@@ -243,18 +243,86 @@ Redeploy the prior Apps Script version to the same Web App URL. If local deploym
    context even after Antigravity exits:
 
    ```powershell
-   python "%USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py" stop
-   python "%USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py" status
+   $McpCtl = Join-Path $env:USERPROFILE '.gemini\tools\gmail\gmail_brokerctl.py'
+   python $McpCtl stop
+   $stopExit = $LASTEXITCODE
+   if ($stopExit -notin @(0, 20)) { throw 'FAIL: broker stop command did not complete safely' }
    ```
 
-   Confirm the stop completed and the follow-up status shows no running broker
-   or Managed Edge process/context. Do not replace local files while either is still active.
-3. Restore the prior package's
-   `plugins/avaya-case-review/skills/case-review/SKILL.md` and prior Gmail MCP
-   source under `tools/gmail` to the deployed
-   `%USERPROFILE%\.gemini\config\plugins\avaya-case-review\` and
-   `%USERPROFILE%\.gemini\tools\gmail\` paths, or rerun the prior package's
-   installer as the supported local rollback.
+   Do not invoke the broker's status subcommand here: when the broker is
+   absent, that subcommand can start a new broker. A stop exit code of `0` is
+   success. An already-absent broker may return the documented unavailable code `20` and
+   is also safe to verify with the native check below. Any other exit code is
+   a failure.
+3. Prove that the broker and its Managed Edge child have exited without any
+   broker CLI command that can start them. Set the expected deployed paths and
+   poll for at most 15 seconds:
+
+   ```powershell
+   $BrokerRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'AvayaCaseReview\gmail-broker'
+   $StateFile = Join-Path $BrokerRoot 'state.json'
+   $LockFile = Join-Path $BrokerRoot 'broker.lock'
+   $BrokerScript = Join-Path $env:USERPROFILE '.gemini\tools\gmail\gmail_edge_broker.py'
+   $EdgeProfile = Join-Path $env:USERPROFILE '.gemini\tools\gmail\edge_broker_profile'
+   $deadline = (Get-Date).ToUniversalTime().AddSeconds(15)
+
+   function Test-BrokerLockFree([string]$Path) {
+       if (-not (Test-Path -LiteralPath $Path)) { return $true }
+       $stream = $null
+       try {
+           $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::ReadWrite)
+           $stream.Lock(0, 1)
+           $stream.Unlock(0, 1)
+           return $true
+       } catch {
+           return $false
+       } finally {
+           if ($null -ne $stream) { $stream.Dispose() }
+       }
+   }
+
+   do {
+       $statePresent = Test-Path -LiteralPath $StateFile
+       $statePid = $null
+       if ($statePresent) {
+           try {
+               $state = Get-Content -LiteralPath $StateFile -Raw | ConvertFrom-Json
+               $statePid = [int]$state.pid
+           } catch {
+               throw 'FAIL: broker state is unreadable; do not replace local files'
+           }
+       }
+       $dedicatedProcesses = @(
+           Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+               $commandLine = [string]$_.CommandLine
+               $commandLine -and (
+                   $commandLine.IndexOf($BrokerScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+                   $commandLine.IndexOf($EdgeProfile, [StringComparison]::OrdinalIgnoreCase) -ge 0
+               )
+           }
+       )
+       $stateProcess = if ($null -ne $statePid) {
+           @(Get-CimInstance Win32_Process -Filter "ProcessId=$statePid" -ErrorAction SilentlyContinue)
+       } else { @() }
+       $lockFree = Test-BrokerLockFree $LockFile
+       if (-not $statePresent -and $stateProcess.Count -eq 0 -and $dedicatedProcesses.Count -eq 0 -and $lockFree) { break }
+       Start-Sleep -Milliseconds 250
+   } while ((Get-Date).ToUniversalTime() -lt $deadline)
+
+   if ($statePresent -or $stateProcess.Count -gt 0 -or $dedicatedProcesses.Count -gt 0 -or -not $lockFree) {
+       throw 'FAIL: broker state, PID, lock, or Managed Edge process remains active'
+   }
+   Write-Host 'PASS: broker state/PID/lock and dedicated Managed Edge processes are gone'
+   ```
+
+   The native check passes only when `state.json` is gone, the advertised PID
+   has no process, no process command line contains the dedicated broker script
+   or `edge_broker_profile`, and the secured `broker.lock` byte can be acquired
+   and released. A remaining state file, PID, lock, or dedicated process is a
+   failure; do not replace files until the check passes.
+4. Rerun the prior package's installer. This is the only supported local
+   rollback; do not manually replace deployed files while any broker or Edge
+   process remains active.
 
 Restart Antigravity only after the prior local package is restored.
 Keep the exhaustive Agent gate inactive until the prior cloud version and the

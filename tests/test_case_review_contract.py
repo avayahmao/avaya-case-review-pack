@@ -504,25 +504,38 @@ class CaseReviewContractTests(unittest.TestCase):
         for marker in [
             "If local deployment has already occurred",
             "Stop Antigravity",
-            r'python "%USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py" stop',
-            r'python "%USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py" status',
+            r"$McpCtl = Join-Path $env:USERPROFILE '.gemini\tools\gmail\gmail_brokerctl.py'",
+            "python $McpCtl stop",
+            "$stopExit = $LASTEXITCODE",
             "independent Gmail broker",
-            "no running broker",
-            "Do not replace local files while either is still active",
-            "Restore the prior package",
-            "case-review/SKILL.md",
-            "tools/gmail",
+            "Test-BrokerLockFree",
+            "Get-CimInstance Win32_Process",
+            "edge_broker_profile",
+            "state.json",
+            "broker.lock",
+            "ConvertFrom-Json",
+            "Start-Sleep -Milliseconds 250",
+            "15 seconds",
+            "Rerun the prior package's installer",
         ]:
             self.assertIn(marker, runbook)
 
         rollback = extract_between(runbook, "## Rollback", "Keep the exhaustive Agent gate inactive")
         rollback_offsets = [
             rollback.index("Stop Antigravity"),
-            rollback.index('gmail_brokerctl.py" stop'),
-            rollback.index("no running broker"),
-            rollback.index("Restore the prior package"),
+            rollback.index("$McpCtl = Join-Path"),
+            rollback.index("python $McpCtl stop"),
+            rollback.index("Get-CimInstance Win32_Process"),
+            rollback.index("Rerun the prior package's installer"),
         ]
         self.assertEqual(rollback_offsets, sorted(rollback_offsets))
+        self.assertNotIn("%USERPROFILE%", rollback)
+        self.assertNotIn("gmail_brokerctl.py status", rollback)
+        stop_command = rollback.index("python $McpCtl stop")
+        self.assertNotRegex(
+            rollback[stop_command:],
+            r"(?i)python\s+[^`\r\n]*gmail_brokerctl\.py\s+status\b",
+        )
 
     def test_cloud_bridge_verification_examples_are_exhaustive_and_sanitized(self):
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)
