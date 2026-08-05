@@ -94,5 +94,59 @@
     "input": "Several body conclusions are supported by overlapping case and Gmail evidence.",
     "expected": "Keep the body citation-free and map each appendix row back through the Supports column.",
     "contract_markers": ["body must contain no Evidence IDs", "Supports", "final section"]
+  },
+  {
+    "id": "all_case_notes_before_gmail",
+    "input": "The CaseToMD record contains status pings, technical notes, and multiple related record IDs.",
+    "expected": "Process and count every Case note before freezing the primary-plus-related-ID Gmail query set.",
+    "contract_markers": ["every discrete Case note", "case_notes_discovered == case_notes_processed", "freeze the record-ID query set"]
+  },
+  {
+    "id": "multipage_gmail_threads",
+    "input": "A record-ID Gmail search returns several pages and duplicate threads across IDs.",
+    "expected": "Follow every next page token, deduplicate by thread ID, preserve match provenance, and do not analyze until all queries complete.",
+    "contract_markers": ["next_page_token", "thread_id", "record_id_queries_completed"]
+  },
+  {
+    "id": "every_message_in_thread",
+    "input": "A matched Gmail thread contains multiple messages and one large chunked body.",
+    "expected": "Read every message and body chunk, verify counts and SHA-256, then mark the thread complete.",
+    "contract_markers": ["gmail_read_thread_page", "body_hashes_verified", "gmail_threads_read_complete"]
+  },
+  {
+    "id": "incomplete_context_blocks_review",
+    "input": "A pagination call fails after some Case notes, threads, and messages were already retrieved.",
+    "expected": "Output only the context-collection failure counts and blocker; generate no partial review sections.",
+    "contract_markers": ["Context collection incomplete — review not generated.", "Partial results", "must not output Executive Summary"]
+  },
+  {
+    "id": "complete_zero_gmail_results",
+    "input": "Every frozen record-ID query returns zero threads with complete pagination.",
+    "expected": "Treat Gmail coverage as complete with zero threads and continue from the fully processed Case record.",
+    "contract_markers": ["zero-result query", "complete=true", "all query pagination chains"]
+  },
+  {
+    "id": "token_and_cursor_loops_block_review",
+    "input": "The Gmail service repeats or regresses a page token or thread cursor before completion.",
+    "expected": "Treat the pagination chain as incomplete and block all review generation.",
+    "contract_markers": ["repeated or regressing", "page token or cursor", "protocol failure"]
+  },
+  {
+    "id": "disappearing_thread_blocks_review",
+    "input": "A thread discovered during enumeration disappears or becomes unreadable while its messages are being collected.",
+    "expected": "Fail the completeness gate and discard the partial corpus.",
+    "contract_markers": ["disappears or becomes unreadable", "discards the partial corpus"]
+  },
+  {
+    "id": "snapshot_after_messages_excluded",
+    "input": "New messages arrive after the shared Gmail snapshot while a review run is collecting older messages.",
+    "expected": "Exclude post-snapshot messages from this run while completely reading every eligible message at or before the snapshot.",
+    "contract_markers": ["Messages received after `snapshot_before`", "at or before the shared snapshot"]
+  },
+  {
+    "id": "attachment_metadata_out_of_scope_content",
+    "input": "A matched message has attachments plus customer, product, owner, participant, and Gmail-only record references.",
+    "expected": "Record attachment metadata without fetching payloads, and do not expand the frozen query set from out-of-scope content.",
+    "contract_markers": ["Attachment metadata", "attachment payloads", "Gmail-discovered IDs"]
   }
 ]

@@ -47,6 +47,12 @@ def extract_contract_window(content: str) -> str:
     return content[max(0, anchor - 200) : min(len(content), anchor + 4200)]
 
 
+def extract_between(content: str, start_marker: str, end_marker: str) -> str:
+    start = content.index(start_marker)
+    end = content.index(end_marker, start)
+    return content[start:end]
+
+
 def extract_fenced_block_after(content: str, anchor: str, language: str) -> str:
     start = content.index(anchor)
     match = re.search(
@@ -206,6 +212,79 @@ class CaseReviewContractTests(unittest.TestCase):
             "Gmail search succeeds but returns no relevant messages",
         ]:
             self.assertIn(marker, self.skill)
+
+    def test_complete_context_gate_precedes_analysis(self):
+        retrieve = extract_between(
+            self.skill,
+            "### Step 2 - Retrieve Required Sources",
+            "### Step 4 - Analyze Only What the Evidence Supports",
+        )
+        for marker in [
+            "Complete Context Before Analysis",
+            "every discrete Case note",
+            "gmail_list_threads",
+            "gmail_read_thread_page",
+            "next_page_token",
+            "next_cursor",
+            "Context Coverage Ledger",
+            "Context collection incomplete — review not generated.",
+        ]:
+            self.assertIn(marker, retrieve)
+        self.assertLess(
+            self.skill.index("Complete Context Before Analysis"),
+            self.skill.index("### Step 4 - Analyze Only What the Evidence Supports"),
+        )
+
+        gmail_collection = extract_between(
+            retrieve,
+            "#### Gmail",
+            "### Step 3 - Build the Evidence Ledger",
+        )
+        self.assertNotIn("Read relevant messages", gmail_collection)
+        self.assertNotIn("prioritizing", gmail_collection)
+
+    def test_context_coverage_ledger_requires_complete_equalities(self):
+        retrieve = extract_between(
+            self.skill,
+            "### Complete Context Before Analysis",
+            "### Step 4 - Analyze Only What the Evidence Supports",
+        )
+        for marker in [
+            "case_notes_discovered == case_notes_processed",
+            "record_ids_planned == record_id_queries_completed",
+            "query_pages_completed",
+            "gmail_threads_discovered == gmail_threads_enumerated",
+            "gmail_threads_discovered == gmail_threads_read_complete",
+            "gmail_messages_expected == gmail_messages_read",
+            "body_chunks_expected == body_chunks_read",
+            "body_hashes_verified == gmail_messages_read",
+            "manifest_hashes_stable",
+            "snapshot_before",
+        ]:
+            self.assertIn(marker, retrieve)
+
+    def test_incomplete_context_output_contains_no_review_sections(self):
+        failure = extract_fenced_block_after(
+            self.skill,
+            "Context collection incomplete — review not generated.",
+            "text",
+        )
+        for marker in [
+            "Case notes: <processed>/<discovered>",
+            "Record-ID queries: <completed>/<planned>",
+            "Gmail threads: <completed>/<discovered>",
+            "Gmail messages: <completed>/<expected>",
+            "Blocker: <exact sanitized failure>",
+        ]:
+            self.assertIn(marker, failure)
+        for forbidden in [
+            "Executive Summary",
+            "Technical & Incident Assessment",
+            "Progress Summary",
+            "Root cause",
+            "Appendix A",
+        ]:
+            self.assertNotIn(forbidden, failure)
 
     def test_evidence_authority_is_not_management_display_priority(self):
         for marker in [
@@ -995,6 +1074,15 @@ class CaseReviewContractTests(unittest.TestCase):
             "conflicting_sources",
             "zero_case_evidence",
             "appendix_reverse_mapping",
+            "all_case_notes_before_gmail",
+            "multipage_gmail_threads",
+            "every_message_in_thread",
+            "incomplete_context_blocks_review",
+            "complete_zero_gmail_results",
+            "token_and_cursor_loops_block_review",
+            "disappearing_thread_blocks_review",
+            "snapshot_after_messages_excluded",
+            "attachment_metadata_out_of_scope_content",
         }
         self.assertGreaterEqual(len(scenarios), 7)
         self.assertTrue(required.issubset(ids))

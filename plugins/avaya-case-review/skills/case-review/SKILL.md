@@ -37,10 +37,10 @@ Reference guides support interpretation only. They are not proof that a conditio
 ### Step 1 - Plan the Retrieval
 
 1. Extract the primary identifier. Supported record types are **INC, SR, Activity, CTASK, CHG, or PRJTASK**.
-2. Plan the first two calls: CaseToMD for the official record, then Gmail for off-system context.
-3. After retrieval, scan for related record IDs, PEA IDs, customer identifiers, and named owners.
+2. Retrieve CaseToMD first. Do not start Gmail collection until every Case note has been processed and the record-ID query set has been frozen.
+3. Do not analyze evidence, draft conclusions, or generate any review content until the complete-context gate passes.
 4. Select domain references only after case symptoms and components are known.
-5. Reserve a final evidence-coverage and format review before producing the answer.
+5. Reserve a final context-coverage, evidence-coverage, and format review before producing the answer.
 
 ### Step 2 - Retrieve Required Sources
 
@@ -51,18 +51,87 @@ Reference guides support interpretation only. They are not proof that a conditio
 3. Treat `markdown` as the official case-record source, not as proof that every embedded hypothesis is correct.
 4. If the CaseToMD tool is missing, the call fails, or `success` is false, identify the CaseToMD failure and stop. Do not fabricate a review.
 
+### Complete Context Before Analysis
+
+Before generating any review content, process **every discrete Case note** returned by CaseToMD, including routine status pings; freeze the primary raw Case ID plus every supported related record ID explicitly present in those notes; enumerate every Gmail thread for every frozen ID; and read every message in every unique matched thread. Relevance ranking may affect display only after this gate passes; it must never determine what is retrieved, read, or processed.
+
+#### Case notes and frozen query scope
+
+1. Identify every discrete note or activity block from the structured boundaries in the CaseToMD Markdown. Count each note in `case_notes_discovered`, process it into the internal source ledger, and count it in `case_notes_processed` before making any Gmail call.
+2. Status-only notes are processed and counted even when they will not appear in the rendered Timeline or Evidence Appendix.
+3. Extract and deduplicate the primary raw Case ID plus every supported INC, SR, Activity, CTASK, CHG, PRJTASK, PEA, escalation, or related-record ID explicitly present in the Case notes, then **freeze the record-ID query set**.
+4. Do not add customer-name-only, product-name-only, owner-only, participant-only, broad date-only, or **Gmail-discovered IDs** to the frozen query set.
+5. Ambiguous note boundaries, a truncation indicator, or a note-parsing failure makes context collection incomplete.
+
 #### Gmail
 
-1. Call `gmail_search(query: "<raw Case ID>")`.
-2. Read relevant messages with `gmail_read`, prioritizing commitments, unassignable dispatch alerts, and technical threads containing concrete results.
-3. Additional searches must remain case-bounded. Combine a related ID, customer term, or owner with the primary case context; do not run broad person-only searches.
-4. If the **Gmail tool is missing or the search call fails**, identify Gmail as the unavailable required server and stop.
-5. If the **Gmail search succeeds but returns no relevant messages**, continue with CaseToMD evidence and state: `Gmail: no additional relevant evidence found`.
-6. User-supplied documents may supplement these sources. Label them by filename and date; do not present a parsed shell, extraction artifact, or unsupported inference as a live case record.
+1. On the first frozen-ID query, call `gmail_list_threads(query: "<record ID>", snapshot_before: "", page_token: "", max_results: 100)` and retain the server-returned `snapshot_before`. Reuse that one shared snapshot for every later list and read call in the run.
+2. For every frozen record ID, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Record each successful page in `query_pages_completed`, and increment `record_id_queries_completed` only after that ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
+3. Track tokens within each query chain. A missing completion field or a malformed, **repeated or regressing** page token or cursor is a **protocol failure**; never infer completion and never impose an arbitrary thread limit.
+4. Deduplicate the union by `thread_id` while retaining match provenance: every record-ID query that returned each thread.
+5. For every unique thread, call `gmail_read_thread_page(thread_id: "<thread ID>", snapshot_before: "<shared snapshot>", cursor: "")`, then pass each real `next_cursor` unchanged until `next_cursor` is absent and `complete=true`. Read every message in the thread at or before the shared snapshot, even when an individual message does not contain the searched ID.
+6. Track cursors per thread and reject missing, malformed, repeated, or regressing values. If a listed thread **disappears or becomes unreadable** before completion, the gate fails.
+7. Deduplicate by `message_id`, retain thread/query provenance, derive `gmail_messages_expected` from each stable thread message count and `body_chunks_expected` from each message's stable chunk count, and reassemble every message body from all ordered chunks. Verify the reassembled normalized UTF-8 body against the advertised `body_bytes` and SHA-256 `body_sha256`; count every verified message and chunk.
+8. Require the ordered message count and `manifest_sha256` to remain identical on every page for a thread. Any changed manifest, count mismatch, chunk gap, byte mismatch, or hash mismatch blocks the review.
+9. **Attachment metadata** such as filename and MIME type may be recorded, but attachment payloads are out of scope and are not fetched; unread attachment content does not block completeness.
+10. Messages received after `snapshot_before` are intentionally excluded from the current run. Messages received at or before the shared snapshot are all in scope.
+11. A **zero-result query** is complete only when its successful response has no next page token and `complete=true`. If every frozen-ID query has zero results and all query pagination chains completed, continue with the fully processed CaseToMD evidence and state: `Gmail: no additional relevant evidence found`. This is the complete-context form of the existing branch where **Gmail search succeeds but returns no relevant messages**.
+12. If the **Gmail tool is missing or the search call fails**, including authentication, timeout, quota, application, pagination, cursor, or read failure, identify Gmail as the unavailable required server and block the review.
+13. User-supplied documents may supplement these sources after the complete-context gate passes. Label them by filename and date; do not present a parsed shell, extraction artifact, or unsupported inference as a live case record.
+
+#### Context Coverage Ledger
+
+Maintain this internal **Context Coverage Ledger** for the collection run:
+
+```text
+case_notes_discovered
+case_notes_processed
+record_ids_planned
+record_id_queries_completed
+query_pages_completed
+gmail_threads_discovered
+gmail_threads_enumerated
+gmail_threads_read_complete
+gmail_messages_expected
+gmail_messages_read
+body_chunks_expected
+body_chunks_read
+body_hashes_verified
+manifest_hashes_stable
+snapshot_before
+```
+
+The complete-context gate passes only when all of these checks succeed:
+
+- `case_notes_discovered == case_notes_processed`.
+- `record_ids_planned == record_id_queries_completed`, and all query pagination chains ended with `complete=true`; `query_pages_completed` contains every successfully traversed page.
+- `gmail_threads_discovered == gmail_threads_enumerated` after deduplication with match provenance retained.
+- `gmail_threads_discovered == gmail_threads_read_complete`.
+- `gmail_messages_expected == gmail_messages_read`.
+- `body_chunks_expected == body_chunks_read`.
+- `body_hashes_verified == gmail_messages_read`.
+- `manifest_hashes_stable == gmail_threads_read_complete`.
+- `snapshot_before` is non-empty and identical on every Gmail list and read call.
+
+Duplicate thread or message discovery is expected and must be deduplicated before these equalities; duplication never permits a source item to be skipped. No analysis or report drafting may begin until every equality and completion flag passes.
+
+If any source, pagination chain, cursor chain, count, body verification, manifest, or completion flag is incomplete, respond with `Context collection incomplete — review not generated.` using exactly this block:
+
+```text
+Context collection incomplete — review not generated.
+
+Case notes: <processed>/<discovered>
+Record-ID queries: <completed>/<planned>
+Gmail threads: <completed>/<discovered>
+Gmail messages: <completed>/<expected>
+Blocker: <exact sanitized failure>
+```
+
+This blocking output must not output Executive Summary, Technical & Incident Assessment, Progress Summary, Root cause, ownership conclusion, or Evidence Appendix content. **Partial results** from the failed run may be used only for the four sanitized counts; they must not support a partial RCA or any other conclusion. A retry starts from the same raw Case ID with a new `snapshot_before` and **discards the partial corpus** rather than reusing it.
 
 ### Step 3 - Build the Evidence Ledger
 
-Create an internal ledger before analysis. Give every case-specific item a sequential identifier and record:
+After the complete-context gate passes, create the case-specific evidence ledger before analysis. Process the complete corpus, then use relevance only to decide what substantiated content is displayed. Give every case-specific item a sequential identifier and record:
 
 - **Evidence ID:** E1..EN
 - **Source:** CaseToMD activity, Gmail subject/message, user-supplied document, or raw log/trace
@@ -199,25 +268,29 @@ Every factual answer must pass the internal evidence gate before rendering:
 
 Before rendering:
 
-1. Map every factual body claim to at least one appendix row.
-2. Confirm dates, IDs, names, quotes, calculations, owners, and ETA values against the ledger.
-3. Confirm unresolved conflicts remain visible and are not silently resolved.
-4. Confirm mitigation maturity does not overstate lab or planned work as production success.
-5. Confirm owners are evidence-backed or explicitly `unassigned`.
-6. Confirm `Ownership & Next Step` only restates actions, owners, and dates already present in evidence, including preventive commitments; it must never generate a new recommendation or label planned work as an implemented control.
-7. Confirm the rendered body contains no Evidence ID or citation suffix.
-8. Confirm the appendix is last and reverse-maps every evidence row through `Supports`.
-9. Confirm the zero-evidence response is exactly `unknown`.
-10. Confirm every rendered list or table containing dates or timestamps is in ascending date/time order, with undated entries last.
-11. Confirm the Executive Summary is one 6-8 sentence paragraph with no subheadings, dedicated prevention field, recommendation, or prevention narrative; an evidence-stated preventive checkpoint may appear only as an existing commitment or current planned work.
-12. Confirm its root-cause statement uses at most one sentence as the one-sentence technical conclusion; keep detailed cause analysis only in Technical & Incident Assessment.
-13. Remove any technical paragraph that merely paraphrases the summary without adding a finding, mechanism, validation result, or unresolved gap.
-14. When explicit ADM mode applies, verify: For each of the four ADM dimensions, include evidence-supported content or, when relevant evidence is unavailable, an explicit unresolved evidence or investigation gap; omit inapplicable dimensions, never add rigid filler or invention, and do not create a second outline or ADM block.
-15. Confirm the displayed Progress Summary count follows the available substantive evidence: include up to five milestones, render one when only one exists, and do not pad or repeat evidence.
+1. Revalidate `case_notes_discovered == case_notes_processed` and `record_ids_planned == record_id_queries_completed`, with every query pagination chain ending in `complete=true`.
+2. Revalidate `gmail_threads_discovered == gmail_threads_enumerated == gmail_threads_read_complete` and `gmail_messages_expected == gmail_messages_read`.
+3. Revalidate `body_chunks_expected == body_chunks_read`, `body_hashes_verified == gmail_messages_read`, stable manifest hashes for every thread, and one identical non-empty `snapshot_before` across all Gmail calls.
+4. If any coverage check fails during reflection, discard the draft and emit only the prescribed context-collection blocking output.
+5. Map every factual body claim to at least one appendix row.
+6. Confirm dates, IDs, names, quotes, calculations, owners, and ETA values against the ledger.
+7. Confirm unresolved conflicts remain visible and are not silently resolved.
+8. Confirm mitigation maturity does not overstate lab or planned work as production success.
+9. Confirm owners are evidence-backed or explicitly `unassigned`.
+10. Confirm `Ownership & Next Step` only restates actions, owners, and dates already present in evidence, including preventive commitments; it must never generate a new recommendation or label planned work as an implemented control.
+11. Confirm the rendered body contains no Evidence ID or citation suffix.
+12. Confirm the appendix is last and reverse-maps every evidence row through `Supports`.
+13. Confirm the zero-evidence response is exactly `unknown`.
+14. Confirm every rendered list or table containing dates or timestamps is in ascending date/time order, with undated entries last.
+15. Confirm the Executive Summary is one 6-8 sentence paragraph with no subheadings, dedicated prevention field, recommendation, or prevention narrative; an evidence-stated preventive checkpoint may appear only as an existing commitment or current planned work.
+16. Confirm its root-cause statement uses at most one sentence as the one-sentence technical conclusion; keep detailed cause analysis only in Technical & Incident Assessment.
+17. Remove any technical paragraph that merely paraphrases the summary without adding a finding, mechanism, validation result, or unresolved gap.
+18. When explicit ADM mode applies, verify: For each of the four ADM dimensions, include evidence-supported content or, when relevant evidence is unavailable, an explicit unresolved evidence or investigation gap; omit inapplicable dimensions, never add rigid filler or invention, and do not create a second outline or ADM block.
+19. Confirm the displayed Progress Summary count follows the available substantive evidence: include up to five milestones, render one when only one exists, and do not pad or repeat evidence.
 
 ### Step 7 - Produce the Review
 
-After the evidence gate passes, use this common structure:
+After both the complete-context gate and the evidence gate pass, use this common structure:
 
 ```markdown
 # Case Review - <Case ID>
@@ -268,6 +341,7 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 
 ## Non-Negotiable Rules
 
+- Complete source context before analysis: process every Case note, exhaust every frozen record-ID query page, and read and verify every snapshot-eligible message in every unique matched Gmail thread before analysis or review generation. Relevance affects display only, never retrieval.
 - Evidence over opinion; unknown over invention.
 - Case-specific evidence is required for case-specific conclusions.
 - Evidence numbering is dynamic, not a three-item quota.
