@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "plugins/avaya-case-review/skills/case-review/SKILL.md"
+GMAIL_CAPABILITY_SKILL = ROOT / "plugins/avaya-case-review/skills/gmail-capability/SKILL.md"
 MANAGER_MD = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.md"
 MANAGER_HTML = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.html"
 TDD_MD = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.md"
@@ -178,6 +179,14 @@ class CaseReviewContractTests(unittest.TestCase):
             "readme_md": read(README_MD),
             "readme_html": read(README_HTML),
         }
+        cls.workflow_docs = {
+            "agents": read(AGENTS_MD),
+            "gmail_capability": read(GMAIL_CAPABILITY_SKILL),
+            "manager_md": cls.contract_docs["manager_md"],
+            "manager_html": cls.contract_docs["manager_html"],
+            "tdd_md": cls.contract_docs["tdd_md"],
+            "tdd_html": cls.contract_docs["tdd_html"],
+        }
 
     def test_dynamic_evidence_gate_is_explicit(self):
         required = [
@@ -287,17 +296,21 @@ class CaseReviewContractTests(unittest.TestCase):
     def test_incomplete_context_output_contains_no_review_sections(self):
         failure = extract_fenced_block_after(
             self.skill,
-            "Context collection incomplete — review not generated.",
+            "respond with `Context collection incomplete — review not generated.` using exactly this block:",
             "text",
         )
-        for marker in [
-            "Case notes: <processed>/<discovered>",
-            "Record-ID queries: <completed>/<planned>",
-            "Gmail threads: <completed>/<discovered>",
-            "Gmail messages: <completed>/<expected>",
-            "Blocker: <exact sanitized failure>",
-        ]:
-            self.assertIn(marker, failure)
+        self.assertEqual(
+            failure.splitlines(),
+            [
+                "Context collection incomplete — review not generated.",
+                "",
+                "Case notes: <processed>/<discovered>",
+                "Record-ID queries: <completed>/<planned>",
+                "Gmail threads: <completed>/<discovered>",
+                "Gmail messages: <completed>/<expected>",
+                "Blocker: <exact sanitized failure>",
+            ],
+        )
         for forbidden in [
             "Executive Summary",
             "Technical & Incident Assessment",
@@ -306,6 +319,118 @@ class CaseReviewContractTests(unittest.TestCase):
             "Appendix A",
         ]:
             self.assertNotIn(forbidden, failure)
+
+    def test_snapshot_bootstrap_requires_nonempty_reuse(self):
+        gmail = extract_between(
+            self.skill,
+            "#### Gmail",
+            "#### Context Coverage Ledger",
+        )
+        bootstrap = gmail.index(
+            "The bootstrap input for the first frozen-ID query may be empty",
+        )
+        bootstrap_input = gmail.index('snapshot_before: ""', bootstrap)
+        bootstrap_output = gmail.index(
+            "The first successful response **must return a non-empty `snapshot_before`**",
+            bootstrap_input,
+        )
+        reused_snapshot = gmail.index(
+            "Every later list/read call must pass that **exact same non-empty `snapshot_before`**",
+        )
+        self.assertLess(bootstrap, bootstrap_input)
+        self.assertLess(bootstrap_input, bootstrap_output)
+        self.assertLess(bootstrap_output, reused_snapshot)
+        self.assertNotIn("non-empty on every Gmail list and read call", gmail)
+
+    def test_case_to_md_failure_has_safe_pre_ledger_blocker(self):
+        case_to_md = extract_between(
+            self.skill,
+            "#### CaseToMD",
+            "### Complete Context Before Analysis",
+        )
+        self.assertIn("before the Context Coverage Ledger exists", case_to_md)
+        failure = extract_fenced_block_after(
+            case_to_md,
+            "CaseToMD pre-ledger blocker:",
+            "text",
+        )
+        self.assertEqual(
+            failure.splitlines(),
+            [
+                "Context collection incomplete — review not generated.",
+                "",
+                "Case notes: 0/unknown",
+                "Record-ID queries: 0/unknown",
+                "Gmail threads: 0/unknown",
+                "Gmail messages: 0/unknown",
+                "Blocker: CaseToMD unavailable — <exact sanitized failure>",
+            ],
+        )
+
+    def test_incomplete_context_retry_requires_fresh_snapshot_and_discards_partial_corpus(self):
+        gate = extract_between(
+            self.skill,
+            "If any source, pagination chain, cursor chain",
+            "### Step 3 - Build the Evidence Ledger",
+        )
+        retry = gate.index("A retry starts from the same raw Case ID")
+        fresh = gate.index("new `snapshot_before`", retry)
+        discard = gate.index("discards the partial corpus", fresh)
+        self.assertLess(retry, fresh)
+        self.assertLess(fresh, discard)
+        self.assertIn("does not reuse it", gate)
+
+    def test_workflow_docs_use_exhaustive_tools_and_forbid_relevance_collection(self):
+        required = [
+            "Complete Context Before Analysis",
+            "gmail_list_threads",
+            "gmail_read_thread_page",
+            "Context Coverage Ledger",
+            "Context collection incomplete",
+            "gmail_search",
+            "gmail_read",
+            "backward-compatible",
+        ]
+        forbidden = re.compile(
+            r"(?:read|retrieve|collect|find|search)\s+(?:only\s+)?"
+            r"(?:relevant|prioritized|priority)\s+messages|prioritizing\s+commitments",
+            re.IGNORECASE,
+        )
+        for name, content in self.workflow_docs.items():
+            with self.subTest(document=name):
+                for marker in required:
+                    self.assertIn(marker, content)
+                self.assertIsNone(forbidden.search(content))
+
+    def test_exhaustive_scenarios_are_checked_in_their_workflow_sections(self):
+        scenarios = {scenario["id"]: scenario for scenario in json.loads(read(SCENARIOS))}
+        gmail = extract_between(
+            self.skill,
+            "#### Gmail",
+            "#### Context Coverage Ledger",
+        )
+        complete_gate = extract_between(
+            self.skill,
+            "### Complete Context Before Analysis",
+            "### Step 4 - Analyze Only What the Evidence Supports",
+        )
+        windows = {
+            "all_case_notes_before_gmail": complete_gate,
+            "multipage_gmail_threads": gmail,
+            "every_message_in_thread": complete_gate,
+            "incomplete_context_blocks_review": complete_gate,
+            "complete_zero_gmail_results": gmail,
+            "token_and_cursor_loops_block_review": gmail,
+            "disappearing_thread_blocks_review": complete_gate,
+            "snapshot_after_messages_excluded": gmail,
+            "attachment_metadata_out_of_scope_content": complete_gate,
+        }
+        for scenario_id, section in windows.items():
+            with self.subTest(scenario=scenario_id):
+                scenario = scenarios[scenario_id]
+                self.assertTrue(scenario["expected"].strip())
+                for marker in scenario["contract_markers"]:
+                    self.assertIn(marker, section)
 
     def test_evidence_authority_is_not_management_display_priority(self):
         for marker in [

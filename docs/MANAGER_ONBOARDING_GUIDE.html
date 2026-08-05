@@ -90,8 +90,12 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <ol>
 <li><strong>Check MCP Tools</strong>: In Antigravity, verify that the following tools are active:</li>
 <li><code>get_case_markdown</code> (from <code>CaseToMD</code> server)</li>
-<li><code>gmail_search</code>, <code>gmail_read</code>, <code>gmail_send</code> (from <code>gmail</code> server)</li>
+<li><code>gmail_list_threads</code>, <code>gmail_read_thread_page</code> (required current case-review collection tools)</li>
+<li><code>gmail_search</code>, <code>gmail_read</code>, <code>gmail_send</code> (backward-compatible Gmail APIs; not the completeness workflow)</li>
 </ol>
+<h3>Current Case-Review Collection Gate</h3>
+<p>Every case review must pass <strong>Complete Context Before Analysis</strong>. CaseToMD is fetched first; every discrete Case note is processed, the primary and every supported note-derived related ID are frozen, and each frozen ID is enumerated with <code>gmail_list_threads</code> through every <code>next_page_token</code>. Each unique matched thread is then read with <code>gmail_read_thread_page</code> through every <code>next_cursor</code>, including every snapshot-eligible message and body chunk. The Context Coverage Ledger must pass its note, query, thread, message, chunk, hash, manifest, and shared-snapshot equalities before analysis or report generation.</p>
+<p>The first list call may bootstrap with an empty <code>snapshot_before</code>, but it must return a non-empty snapshot. Every later list/read call reuses that exact same snapshot. If any source or coverage step fails, the output is only <code>Context collection incomplete</code> with sanitized counts and the blocker; no Executive Summary, RCA, ownership conclusion, or Evidence Appendix is produced. <code>gmail_search</code> and <code>gmail_read</code> remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate completeness workflow.</p>
 <hr />
 <h2>5. Using the Case Review Capability</h2>
 <p>To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigravity in plain natural language.</p>

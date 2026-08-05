@@ -11,7 +11,7 @@ The **Avaya Case Review Suite** — a distributable pack for Avaya Support & Ope
 - an Antigravity/Claude-style **skill** (`case-review`) that turns a raw Siebel SR / ServiceNow INC ID into an executive-ready management brief
 - two **MCP servers** the skill depends on:
   - **CaseToMD** — fetches the case JSON/Markdown from the internal endpoint `https://192.168.67.160:8000/mcp`
-  - **Gmail** (single Managed Edge broker with a broker-owned persistent Edge profile; explicit legacy Chromium rollback only) — pulls related email threads for `@avaya.com`
+  - **Gmail** (single Managed Edge broker with a broker-owned persistent Edge profile; explicit legacy Chromium rollback only) — provides exhaustive case-bounded thread/message collection for `@avaya.com`
 - a Windows installer (`install.bat` → `setup_env.ps1`) that deploys everything into `%USERPROFILE%\.gemini\`
 - 10 embedded Avaya-domain reference guides used for progressive-disclosure knowledge loading
 
@@ -30,7 +30,7 @@ Canonical trigger phrases from the user:
 
 Skill definition (the source of truth for the workflow):
 
-- **[`plugins/avaya-case-review/skills/case-review/SKILL.md`](plugins/avaya-case-review/skills/case-review/SKILL.md)** — the workflow (fetch case → search Gmail → analyze → produce the brief)
+- **[`plugins/avaya-case-review/skills/case-review/SKILL.md`](plugins/avaya-case-review/skills/case-review/SKILL.md)** — the workflow (fetch CaseToMD → Complete Context Before Analysis → analyze → produce the brief)
 - **[`plugins/avaya-case-review/skills/case-review/references/`](plugins/avaya-case-review/skills/case-review/references/)** — 10 domain guides. Read the relevant one(s) based on what the case mentions (AES/JTAPI, Contact Center, Recording/WFO, Analytics, Security, SIP, Certificates/Outage, Digital Channels, IP Office, Log Collection). The SKILL.md has the exact routing table.
 
 Required MCP tools (the skill will call these; fail loudly if missing rather than fabricating a review):
@@ -38,10 +38,13 @@ Required MCP tools (the skill will call these; fail loudly if missing rather tha
 | Tool | Server | Purpose |
 |---|---|---|
 | `get_case_markdown(report_id)` | CaseToMD | Fetch the case as structured Markdown |
-| `gmail_search(query)` | Gmail | Find related email threads |
-| `gmail_read(message_id)` | Gmail | Fetch full email body |
+| `gmail_list_threads(query, snapshot_before, page_token, max_results)` | Gmail | Exhaustively enumerate case-bounded threads under one snapshot |
+| `gmail_read_thread_page(thread_id, snapshot_before, cursor)` | Gmail | Exhaustively read every eligible message/body chunk |
+| `gmail_search(query)` / `gmail_read(message_id)` | Gmail | Backward-compatible APIs; not the completeness workflow |
 
 If a required MCP server is not configured, tell the user which one and stop — do not invent case content.
+
+For every case review, **Complete Context Before Analysis** is mandatory: process every Case note, freeze the primary and note-derived related IDs, exhaust every `gmail_list_threads` page, and exhaust every `gmail_read_thread_page` cursor for every unique matched thread. Maintain the **Context Coverage Ledger** and generate no review until its equalities pass. If collection fails, return `Context collection incomplete` with only sanitized counts and the blocker. `gmail_search` and `gmail_read` remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate way to collect a complete review.
 
 ---
 

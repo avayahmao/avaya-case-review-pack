@@ -92,9 +92,14 @@ The architecture consists of five primary decoupled layers:
 - **Protocol**: Each MCP server remains MCP STDIO, while clients send authenticated NDJSON requests over loopback to one `gmail_edge_broker.py` process.
 - **Ownership**: The broker is the only process allowed to open `%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile`; all browser operations are serialized.
 - **Authentication Persistence**: The broker-owned Edge context retains the Avaya SSO/MFA session across MCP and broker restarts. `gmail_brokerctl.py login` temporarily switches to headful Edge and always restores headless mode.
-- **Tools Exposed**: `gmail_search(query)`, `gmail_read(message_id)`, and `gmail_send(to, subject, body)` retain their existing schemas and response text.
+- **Tools Exposed**: `gmail_list_threads(query, snapshot_before, page_token, max_results)` and `gmail_read_thread_page(thread_id, snapshot_before, cursor)` provide the exhaustive case-review collection contract. `gmail_search(query)`, `gmail_read(message_id)`, and `gmail_send(to, subject, body)` retain their schemas as backward-compatible APIs and explicit legacy rollback surfaces; they are not the completeness workflow.
 - **Operations**: `status`, `diagnostics`, `start`, `login`, and `stop` expose only sanitized state. The default is `GMAIL_BACKEND=edge_broker`; `GMAIL_BACKEND=legacy_playwright` is an explicit one-release rollback with no automatic fallback.
 - **Security**: State and lifetime lock files live under `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`; logs never contain queries, message content, recipients, cookies, or tokens.
+
+#### Complete Context Before Analysis
+The current case-review workflow fetches CaseToMD first, processes every discrete Case note, freezes the primary plus every supported related ID explicitly present in those notes, then exhausts `gmail_list_threads` page tokens for every frozen ID under one shared snapshot. It reads every unique matched thread with `gmail_read_thread_page` through cursor exhaustion, including every snapshot-eligible message and body chunk. The Context Coverage Ledger must pass all note, query, thread, message, chunk, hash, manifest, and snapshot equalities before analysis or report generation.
+
+The first list call may bootstrap with an empty `snapshot_before`; the successful response must return a non-empty snapshot, and every later list/read call must reuse that exact same value. Any incomplete collection returns only `Context collection incomplete` with sanitized coverage counts and the blocker; no review sections, partial RCA, ownership conclusion, or Evidence Appendix are emitted. `gmail_search` and `gmail_read` remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate way to collect case context.
 
 ---
 

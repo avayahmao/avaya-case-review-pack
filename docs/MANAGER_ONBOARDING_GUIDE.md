@@ -77,7 +77,14 @@ profile.
 
 3. **Check MCP Tools**: In Antigravity, verify that the following tools are active:
    - `get_case_markdown` (from `CaseToMD` server)
-   - `gmail_search`, `gmail_read`, `gmail_send` (from `gmail` server)
+   - `gmail_list_threads`, `gmail_read_thread_page` (required current case-review collection tools)
+   - `gmail_search`, `gmail_read`, `gmail_send` (backward-compatible Gmail APIs; not the completeness workflow)
+
+### Current Case-Review Collection Gate
+
+Every case review must pass **Complete Context Before Analysis**. CaseToMD is fetched first; every discrete Case note is processed, the primary and every supported note-derived related ID are frozen, and each frozen ID is enumerated with `gmail_list_threads` through every `next_page_token`. Each unique matched thread is then read with `gmail_read_thread_page` through every `next_cursor`, including every snapshot-eligible message and body chunk. The Context Coverage Ledger must pass its note, query, thread, message, chunk, hash, manifest, and shared-snapshot equalities before analysis or report generation.
+
+The first list call may bootstrap with an empty `snapshot_before`, but it must return a non-empty snapshot. Every later list/read call reuses that exact same snapshot. If any source or coverage step fails, the output is only `Context collection incomplete` with sanitized counts and the blocker; no Executive Summary, RCA, ownership conclusion, or Evidence Appendix is produced. `gmail_search` and `gmail_read` remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate completeness workflow.
 
 ---
 

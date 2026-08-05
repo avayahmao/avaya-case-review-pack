@@ -49,7 +49,19 @@ Reference guides support interpretation only. They are not proof that a conditio
 1. Call `get_case_markdown(report_id: "<Case ID>")` and **pass the raw ID without normalization**.
 2. The expected response contains `success`, `case_id`, `title`, `source`, `filename`, and `markdown`.
 3. Treat `markdown` as the official case-record source, not as proof that every embedded hypothesis is correct.
-4. If the CaseToMD tool is missing, the call fails, or `success` is false, identify the CaseToMD failure and stop. Do not fabricate a review.
+4. If the CaseToMD tool is missing, the call fails, or `success` is false, identify the CaseToMD failure and stop. Do not fabricate a review. If this happens before the Context Coverage Ledger exists, use the separate pre-ledger blocker below; do not emit any review section.
+
+CaseToMD pre-ledger blocker:
+
+```text
+Context collection incomplete — review not generated.
+
+Case notes: 0/unknown
+Record-ID queries: 0/unknown
+Gmail threads: 0/unknown
+Gmail messages: 0/unknown
+Blocker: CaseToMD unavailable — <exact sanitized failure>
+```
 
 ### Complete Context Before Analysis
 
@@ -65,8 +77,8 @@ Before generating any review content, process **every discrete Case note** retur
 
 #### Gmail
 
-1. On the first frozen-ID query, call `gmail_list_threads(query: "<record ID>", snapshot_before: "", page_token: "", max_results: 100)` and retain the server-returned `snapshot_before`. Reuse that one shared snapshot for every later list and read call in the run.
-2. For every frozen record ID, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Record each successful page in `query_pages_completed`, and increment `record_id_queries_completed` only after that ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
+1. The bootstrap input for the first frozen-ID query may be empty: call `gmail_list_threads(query: "<record ID>", snapshot_before: "", page_token: "", max_results: 100)`. The first successful response **must return a non-empty `snapshot_before`**; if it is absent or empty, block collection. Save that returned value exactly.
+2. For every frozen record ID, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Every later list/read call must pass that **exact same non-empty `snapshot_before`**; never send an empty value or create a new snapshot after bootstrap. Record each successful page in `query_pages_completed`, and increment `record_id_queries_completed` only after that ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
 3. Track tokens within each query chain. A missing completion field or a malformed, **repeated or regressing** page token or cursor is a **protocol failure**; never infer completion and never impose an arbitrary thread limit.
 4. Deduplicate the union by `thread_id` while retaining match provenance: every record-ID query that returned each thread. Record the canonical deduplicated count as `unique_threads_discovered`; `gmail_threads_discovered` and `gmail_threads_enumerated` are collection-detail aliases that must resolve to the same deduplicated set before reads begin.
 5. For every unique thread, call `gmail_read_thread_page(thread_id: "<thread ID>", snapshot_before: "<shared snapshot>", cursor: "")`, then pass each real `next_cursor` unchanged until `next_cursor` is absent and `complete=true`. Read every message in the thread at or before the shared snapshot, even when an individual message does not contain the searched ID.
@@ -135,7 +147,7 @@ Gmail messages: <completed>/<expected>
 Blocker: <exact sanitized failure>
 ```
 
-This blocking output must not output Executive Summary, Technical & Incident Assessment, Progress Summary, Root cause, ownership conclusion, or Evidence Appendix content. **Partial results** from the failed run may be used only for the four sanitized counts; they must not support a partial RCA or any other conclusion. A retry starts from the same raw Case ID with a new `snapshot_before` and **discards the partial corpus** rather than reusing it.
+This blocking output must not output Executive Summary, Technical & Incident Assessment, Progress Summary, Root cause, ownership conclusion, or Evidence Appendix content. **Partial results** from the failed run may be used only for the four sanitized counts; they must not support a partial RCA or any other conclusion. A retry starts from the same raw Case ID with a new `snapshot_before`, discards the partial corpus, and does not reuse it.
 
 ### Step 3 - Build the Evidence Ledger
 
