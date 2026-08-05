@@ -9,7 +9,7 @@
 
 ## 1. Prerequisites
 
-Before running the setup script, ensure your workstation meets the following requirements:
+Before starting local setup, ensure your workstation meets the following requirements:
 
 - **Operating System**: Windows 10 or Windows 11.
 - **Python**: Python 3.10+ installed and added to system `PATH` (verify by running `python --version` in PowerShell).
@@ -20,7 +20,13 @@ Before running the setup script, ensure your workstation meets the following req
 
 ## 2. Quick Start: One-Click Automated Setup
 
-The easiest way to configure your system is using the included PowerShell script (`setup_env.ps1`).
+### Required Cloud Prerequisite (Before Local Installation)
+
+Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow [GMAIL_CLOUD_BRIDGE.md](GMAIL_CLOUD_BRIDGE.md). Enable the **Advanced Gmail Service** named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any `install.bat`, `setup_env.ps1`, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.
+
+### Local Component Setup
+
+After the cloud deployment and verification gate passes, configure the local components using the included PowerShell script (`setup_env.ps1`).
 
 ### Step-by-Step Execution
 

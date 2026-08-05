@@ -8,11 +8,13 @@
 
 The **Avaya Case Review Suite** — a distributable pack for Avaya Support & Operations Managers. It ships:
 
+Before any local installation or Agent activation, deploy and verify the existing Gmail MCP Apps Script with the **Advanced Gmail Service** named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any `install.bat`, `setup_env.ps1`, or local Agent SKILL activation; keep the exhaustive gate inactive until the cloud checks pass.
+
 - an Antigravity/Claude-style **skill** (`case-review`) that turns a raw Siebel SR / ServiceNow INC ID into an executive-ready management brief
 - two **MCP servers** the skill depends on:
   - **CaseToMD** — fetches the case JSON/Markdown from the internal endpoint `https://192.168.67.160:8000/mcp`
   - **Gmail** (single Managed Edge broker with a broker-owned persistent Edge profile; explicit legacy Chromium rollback only) — provides exhaustive case-bounded thread/message collection for `@avaya.com`
-- a Windows installer (`install.bat` → `setup_env.ps1`) that deploys everything into `%USERPROFILE%\.gemini\`
+- a Windows installer (`install.bat` → `setup_env.ps1`) that deploys the local plugin, MCP, dependency, and broker components into `%USERPROFILE%\.gemini\`; the cloud bridge remains in the existing Apps Script Web App
 - 10 embedded Avaya-domain reference guides used for progressive-disclosure knowledge loading
 
 ---
@@ -52,7 +54,7 @@ The exhaustive cloud endpoint is the existing Gmail MCP Apps Script Web App with
 
 ## 3. Runtime layout vs repo layout
 
-The files in this repo get **deployed** by `install.bat` — the runtime paths that Antigravity actually reads are different from the repo paths.
+The local files in this repo are deployed by `install.bat` — the runtime paths that Antigravity actually reads are different from the repo paths. The Gmail cloud bridge is deployed separately to the existing Apps Script Web App and is not copied by the local installer.
 
 | Concept | Repo (source of truth, edit here) | Runtime (deployed by installer) |
 |---|---|---|

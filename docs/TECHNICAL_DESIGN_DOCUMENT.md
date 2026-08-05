@@ -243,7 +243,7 @@ This payload applies only to a manually deployed optional extension and a separa
 
 ## 5. Deployment & Installation Architecture
 
-Installation is completely automated via PowerShell (`setup_env.ps1`):
+The cloud deployment is an explicit prerequisite: deploy and verify the existing Gmail MCP Apps Script with the Advanced Gmail Service named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any local install or local Agent SKILL activation. Once that gate passes, local component installation is automated via `install.bat` / PowerShell (`setup_env.ps1`); the installer handles only the local plugin, MCP, dependency, and broker components and does not deploy the cloud source:
 
 ```powershell
 # 1. Environment Verification

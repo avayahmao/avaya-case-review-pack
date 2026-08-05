@@ -121,6 +121,9 @@
     </ul>
     <p><strong>Complete Context Before Analysis</strong> uses the Advanced Gmail Service cloud bridge to process every Case note and every message in every matched Gmail thread under one stable snapshot. The primary and note-derived related-ID boundary is frozen before Gmail collection; attachment bodies are excluded. If any source, page-token, cursor, count, hash, manifest, or snapshot check fails, the only result is <code>Context collection incomplete</code> with sanitized coverage counts and the blocker. <code>gmail_search</code>, <code>gmail_read</code>, and <code>gmail_send</code> remain backward-compatible APIs, but search and read cannot satisfy this exhaustive gate.</p>
 
+    <h2>Cloud Prerequisite (Complete Before Local Setup)</h2>
+    <p>Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow <a href="docs/GMAIL_CLOUD_BRIDGE.md">docs/GMAIL_CLOUD_BRIDGE.md</a>. Enable the Advanced Gmail Service named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any <code>install.bat</code>, <code>setup_env.ps1</code>, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.</p>
+
     <h2>Quick Setup (1-Click)</h2>
     <p><strong>Recommended (works under corporate Group Policy):</strong></p>
     <ol>
@@ -146,7 +149,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
 .\install.bat</pre>
     <p>When that variable is set, the installer uses your CA bundle instead of the bypass. Chromium remains installed for the explicit one-release <code>legacy_playwright</code> rollback; normal Gmail traffic uses the Edge broker.</p>
     <h3>Gmail broker operations</h3>
-    <p>The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> from <code>gmail_brokerctl.py</code>; see <a href="docs/GMAIL_EDGE_BROKER.md">docs/GMAIL_EDGE_BROKER.md</a>. The rollback switch is explicit (<code>GMAIL_BACKEND=legacy_playwright</code>) and there is no automatic fallback. Administrators must deploy and verify the existing Gmail MCP Apps Script first by following <a href="docs/GMAIL_CLOUD_BRIDGE.md">docs/GMAIL_CLOUD_BRIDGE.md</a>; the local installer intentionally does not deploy the cloud source.</p>
+    <p>The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> from <code>gmail_brokerctl.py</code>; see <a href="docs/GMAIL_EDGE_BROKER.md">docs/GMAIL_EDGE_BROKER.md</a>. The rollback switch is explicit (<code>GMAIL_BACKEND=legacy_playwright</code>) and there is no automatic fallback. After the cloud gate above passes, the local installer deploys the Python broker modules; it intentionally does not deploy the cloud source.</p>
 
     <h2>Complete Documentation Suite (<code>docs/</code>)</h2>
     <p>All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the <strong><a href="docs/">docs/</a></strong> directory:</p>

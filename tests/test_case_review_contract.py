@@ -482,6 +482,81 @@ class CaseReviewContractTests(unittest.TestCase):
             "Agent gate inactive",
         ]:
             self.assertIn(marker, runbook)
+        for marker in [
+            "If local deployment has already occurred",
+            "stop Antigravity",
+            "restore the prior package",
+            "case-review/SKILL.md",
+            "tools/gmail",
+            "do not automatically roll back local files",
+        ]:
+            self.assertIn(marker, runbook)
+
+    def test_cloud_deployment_precedes_local_install_and_activation_in_each_core_doc(self):
+        readme_md = read(README_MD)
+        readme_html = read(README_HTML)
+        manager_md = read(MANAGER_MD)
+        manager_html = read(MANAGER_HTML)
+        tdd_md = read(TDD_MD)
+        tdd_html = read(TDD_HTML)
+        agents = read(AGENTS_MD)
+        documents = {
+            "readme_md": readme_md[readme_md.index("## Cloud Prerequisite"):],
+            "readme_html": readme_html[readme_html.index("<h2>Cloud Prerequisite"):],
+            "manager_md": extract_between(
+                manager_md,
+                "## 2. Quick Start: One-Click Automated Setup",
+                "## 5. Using the Case Review Capability",
+            ),
+            "manager_html": extract_between(
+                manager_html,
+                "<h2>2. Quick Start: One-Click Automated Setup</h2>",
+                "<h2>5. Using the Case Review Capability</h2>",
+            ),
+            "tdd_md": extract_between(
+                tdd_md,
+                "## 5. Deployment & Installation Architecture",
+                "## 6. Verification & Validation Framework",
+            ),
+            "tdd_html": extract_between(
+                tdd_html,
+                "<h2>5. Deployment & Installation Architecture</h2>",
+                "<h2>6. Verification &amp; Validation Framework</h2>",
+            ),
+            "agents": extract_between(
+                agents,
+                "## 1. What this repo is",
+                "## 2. When the user asks for a case review",
+            ),
+        }
+        for name, content in documents.items():
+            with self.subTest(document=name):
+                cloud = content.index("Cloud deployment and verification")
+                self.assertLess(
+                    content.index("Advanced Gmail Service"),
+                    cloud,
+                )
+                for local_marker in [
+                    "install.bat",
+                    "setup_env.ps1",
+                    "local Agent SKILL",
+                ]:
+                    self.assertLess(
+                        cloud,
+                        content.index(local_marker),
+                        f"{local_marker} appears before the cloud gate",
+                    )
+
+    def test_core_docs_do_not_claim_local_installation_is_completely_automated(self):
+        for path in [TDD_MD, TDD_HTML]:
+            with self.subTest(document=path.name):
+                self.assertNotIn("Installation is completely automated", read(path))
+        agents = read(AGENTS_MD)
+        self.assertNotIn("deploys everything into", agents)
+        self.assertNotIn(
+            "The files in this repo get **deployed** by `install.bat`",
+            agents,
+        )
 
     def test_unreleased_notes_cover_cloud_bridge_without_version_bump(self):
         for path in (RELEASE_MD, RELEASE_HTML):

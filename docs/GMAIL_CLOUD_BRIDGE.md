@@ -48,7 +48,14 @@ the local Gmail tools directory.
 
 ## Rollback
 
-Redeploy the prior Apps Script version to the same Web App URL. Keep the
-exhaustive Agent gate inactive until the zero-result, real-case pagination,
-and multi-message cursor checks pass again. The existing Managed Edge broker
-and explicit `legacy_playwright` rollback behavior remain unchanged.
+Redeploy the prior Apps Script version to the same Web App URL. If local deployment has already occurred, these instructions do not automatically roll back local files: stop Antigravity, deactivate the current exhaustive Agent
+SKILL, and restore the prior package's
+`plugins/avaya-case-review/skills/case-review/SKILL.md` and prior Gmail MCP
+source under `tools/gmail` to the deployed
+`%USERPROFILE%\.gemini\config\plugins\avaya-case-review\` and
+`%USERPROFILE%\.gemini\tools\gmail\` paths (or rerun the prior package's
+installer). Restart Antigravity only after the prior local package is restored.
+Keep the exhaustive Agent gate inactive until the prior cloud version and the
+zero-result, real-case pagination, and multi-message cursor checks pass again.
+The existing Managed Edge broker and explicit `legacy_playwright` rollback
+behavior remain unchanged.

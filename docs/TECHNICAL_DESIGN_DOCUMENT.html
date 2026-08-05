@@ -414,7 +414,7 @@ function sendDailyManagerDigest() { ... }</pre>
     </ol>
 
     <h2>5. Deployment & Installation Architecture</h2>
-    <p>Installation is completely automated via PowerShell (<code>setup_env.ps1</code>):</p>
+    <p>The cloud deployment is an explicit prerequisite: deploy and verify the existing Gmail MCP Apps Script with the Advanced Gmail Service named Gmail, API version v1, using <code>docs/GMAIL_CLOUD_BRIDGE.md</code>. Cloud deployment and verification must complete before any local install or local Agent SKILL activation. Once that gate passes, local component installation is automated via <code>install.bat</code> / PowerShell (<code>setup_env.ps1</code>); the installer handles only the local plugin, MCP, dependency, and broker components and does not deploy the cloud source:</p>
 <pre># 1. Environment Verification
 # Checks Python 3.10+, PowerShell 5.1+, and Antigravity App directory
 

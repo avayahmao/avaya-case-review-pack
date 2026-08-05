@@ -23,6 +23,10 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 
 ---
 
+## Cloud Prerequisite (Complete Before Local Setup)
+
+Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow [`docs/GMAIL_CLOUD_BRIDGE.md`](docs/GMAIL_CLOUD_BRIDGE.md). Enable the Advanced Gmail Service named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any `install.bat`, `setup_env.ps1`, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.
+
 ## Quick Setup (1-Click)
 
 **Recommended (works under corporate Group Policy):**
@@ -54,7 +58,7 @@ When that variable is set, the installer uses your CA bundle instead of the bypa
 
 ### Gmail broker operations
 
-The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use `status`, `diagnostics`, `start`, `login`, and `stop` from `gmail_brokerctl.py`; see [`docs/GMAIL_EDGE_BROKER.md`](docs/GMAIL_EDGE_BROKER.md). The rollback switch is explicit (`GMAIL_BACKEND=legacy_playwright`) and there is no automatic fallback. Administrators must deploy and verify the existing Gmail MCP Apps Script first by following [`docs/GMAIL_CLOUD_BRIDGE.md`](docs/GMAIL_CLOUD_BRIDGE.md); the local installer intentionally does not deploy the cloud source.
+The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use `status`, `diagnostics`, `start`, `login`, and `stop` from `gmail_brokerctl.py`; see [`docs/GMAIL_EDGE_BROKER.md`](docs/GMAIL_EDGE_BROKER.md). The rollback switch is explicit (`GMAIL_BACKEND=legacy_playwright`) and there is no automatic fallback. After the cloud gate above passes, the local installer deploys the Python broker modules; it intentionally does not deploy the cloud source.
 
 ---
 
