@@ -559,7 +559,7 @@ class CaseReviewContractTests(unittest.TestCase):
         rollback_after_stop = rollback[stop_command:]
         for forbidden_status_pattern in [
             r"(?im)^\s*(?:(?:python(?:\.exe)?|&)\s+)?['\"]?\$[A-Za-z_]\w*['\"]?\s+status\b",
-            r"(?im)^\s*(?:python(?:\.exe)?|&)\s+[^`\r\n]*gmail_brokerctl\.py\s+status\b",
+            r"(?im)^\s*(?:python(?:\.exe)?|&)\s+[^`\r\n]*gmail_brokerctl\.py['\"]?\s+status\b",
         ]:
             self.assertNotRegex(rollback_after_stop, forbidden_status_pattern)
 
@@ -597,6 +597,24 @@ class CaseReviewContractTests(unittest.TestCase):
         )
         with self.assertRaises(AssertionError):
             self._assert_rollback_safety_contract(mutated_invocation_status)
+
+        mutated_quoted_python_status = rollback.replace(
+            "Get-CimInstance Win32_Process",
+            r'python "C:\Users\operator name\.gemini\tools\gmail\gmail_brokerctl.py" status'
+            + "\n       Get-CimInstance Win32_Process",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self._assert_rollback_safety_contract(mutated_quoted_python_status)
+
+        mutated_quoted_invocation_status = rollback.replace(
+            "Get-CimInstance Win32_Process",
+            r'& "C:\Users\operator name\.gemini\tools\gmail\gmail_brokerctl.py" status'
+            + "\n       Get-CimInstance Win32_Process",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self._assert_rollback_safety_contract(mutated_quoted_invocation_status)
 
     def test_cloud_bridge_verification_examples_are_exhaustive_and_sanitized(self):
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)
