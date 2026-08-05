@@ -50,7 +50,7 @@ After the cloud deployment and verification gate passes, configure the local com
 ### What the Automated Script Does
 
 1. **Installs Python Libraries**: Installs `mcp` and `playwright`.
-2. **Installs Playwright Chromium**: Downloads the headless browser engine required for Gmail automation.
+2. **Installs Playwright Chromium**: Downloads Chromium only for the explicit `legacy_playwright` rollback path; default Gmail operation uses the single Managed Edge broker.
 3. **Deploys Plugins**: Copies `plugins/avaya-case-review` to `C:\Users\<username>\.gemini\config\plugins\avaya-case-review`.
 4. **Deploys Gmail broker modules**: Copies the broker, client, control CLI, thin MCP adapter, and explicit legacy backend into `C:\Users\<username>\.gemini\tools\gmail\`.
 5. **Updates Configuration**: Configures `mcp_config.json` with `gmail` (`GMAIL_BACKEND=edge_broker`) and `CaseToMD` MCP server definitions.

@@ -65,7 +65,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <h3>What the Automated Script Does</h3>
 <ol>
 <li><strong>Installs Python Libraries</strong>: Installs <code>mcp</code> and <code>playwright</code>.</li>
-<li><strong>Installs Playwright Chromium</strong>: Downloads the headless browser engine required for Gmail automation.</li>
+<li><strong>Installs Playwright Chromium</strong>: Downloads Chromium only for the explicit <code>legacy_playwright</code> rollback path; default Gmail operation uses the single Managed Edge broker.</li>
 <li><strong>Deploys Plugins</strong>: Copies <code>plugins/avaya-case-review</code> to <code>C:\Users\&lt;username&gt;\.gemini\config\plugins\avaya-case-review</code>.</li>
 <li><strong>Deploys Gmail broker modules</strong>: Copies the broker, client, control CLI, thin MCP adapter, and explicit legacy backend into <code>C:\Users\&lt;username&gt;\.gemini\tools\gmail\</code>.</li>
 <li><strong>Updates Configuration</strong>: Configures <code>mcp_config.json</code> with <code>gmail</code> (<code>GMAIL_BACKEND=edge_broker</code>) and <code>CaseToMD</code> MCP server definitions.</li>

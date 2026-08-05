@@ -547,6 +547,21 @@ class CaseReviewContractTests(unittest.TestCase):
                         f"{local_marker} appears before the cloud gate",
                     )
 
+    def test_manager_guides_describe_managed_edge_default_and_chromium_rollback(self):
+        stale_claim = "headless browser engine required for Gmail automation"
+        for path in [MANAGER_MD, MANAGER_HTML]:
+            with self.subTest(document=path.name):
+                content = normalize_contract_item(read(path))
+                self.assertIn(
+                    "default Gmail operation uses the single Managed Edge broker",
+                    content,
+                )
+                self.assertIn(
+                    "Downloads Chromium only for the explicit legacy_playwright rollback path",
+                    content,
+                )
+                self.assertNotIn(stale_claim, content.lower())
+
     def test_core_docs_do_not_claim_local_installation_is_completely_automated(self):
         for path in [TDD_MD, TDD_HTML]:
             with self.subTest(document=path.name):
