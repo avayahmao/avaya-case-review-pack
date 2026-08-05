@@ -800,12 +800,18 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
             "debug_detail",
             "token",
             "params",
+            "id",
             "query",
+            "record_id",
+            "cursor",
+            "page_token",
+            "thread_id",
             "body",
             "subject",
             "sender",
             "recipient",
             "message_id",
+            "result_body",
             "cookie",
         )
         with tempfile.TemporaryDirectory() as tmp:

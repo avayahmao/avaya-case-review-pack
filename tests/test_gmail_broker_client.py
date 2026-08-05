@@ -619,23 +619,51 @@ class TransportSafetyTests(unittest.TestCase):
         self.assertTrue(connection.closed)
         self.assertEqual(connection.recv_calls, 0)
 
-    def test_response_larger_than_eight_mib_is_rejected_and_socket_closes(self):
-        health_socket = ScriptedSocket(self.health_response)
-        oversized_socket = ScriptedSocket(
-            lambda _request: b"x" * (MAX_FRAME_BYTES + 1)
+    def test_response_framing_immediately_below_and_above_eight_mib(self):
+        def framed_response(request, frame_size):
+            response = {
+                "version": PROTOCOL_VERSION,
+                "id": request["id"],
+                "ok": True,
+                "result": "",
+            }
+            empty_frame = json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n"
+            response["result"] = "x" * (frame_size - len(empty_frame))
+            frame = json.dumps(response, separators=(",", ":")).encode("utf-8") + b"\n"
+            self.assertEqual(len(frame), frame_size)
+            return frame
+
+        lower_health_socket = ScriptedSocket(self.health_response)
+        lower_socket = ScriptedSocket(
+            lambda request: framed_response(request, MAX_FRAME_BYTES - 1)
         )
-        factory = ScriptedSocketFactory(health_socket, oversized_socket)
+        upper_health_socket = ScriptedSocket(self.health_response)
+        upper_socket = ScriptedSocket(
+            lambda request: framed_response(request, MAX_FRAME_BYTES + 1)
+        )
+        factory = ScriptedSocketFactory(
+            lower_health_socket,
+            lower_socket,
+            upper_health_socket,
+            upper_socket,
+        )
 
         with TemporaryDirectory() as tmp, patch(
             "tools.gmail.gmail_broker_client.socket.create_connection",
             factory,
         ):
             client = self.make_client(Path(tmp))
+            lower_result = client.request(
+                "gmail_read_thread_page",
+                {"thread_id": "case"},
+            )
             with self.assertRaises(BrokerClientError) as raised:
-                client.request("gmail_read", {"message_id": "case"})
+                client.request("gmail_read_thread_page", {"thread_id": "case"})
 
+        self.assertIsInstance(lower_result, str)
         self.assertEqual(raised.exception.code, "RESPONSE_TOO_LARGE")
-        self.assertTrue(oversized_socket.closed)
+        self.assertTrue(lower_socket.closed)
+        self.assertTrue(upper_socket.closed)
 
     def test_malformed_or_noncanonical_response_is_protocol_mismatch(self):
         malformed_responses = (

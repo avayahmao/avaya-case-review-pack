@@ -62,6 +62,8 @@ class FakeBrowserAdapter:
         self.start_count = 0
         self.close_count = 0
         self.execute_count = 0
+        self.calls = []
+        self.results = {}
         self.execute_counts = Counter()
         self.current_concurrency = 0
         self.max_concurrency = 0
@@ -85,6 +87,7 @@ class FakeBrowserAdapter:
 
     async def execute(self, method, params):
         mode = params.get("mode", "success")
+        self.calls.append((method, dict(params)))
         self.execute_count += 1
         self.execute_counts[mode] += 1
         attempt = self.execute_counts[mode]
@@ -117,7 +120,10 @@ class FakeBrowserAdapter:
                 raise BrowserAdapterError("browser crashed once")
             if mode == "timeout":
                 await asyncio.Event().wait()
-            return params.get("result", f"{method}:{params.get('value', '')}")
+            return self.results.get(
+                method,
+                params.get("result", f"{method}:{params.get('value', '')}"),
+            )
         finally:
             self.current_concurrency -= 1
             self.execution_finished.set()
@@ -217,6 +223,7 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 store.paths.log_file,
                 acl_applier=None,
             )
+        token = overrides.pop("token", "test-token")
         broker = GmailEdgeBroker(
             adapter or FakeBrowserAdapter(),
             state_store=store,
@@ -224,7 +231,7 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             logger=logger,
             build_id="test-build",
             instance_id="test-instance",
-            token="test-token",
+            token=token,
             idle_check_interval=0.005,
             **overrides,
         )
@@ -353,6 +360,76 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(malformed["ok"])
         self.assertEqual(malformed["error"]["code"], "INVALID_REQUEST")
 
+    async def test_context_methods_use_framing_in_order_without_logging_payload(self):
+        sentinels = {
+            "record": "RECORD_ID_SENTINEL_7b91",
+            "snapshot": "SNAPSHOT_SENTINEL_7b91",
+            "page_token": "PAGE_TOKEN_SENTINEL_7b91",
+            "thread": "THREAD_ID_SENTINEL_7b91",
+            "message": "MESSAGE_ID_SENTINEL_7b91",
+            "cursor": "CURSOR_SENTINEL_7b91",
+            "body": "RESULT_BODY_SENTINEL_7b91",
+            "token": "BROKER_TOKEN_SENTINEL_7b91",
+        }
+        list_params = {
+            "query": sentinels["record"],
+            "snapshot_before": sentinels["snapshot"],
+            "page_token": sentinels["page_token"],
+            "max_results": 1,
+        }
+        page_params = {
+            "thread_id": sentinels["thread"],
+            "snapshot_before": sentinels["snapshot"],
+            "cursor": sentinels["cursor"],
+            "message_id": sentinels["message"],
+        }
+        list_result = {
+            "thread_id": sentinels["thread"],
+            "next_page_token": sentinels["page_token"],
+        }
+        page_result = {
+            "message_id": sentinels["message"],
+            "body": sentinels["body"],
+        }
+        fake = FakeBrowserAdapter()
+        fake.results = {
+            "gmail_list_threads": list_result,
+            "gmail_read_thread_page": page_result,
+        }
+        broker, store = await self.make_broker(fake, token=sentinels["token"])
+
+        listed = await self.request(
+            broker,
+            "context-list",
+            method="gmail_list_threads",
+            params=list_params,
+            token=sentinels["token"],
+        )
+        paged = await self.request(
+            broker,
+            "context-page",
+            method="gmail_read_thread_page",
+            params=page_params,
+            token=sentinels["token"],
+        )
+
+        self.assertEqual(listed["result"], list_result)
+        self.assertEqual(paged["result"], page_result)
+        self.assertEqual(
+            fake.calls,
+            [
+                ("gmail_list_threads", list_params),
+                ("gmail_read_thread_page", page_params),
+            ],
+        )
+        logged = "".join(
+            path.read_text(encoding="utf-8")
+            for path in store.directory.glob("broker.log*")
+        )
+        for name, sentinel in sentinels.items():
+            with self.subTest(sentinel=name):
+                self.assertNotIn(sentinel, logged)
+
     async def test_auth_and_application_errors_are_mapped_without_retry(self):
         fake = FakeBrowserAdapter()
         broker, _store = await self.make_broker(fake)
@@ -396,6 +473,25 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fake.execute_counts["retry_once"], 2)
         self.assertEqual(fake.start_count, 2)
         self.assertEqual(broker.diagnostics()["browser_crash_count"], 1)
+
+    async def test_new_safe_read_methods_retry_once_after_browser_error(self):
+        for method in ("gmail_list_threads", "gmail_read_thread_page"):
+            with self.subTest(method=method):
+                fake = FakeBrowserAdapter()
+                broker, _store = await self.make_broker(fake)
+
+                response = await self.request(
+                    broker,
+                    f"retry-{method}",
+                    method=method,
+                    params={"mode": "retry_once", "result": method},
+                )
+
+                self.assertTrue(response["ok"])
+                self.assertEqual(response["result"], method)
+                self.assertEqual(fake.execute_counts["retry_once"], 2)
+                self.assertEqual(fake.start_count, 2)
+                self.assertEqual(broker.diagnostics()["browser_crash_count"], 1)
 
     async def test_execution_timeout_cancellation_is_not_swallowed_by_recovery(self):
         fake = FakeBrowserAdapter()

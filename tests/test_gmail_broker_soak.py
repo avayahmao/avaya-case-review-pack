@@ -33,6 +33,7 @@ class SoakBrowser:
         self.start_count = 0
         self.current_concurrency = 0
         self.max_concurrency = 0
+        self.calls = []
 
     async def start(self):
         self.start_count += 1
@@ -41,6 +42,7 @@ class SoakBrowser:
         return None
 
     async def execute(self, method, params):
+        self.calls.append(method)
         self.current_concurrency += 1
         self.max_concurrency = max(self.max_concurrency, self.current_concurrency)
         try:
@@ -103,14 +105,65 @@ class SingleEdgeBrokerSoakTests(unittest.IsolatedAsyncioTestCase):
                         await writer.wait_closed()
 
                 async def client(number):
+                    workload = (
+                        ("gmail_search", {"query": f"record-{number}"}),
+                        ("gmail_read", {"message_id": f"message-{number}"}),
+                        (
+                            "gmail_list_threads",
+                            {
+                                "query": f"record-{number}",
+                                "snapshot_before": "snapshot",
+                                "page_token": "",
+                                "max_results": 1,
+                            },
+                        ),
+                        (
+                            "gmail_read_thread_page",
+                            {
+                                "thread_id": f"thread-{number}",
+                                "snapshot_before": "snapshot",
+                                "cursor": "",
+                            },
+                        ),
+                        ("gmail_search", {"query": f"record-{number}-again"}),
+                    )
                     return await asyncio.gather(
-                        *(request(f"client-{number}-{index}", {"value": str(index)}) for index in range(5))
+                        *(
+                            request(
+                                f"client-{number}-{index}",
+                                params,
+                                method,
+                            )
+                            for index, (method, params) in enumerate(workload)
+                        )
                     )
 
                 grouped = await asyncio.gather(*(client(number) for number in range(4)))
                 responses = [response for group in grouped for response in group]
                 self.assertEqual(len(responses), 20)
                 self.assertTrue(all(response["ok"] for response in responses))
+                self.assertEqual(
+                    {response["id"] for response in responses},
+                    {
+                        f"client-{client}-{index}"
+                        for client in range(4)
+                        for index in range(5)
+                    },
+                )
+                self.assertCountEqual(
+                    browser.calls,
+                    [
+                        method
+                        for _client in range(4)
+                        for method in (
+                            "gmail_search",
+                            "gmail_read",
+                            "gmail_list_threads",
+                            "gmail_read_thread_page",
+                            "gmail_search",
+                        )
+                    ],
+                )
                 self.assertEqual(browser.start_count, 1)
                 self.assertEqual(browser.max_concurrency, 1)
 
