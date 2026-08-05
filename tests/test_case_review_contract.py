@@ -150,6 +150,25 @@ def extract_html_list_items(section: str) -> list[str]:
     ]
 
 
+def extract_release_unreleased_section(content: str, html_document: bool) -> str:
+    if html_document:
+        return extract_between(
+            content,
+            "<!-- UNRELEASED -->",
+            "<!-- VERSION 1.7.0 -->",
+        )
+    return extract_between(content, "## [Unreleased]", "## [v1.7.0]")
+
+
+def extract_release_unreleased_items(section: str, html_document: bool) -> list[str]:
+    if html_document:
+        return extract_html_list_items(section)
+    return [
+        normalize_contract_item(match.group(1))
+        for match in re.finditer(r"(?m)^\*\s+(.*)$", section)
+    ]
+
+
 def normalized_function_signatures(source: str) -> list[str]:
     functions = (
         "doPost",
@@ -484,13 +503,61 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertIn(marker, runbook)
         for marker in [
             "If local deployment has already occurred",
-            "stop Antigravity",
-            "restore the prior package",
+            "Stop Antigravity",
+            r'python "%USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py" stop',
+            r'python "%USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py" status',
+            "independent Gmail broker",
+            "no running broker",
+            "Do not replace local files while either is still active",
+            "Restore the prior package",
             "case-review/SKILL.md",
             "tools/gmail",
-            "do not automatically roll back local files",
         ]:
             self.assertIn(marker, runbook)
+
+        rollback = extract_between(runbook, "## Rollback", "Keep the exhaustive Agent gate inactive")
+        rollback_offsets = [
+            rollback.index("Stop Antigravity"),
+            rollback.index('gmail_brokerctl.py" stop'),
+            rollback.index("no running broker"),
+            rollback.index("Restore the prior package"),
+        ]
+        self.assertEqual(rollback_offsets, sorted(rollback_offsets))
+
+    def test_cloud_bridge_verification_examples_are_exhaustive_and_sanitized(self):
+        runbook = read(GMAIL_CLOUD_BRIDGE_MD)
+        verification = extract_between(
+            runbook,
+            "## Sanitized verification examples",
+            "## Collection contract",
+        )
+        for marker in [
+            "GMAIL_VERIFY_WEB_APP_URL",
+            "Invoke-RestMethod",
+            "zero-result complete=true",
+            "zero-result next page token empty",
+            "page snapshot reused",
+            "cursor complete flag matches next cursor",
+            "thread count enumerated/read",
+            "thread message count",
+            "thread manifest hash",
+            "manifest hash stable across cursors",
+            "message count expected/read",
+            "body byte count",
+            "body hash",
+            "at least one multi-message thread exercised",
+            "response bodies, IDs, tokens, cursors, and secrets were not printed or logged",
+            "Out-Null",
+        ]:
+            self.assertIn(marker, verification)
+        for forbidden in [
+            "script.googleusercontent.com",
+            "https://",
+            "1-23659220672",
+            "INC7429951",
+            "BEGIN PRIVATE KEY",
+        ]:
+            self.assertNotIn(forbidden, verification)
 
     def test_cloud_deployment_precedes_local_install_and_activation_in_each_core_doc(self):
         readme_md = read(README_MD)
@@ -574,12 +641,41 @@ class CaseReviewContractTests(unittest.TestCase):
         )
 
     def test_unreleased_notes_cover_cloud_bridge_without_version_bump(self):
-        for path in (RELEASE_MD, RELEASE_HTML):
-            with self.subTest(document=path.name):
-                content = read(path)
-                self.assertIn("Unreleased", content)
-                self.assertIn("Advanced Gmail Service", content)
-                self.assertIn("Complete Context Before Analysis", content)
+        release_md = extract_release_unreleased_section(read(RELEASE_MD), html_document=False)
+        release_html = extract_release_unreleased_section(read(RELEASE_HTML), html_document=True)
+        md_items = extract_release_unreleased_items(release_md, html_document=False)
+        html_items = extract_release_unreleased_items(release_html, html_document=True)
+        self.assertEqual(md_items, html_items)
+        required_claims = [
+            "Advanced Gmail Service",
+            "tools/gmail/cloud/GmailMcpBridge.gs",
+            "existing-Web-App deployment",
+            "setup_env.ps1",
+            "gmail_list_threads",
+            "gmail_read_thread_page",
+            "one stable snapshot",
+            "page-token and cursor chains",
+            "message/body counts",
+            "hash verification",
+            "Complete Context Before Analysis",
+            "every Case note",
+            "every message in every matched Gmail thread",
+            "related-ID boundary",
+            "attachment bodies remain excluded",
+            "Context collection incomplete",
+            "sanitized counts and a blocker",
+            "backward-compatible APIs",
+            "Agent gate inactive",
+            "zero-result",
+            "real-case pagination",
+            "multi-message cursor verification",
+        ]
+        for claim in required_claims:
+            with self.subTest(claim=claim):
+                self.assertTrue(
+                    any(claim in item for item in md_items),
+                    f"Unreleased MD section missing claim: {claim}",
+                )
 
     def test_exhaustive_scenarios_are_checked_in_their_workflow_sections(self):
         scenarios = {scenario["id"]: scenario for scenario in json.loads(read(SCENARIOS))}
