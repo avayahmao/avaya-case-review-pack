@@ -556,10 +556,12 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertNotIn("%USERPROFILE%", rollback)
         self.assertNotIn("gmail_brokerctl.py status", rollback)
         stop_command = rollback.index("python $McpCtl stop")
-        self.assertNotRegex(
-            rollback[stop_command:],
-            r"(?i)python\s+[^`\r\n]*gmail_brokerctl\.py\s+status\b",
-        )
+        rollback_after_stop = rollback[stop_command:]
+        for forbidden_status_pattern in [
+            r"(?im)^\s*(?:(?:python(?:\.exe)?|&)\s+)?['\"]?\$[A-Za-z_]\w*['\"]?\s+status\b",
+            r"(?im)^\s*(?:python(?:\.exe)?|&)\s+[^`\r\n]*gmail_brokerctl\.py\s+status\b",
+        ]:
+            self.assertNotRegex(rollback_after_stop, forbidden_status_pattern)
 
     def test_rollback_safety_contract_rejects_guard_or_order_mutations(self):
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)
@@ -579,6 +581,22 @@ class CaseReviewContractTests(unittest.TestCase):
         )
         with self.assertRaises(AssertionError):
             self._assert_rollback_safety_contract(mutated_order)
+
+        mutated_variable_status = rollback.replace(
+            "Get-CimInstance Win32_Process",
+            "python $McpCtl status\n       Get-CimInstance Win32_Process",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self._assert_rollback_safety_contract(mutated_variable_status)
+
+        mutated_invocation_status = rollback.replace(
+            "Get-CimInstance Win32_Process",
+            "& $McpCtl status\n       Get-CimInstance Win32_Process",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            self._assert_rollback_safety_contract(mutated_invocation_status)
 
     def test_cloud_bridge_verification_examples_are_exhaustive_and_sanitized(self):
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)
