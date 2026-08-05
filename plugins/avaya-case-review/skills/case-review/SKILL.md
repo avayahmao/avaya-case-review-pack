@@ -131,7 +131,7 @@ The complete-context gate passes only when all of these checks succeed:
 - The collection-detail aliases must also satisfy `gmail_threads_discovered == gmail_threads_enumerated == unique_threads_discovered` and `gmail_threads_read_complete == threads_read_complete`.
 - The message and chunk aliases must satisfy `gmail_messages_expected == messages_expected`, `gmail_messages_read == messages_completed`, `body_chunks_expected == message_chunks_expected`, and `body_chunks_read == message_chunks_completed`.
 - Therefore `gmail_threads_discovered == gmail_threads_read_complete`, `gmail_messages_expected == gmail_messages_read`, `body_chunks_expected == body_chunks_read`, `body_hashes_verified == gmail_messages_read`, and `manifest_hashes_stable == gmail_threads_read_complete` must also hold.
-- `snapshot_before` is non-empty and identical on every Gmail list and read call.
+- The bootstrap request may pass an empty `snapshot_before`; the successful bootstrap response establishes a non-empty `snapshot_before`, and every subsequent Gmail list/read call reuses that exact value.
 
 Duplicate thread or message discovery is expected and must be deduplicated before these equalities; duplication never permits a source item to be skipped. No analysis or report drafting may begin until every equality and completion flag passes.
 
@@ -290,7 +290,7 @@ Before rendering:
 
 1. Revalidate `case_notes_discovered == case_notes_processed` and `record_ids_planned == record_id_queries_completed`, with every query pagination chain ending in `complete=true`.
 2. Revalidate the canonical equalities `unique_threads_discovered == threads_read_complete`, `messages_expected == messages_completed`, and `message_chunks_expected == message_chunks_completed`.
-3. Revalidate `body_hashes_verified == messages_completed`, confirm all thread manifest hashes were stable, verify every Gmail/thread/message/chunk alias still equals its canonical counter, and confirm one identical non-empty `snapshot_before` across all Gmail calls.
+3. Revalidate `body_hashes_verified == messages_completed`, confirm all thread manifest hashes were stable, verify every Gmail/thread/message/chunk alias still equals its canonical counter, and confirm the bootstrap request may be empty, the bootstrap response establishes a non-empty `snapshot_before`, and subsequent list/read calls reuse that exact value.
 4. If any coverage check fails during reflection, discard the draft and emit only the prescribed context-collection blocking output.
 5. Map every factual body claim to at least one appendix row.
 6. Confirm dates, IDs, names, quotes, calculations, owners, and ETA values against the ledger.

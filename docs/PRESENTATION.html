@@ -230,7 +230,7 @@
                     </div>
                     <div style="margin-bottom: 15px;">
                         <strong style="color: var(--red-accent);">📧 Unified Off-System Visibility</strong>
-                        <div style="font-size: 0.9rem;">The Managed Edge Gmail broker searches case-bounded SDM emails, OCD alerts, and customer threads for inclusion in the evidence timeline.</div>
+                        <div style="font-size: 0.9rem;">The Managed Edge Gmail broker searches only the frozen primary and Case-note-related record IDs, then surfaces matching management signals and customer communications for the evidence timeline.</div>
                     </div>
                     <div>
                         <strong style="color: var(--red-accent);">🧠 Embedded 10-Domain Debugger Engine</strong>
@@ -240,7 +240,7 @@
                 <div style="display: flex; flex-direction: column; gap: 20px;">
                     <div class="card">
                         <h3>🎯 Evidence-Grounded Technical Review</h3>
-                        <p>The suite highlights evidence-matched technical checks and source gaps for review, but it does not guarantee completeness or prevent outages.</p>
+                        <p><strong>Complete Context Before Analysis</strong> processes every Case note and verifies all frozen record IDs, matched threads, and messages before analysis. If incomplete collection blocks review, no partial review is generated.</p>
                     </div>
                     <div class="card">
                         <h3>🚀 Operational Velocity & Accountability</h3>
@@ -356,7 +356,7 @@ get_case_markdown(report_id: "1-23659220672")
                 </div>
                 <div class="card">
                     <h3>Step 2: Deep Inbox Cross-Search</h3>
-                    <p>Performs real-time search across @avaya.com Gmail for Case IDs, sub-task IDs (TASK0614855), customer account names, and SDM escalation threads.</p>
+                    <p>After CaseToMD notes are processed, the skill freezes the primary and Case-note-related record IDs. The broker exhaustively searches each of those frozen record IDs in @avaya.com Gmail and reads every matched thread and message under one shared snapshot.</p>
                 </div>
                 <div class="card">
                     <h3>Step 3: Off-System Signal Extraction</h3>

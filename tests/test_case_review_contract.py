@@ -342,6 +342,32 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertLess(bootstrap_output, reused_snapshot)
         self.assertNotIn("non-empty on every Gmail list and read call", gmail)
 
+    def test_snapshot_reflection_repeats_bootstrap_exception_and_reuse_rule(self):
+        retrieval = extract_between(
+            self.skill,
+            "### Complete Context Before Analysis",
+            "### Step 4 - Analyze Only What the Evidence Supports",
+        )
+        reflection = extract_between(
+            self.skill,
+            "### Step 6 - Reflection and Coverage Review",
+            "### Step 7 - Produce the Review",
+        )
+        for marker in [
+            "bootstrap request may be empty",
+            "bootstrap response establishes a non-empty `snapshot_before`",
+            "subsequent list/read calls reuse that exact value",
+        ]:
+            self.assertIn(marker, reflection)
+        self.assertNotIn(
+            "one identical non-empty `snapshot_before` across all Gmail calls",
+            retrieval + reflection,
+        )
+        self.assertLess(
+            retrieval.index("bootstrap input for the first frozen-ID query may be empty"),
+            retrieval.index("Every later list/read call must pass that **exact same non-empty `snapshot_before`**"),
+        )
+
     def test_case_to_md_failure_has_safe_pre_ledger_blocker(self):
         case_to_md = extract_between(
             self.skill,
@@ -764,7 +790,9 @@ class CaseReviewContractTests(unittest.TestCase):
         for marker in [
             "Evidence-Grounded Technical Review",
             "Evidence-Grounded Technical Assessment",
-            "does not guarantee completeness or prevent outages",
+            "Complete Context Before Analysis",
+            "frozen record IDs",
+            "incomplete collection blocks review",
             "manager judgment",
             "Single Managed Edge Broker",
             "serializes browser ownership for multiple Gmail MCP clients",
@@ -785,6 +813,12 @@ class CaseReviewContractTests(unittest.TestCase):
             "only after case evidence establishes the failing component",
         ]:
             self.assertIn(marker, presentation)
+
+        for marker in [
+            "customer account names",
+            "does not guarantee completeness",
+        ]:
+            self.assertNotIn(marker, presentation)
 
         structure_start = presentation.index(
             "<h2>Standardized Executive Review Report Structure</h2>"
