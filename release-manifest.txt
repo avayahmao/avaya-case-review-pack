@@ -9,6 +9,7 @@ release-manifest.txt
 docs/ANTIGRAVITY_INSTALLATION_GUIDE.html
 docs/ANTIGRAVITY_INSTALLATION_GUIDE.md
 docs/Avaya_Case_Review_Suite_Presentation.pptx
+docs/GMAIL_CLOUD_BRIDGE.md
 docs/GMAIL_EDGE_BROKER.md
 docs/MANAGER_ONBOARDING_GUIDE.html
 docs/MANAGER_ONBOARDING_GUIDE.md
@@ -31,6 +32,7 @@ plugins/avaya-case-review/skills/case-review/references/security-vulnerability.m
 plugins/avaya-case-review/skills/case-review/references/sip-voice-quality.md
 plugins/avaya-case-review/skills/gmail-capability/SKILL.md
 tools/casetomd/casetomd_mcp_bridge.py
+tools/gmail/cloud/GmailMcpBridge.gs
 tools/gmail/gmail_broker_client.py
 tools/gmail/gmail_broker_protocol.py
 tools/gmail/gmail_broker_state.py

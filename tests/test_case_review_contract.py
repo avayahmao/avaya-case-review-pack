@@ -13,6 +13,8 @@ MANAGER_MD = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.md"
 MANAGER_HTML = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.html"
 TDD_MD = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.md"
 TDD_HTML = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.html"
+GMAIL_EDGE_BROKER_MD = ROOT / "docs/GMAIL_EDGE_BROKER.md"
+GMAIL_CLOUD_BRIDGE_MD = ROOT / "docs/GMAIL_CLOUD_BRIDGE.md"
 RELEASE_MD = ROOT / "docs/RELEASE_NOTES.md"
 RELEASE_HTML = ROOT / "docs/RELEASE_NOTES.html"
 ADM_SPEC = ROOT / "docs/superpowers/specs/2026-08-02-adm-adaptive-integration-design.md"
@@ -427,6 +429,67 @@ class CaseReviewContractTests(unittest.TestCase):
                 for marker in required:
                     self.assertIn(marker, content)
                 self.assertIsNone(forbidden.search(content))
+
+    def test_core_docs_explain_the_cloud_backed_exhaustive_context_gate(self):
+        required = [
+            "Complete Context Before Analysis",
+            "every Case note",
+            "every message in every matched Gmail thread",
+            "Context collection incomplete",
+            "Advanced Gmail Service",
+        ]
+        documents = {
+            **self.contract_docs,
+            "gmail_edge_broker": read(GMAIL_EDGE_BROKER_MD),
+        }
+        for name, content in documents.items():
+            with self.subTest(document=name):
+                for marker in required:
+                    self.assertIn(marker, content)
+
+    def test_cloud_bridge_runbook_has_safe_order_scope_and_rollback(self):
+        runbook = read(GMAIL_CLOUD_BRIDGE_MD)
+        ordered_markers = [
+            "existing Gmail MCP Apps Script",
+            "Advanced Gmail Service",
+            "Gmail v1",
+            "tools/gmail/cloud/GmailMcpBridge.gs",
+            "syntax check",
+            "Manage deployments",
+            "New version",
+            "existing deployment URL",
+            "controlled authorization",
+            "zero-result",
+            "complete=true",
+            "stable snapshot",
+            "page-token chain",
+            "multi-message thread",
+            "cursor exhaustion",
+            "hash/count checks",
+            "Only then",
+        ]
+        offsets = [runbook.index(marker) for marker in ordered_markers]
+        self.assertEqual(offsets, sorted(offsets))
+        for marker in [
+            "optional governance example",
+            "related-ID boundary",
+            "Attachments are excluded",
+            "Context collection incomplete",
+            "gmail_search",
+            "gmail_read",
+            "backward-compatible",
+            "prior Apps Script version",
+            "Agent gate inactive",
+        ]:
+            self.assertIn(marker, runbook)
+
+    def test_unreleased_notes_cover_cloud_bridge_without_version_bump(self):
+        for path in (RELEASE_MD, RELEASE_HTML):
+            with self.subTest(document=path.name):
+                content = read(path)
+                self.assertIn("Unreleased", content)
+                self.assertIn("Advanced Gmail Service", content)
+                self.assertIn("Complete Context Before Analysis", content)
 
     def test_exhaustive_scenarios_are_checked_in_their_workflow_sections(self):
         scenarios = {scenario["id"]: scenario for scenario in json.loads(read(SCENARIOS))}

@@ -32,6 +32,7 @@ INSTALLER_ENTRY_POINTS = frozenset({"install.bat", "setup_env.ps1"})
 REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
     {
         "release-manifest.txt",
+        "docs/GMAIL_CLOUD_BRIDGE.md",
         "docs/GMAIL_EDGE_BROKER.md",
         "tools/casetomd/casetomd_mcp_bridge.py",
         "plugins/avaya-case-review/plugin.json",
@@ -39,6 +40,8 @@ REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
         "plugins/avaya-case-review/skills/gmail-capability/SKILL.md",
     }
 )
+
+CLOUD_GMAIL_BRIDGE = "tools/gmail/cloud/GmailMcpBridge.gs"
 
 
 def manifest_entries():
@@ -120,6 +123,13 @@ class ReleaseManifestTests(unittest.TestCase):
             required_references - entries,
             f"missing case-review references: {sorted(required_references - entries)}",
         )
+
+    def test_cloud_bridge_is_distributed_but_not_deployed_as_a_local_script(self):
+        entries = set(manifest_entries())
+        installer_files = set(installer_gmail_deployment_files())
+
+        self.assertIn(CLOUD_GMAIL_BRIDGE, entries)
+        self.assertNotIn("GmailMcpBridge.gs", installer_files)
 
     def test_manifest_excludes_runtime_profiles_state_and_optional_examples(self):
         entries = manifest_entries()

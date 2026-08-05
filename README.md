@@ -19,6 +19,8 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 - Mitigation maturity is one of Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
 - Risk and action judgments remain with the Manager. Ownership fields only restate commitments already present in evidence.
 
+**Complete Context Before Analysis** uses the Advanced Gmail Service cloud bridge to process every Case note and every message in every matched Gmail thread under one stable snapshot. The primary and note-derived related-ID boundary is frozen before Gmail collection; attachment bodies are excluded. If any source, page-token, cursor, count, hash, manifest, or snapshot check fails, the only result is `Context collection incomplete` with sanitized coverage counts and the blocker. `gmail_search`, `gmail_read`, and `gmail_send` remain backward-compatible APIs, but search and read cannot satisfy this exhaustive gate.
+
 ---
 
 ## Quick Setup (1-Click)
@@ -52,7 +54,7 @@ When that variable is set, the installer uses your CA bundle instead of the bypa
 
 ### Gmail broker operations
 
-The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use `status`, `diagnostics`, `start`, `login`, and `stop` from `gmail_brokerctl.py`; see [`docs/GMAIL_EDGE_BROKER.md`](docs/GMAIL_EDGE_BROKER.md). The rollback switch is explicit (`GMAIL_BACKEND=legacy_playwright`) and there is no automatic fallback.
+The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use `status`, `diagnostics`, `start`, `login`, and `stop` from `gmail_brokerctl.py`; see [`docs/GMAIL_EDGE_BROKER.md`](docs/GMAIL_EDGE_BROKER.md). The rollback switch is explicit (`GMAIL_BACKEND=legacy_playwright`) and there is no automatic fallback. Administrators must deploy and verify the existing Gmail MCP Apps Script first by following [`docs/GMAIL_CLOUD_BRIDGE.md`](docs/GMAIL_CLOUD_BRIDGE.md); the local installer intentionally does not deploy the cloud source.
 
 ---
 
@@ -78,8 +80,9 @@ All project documentation, release notes, installation guides, design specificat
 
 - **`setup_env.ps1`**: Automated environment installer script.
 - **`docs/GMAIL_EDGE_BROKER.md`**: Managed Edge broker operation, authentication, diagnostics, and rollback guide.
+- **`docs/GMAIL_CLOUD_BRIDGE.md`**: Advanced Gmail Service deployment, verification, sequencing, and rollback runbook.
 - **`docs/`**: Centralized documentation suite (Release Notes, Guides, TDD, Presentations, PowerPoint).
 - **`plugins/avaya-case-review/`**: The Case Review plugin containing the `case-review` skill, `gmail-capability` skill, and **10 embedded Avaya product domain reference guides** (`aes-cti-jtapi.md`, `contact-center.md`, `recording-wfo.md`, `analytics-kubernetes.md`, `security-vulnerability.md`, `sip-voice-quality.md`, `certificates-login-outage.md`, `digital-channels.md`, `ip-office.md`, `log-collection.md`).
 - **`tools/casetomd/`**: Python bridge for the CaseToMD server (`https://192.168.67.160:8000/mcp`).
-- **`tools/gmail/`**: Single Managed Edge broker, thin Gmail MCP adapter, and explicit legacy Playwright rollback backend.
+- **`tools/gmail/`**: Advanced Gmail Service cloud source, Single Managed Edge broker, thin Gmail MCP adapter, and explicit legacy Playwright rollback backend. `setup_env.ps1` deploys only the local Python modules.
 - **`examples/optional-appsscript/`**: Optional, manually deployed Google Apps Script reference for Sheets/Docs/Email digest governance. It is not installed or invoked by the active runtime.

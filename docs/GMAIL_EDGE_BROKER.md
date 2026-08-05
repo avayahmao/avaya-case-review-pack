@@ -17,6 +17,25 @@ launches a browser in the default mode.
 - The broker never logs queries, message IDs, recipients, subjects, bodies,
   cookies, tokens, or response content.
 
+## Exhaustive case-review contract
+
+**Complete Context Before Analysis** processes every Case note before freezing
+the primary and note-derived related-ID boundary. The Advanced Gmail Service
+cloud bridge then exposes `gmail_list_threads` and `gmail_read_thread_page` so
+the Agent can read every message in every matched Gmail thread under one stable
+snapshot, exhaust every page token and cursor, and verify counts and hashes.
+Attachment bodies are excluded. Any incomplete source, pagination, cursor,
+manifest, count, hash, or snapshot check returns `Context collection incomplete`
+and blocks the review.
+
+The cloud source is `tools/gmail/cloud/GmailMcpBridge.gs`, deployed to the
+existing Gmail MCP Apps Script Web App before the local MCP modules and Agent
+SKILL. It is not `examples/optional-appsscript/Code.gs`, and `setup_env.ps1`
+does not deploy it locally. Follow `docs/GMAIL_CLOUD_BRIDGE.md` for the
+Advanced Gmail Service deployment and verification gate. `gmail_search`,
+`gmail_read`, and `gmail_send` remain backward-compatible APIs, but search and
+read cannot satisfy exhaustive collection.
+
 ## Operator commands
 
 Run these commands from the deployed Gmail tools directory (or use the full

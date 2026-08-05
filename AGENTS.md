@@ -44,7 +44,9 @@ Required MCP tools (the skill will call these; fail loudly if missing rather tha
 
 If a required MCP server is not configured, tell the user which one and stop — do not invent case content.
 
-For every case review, **Complete Context Before Analysis** is mandatory: process every Case note, freeze the primary and note-derived related IDs, exhaust every `gmail_list_threads` page, and exhaust every `gmail_read_thread_page` cursor for every unique matched thread. Maintain the **Context Coverage Ledger** and generate no review until its equalities pass. If collection fails, return `Context collection incomplete` with only sanitized counts and the blocker. `gmail_search` and `gmail_read` remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate way to collect a complete review.
+For every case review, **Complete Context Before Analysis** is mandatory: process every Case note, freeze the primary and note-derived related IDs, exhaust every `gmail_list_threads` page, and exhaust every `gmail_read_thread_page` cursor so every message in every matched Gmail thread is covered under one snapshot. Maintain the **Context Coverage Ledger** and generate no review until its equalities pass. If collection fails, return `Context collection incomplete` with only sanitized counts and the blocker. `gmail_search` and `gmail_read` remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate way to collect a complete review.
+
+The exhaustive cloud endpoint is the existing Gmail MCP Apps Script Web App with the **Advanced Gmail Service** named Gmail, API version v1. Its tracked source is `tools/gmail/cloud/GmailMcpBridge.gs`; it is operational MCP code, not the optional governance example at `examples/optional-appsscript/Code.gs`. Deploy and verify the cloud version first using `docs/GMAIL_CLOUD_BRIDGE.md`, then deploy the local MCP modules and Agent SKILL. `setup_env.ps1` intentionally does not deploy the cloud source. Keep the Agent gate inactive if cloud authorization, stable snapshot/page coverage, cursor exhaustion, or hash/count verification fails.
 
 ---
 
@@ -57,6 +59,7 @@ The files in this repo get **deployed** by `install.bat` — the runtime paths t
 | Plugin | `plugins/avaya-case-review/` | `%USERPROFILE%\.gemini\config\plugins\avaya-case-review\` |
 | Skill | `plugins/avaya-case-review/skills/case-review/` | same, under runtime plugin dir |
 | Gmail MCP + Edge broker | `tools/gmail/` | `%USERPROFILE%\.gemini\tools\gmail\` (broker state is under `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`) |
+| Gmail cloud bridge | `tools/gmail/cloud/GmailMcpBridge.gs` | Existing Apps Script Web App (manual deployment; not copied locally) |
 | CaseToMD MCP | `tools/casetomd/` | `%USERPROFILE%\.gemini\tools\casetomd\` |
 | MCP config | (n/a) | `%USERPROFILE%\.gemini\config\mcp_config.json` |
 | Managed Edge broker profile (active, broker-owned) | (n/a) | `%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile\` |
@@ -90,6 +93,7 @@ avaya-case-review-pack/
 │   ├── gmail/gmail_mcp_server.py         ← async MCP entry point; defaults to GMAIL_BACKEND=edge_broker
 │   ├── gmail/gmail_edge_broker.py        ← single Managed Edge browser owner
 │   ├── gmail/gmail_brokerctl.py          ← status/diagnostics/start/login/stop control CLI
+│   ├── gmail/cloud/GmailMcpBridge.gs     ← Advanced Gmail Service cloud endpoint source
 │   └── gmail/gmail_playwright.py         ← legacy Chromium rollback support (not normal login bootstrap)
 ├── examples/
 │   └── optional-appsscript/Code.gs       ← optional, manually deployed governance reference (not runtime)
@@ -117,6 +121,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 | Add a new Avaya-domain reference | new `.md` in `plugins/avaya-case-review/skills/case-review/references/`, plus a row in the SKILL.md routing table |
 | Change the installer | `setup_env.ps1` (invoked by `install.bat`) — verify with `powershell -NoProfile -Command "[PSParser]::Tokenize((Get-Content -Raw './setup_env.ps1'),[ref]$null)|Out-Null"` |
 | Change Gmail behavior | `tools/gmail/gmail_mcp_server.py`, `gmail_edge_broker.py`, `gmail_broker_client.py`, `gmail_brokerctl.py`, and `gmail_legacy_backend.py`; keep `edge_broker` as the default and the explicit `legacy_playwright` rollback path tested |
+| Deploy the Gmail cloud bridge | Follow `docs/GMAIL_CLOUD_BRIDGE.md`; update the existing Apps Script Web App before local MCP/SKILL deployment |
 | Change CaseToMD behavior | `tools/casetomd/casetomd_mcp_bridge.py` |
 | Update docs | `docs/` — HTML and MD versions should be kept in sync, README top-level too |
 
