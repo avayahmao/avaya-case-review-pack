@@ -238,6 +238,27 @@ class PresentationPptxContractTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertNotIn(phrase.casefold(), self.deck_text.casefold())
 
+    def test_exhaustive_context_gate_is_visible_and_not_relevance_limited(self):
+        required = (
+            "Complete Context Before Analysis",
+            "Every Case note",
+            "Every message in every matched Gmail thread",
+            "Incomplete collection blocks the review",
+            "Attachments are excluded",
+        )
+        for phrase in required:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.visible_deck_text)
+
+        limited_collection = re.compile(
+            r"(?:only\s+)?(?:key|relevant|prioriti[sz]ed)\s+"
+            r"(?:Gmail\s+)?(?:messages|threads)"
+            r"|(?:Gmail\s+)?(?:messages|threads)\s+(?:are\s+)?"
+            r"(?:only\s+)?(?:key|relevant|prioriti[sz]ed)",
+            re.IGNORECASE,
+        )
+        self.assertIsNone(limited_collection.search(self.visible_deck_text))
+
     def test_slide_10_has_six_separate_sections_in_visual_reading_order(self):
         self.assertGreaterEqual(len(self.shape_slides), 10)
         report_shapes = [
@@ -303,6 +324,26 @@ class PresentationPptxContractTests(unittest.TestCase):
                 with self.subTest(master=master):
                     self.assertEqual(len(targets), 1)
                     self.assertIn(targets[0], names)
+
+    def test_slide_xml_has_no_empty_structural_placeholders(self):
+        with zipfile.ZipFile(DECK) as archive:
+            for slide in slide_names(archive):
+                root = ElementTree.fromstring(archive.read(slide))
+                for shape in root.findall(".//p:sp", NS):
+                    placeholder = shape.find("p:nvSpPr/p:nvPr/p:ph", NS)
+                    if placeholder is None:
+                        continue
+                    text = "".join(
+                        node.text or "" for node in shape.findall(".//a:t", NS)
+                    ).strip()
+                    metadata = shape.find("p:nvSpPr/p:cNvPr", NS)
+                    shape_name = (
+                        metadata.get("name", "unnamed")
+                        if metadata is not None
+                        else "unnamed"
+                    )
+                    with self.subTest(slide=slide, shape=shape_name):
+                        self.assertTrue(text)
 
     def test_visible_marker_helper_rejects_zero_size_and_off_canvas_text(self):
         marker = "Single Managed Edge Broker"

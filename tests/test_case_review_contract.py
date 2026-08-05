@@ -1184,7 +1184,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "Evidence-Grounded Technical Assessment",
             "Complete Context Before Analysis",
             "frozen record IDs",
-            "incomplete collection blocks review",
+            "Incomplete collection blocks the review",
             "manager judgment",
             "Single Managed Edge Broker",
             "serializes browser ownership for multiple Gmail MCP clients",
@@ -1259,6 +1259,30 @@ class CaseReviewContractTests(unittest.TestCase):
                 content = read(path)
                 self.assertIn("layered disclosure", content.lower())
                 self.assertIn("6-8 sentence Executive Summary", content)
+
+    def test_presentation_visibly_explains_exhaustive_context_gate(self):
+        presentation = read(PRESENTATION_HTML)
+        validate_html_structure(presentation)
+        visible_text = normalize_contract_item(presentation)
+
+        for marker in [
+            "Complete Context Before Analysis",
+            "Every Case note",
+            "Every message in every matched Gmail thread",
+            "Incomplete collection blocks the review",
+            "Attachments are excluded",
+        ]:
+            with self.subTest(marker=marker):
+                self.assertIn(marker, visible_text)
+
+        limited_collection = re.compile(
+            r"(?:only\s+)?(?:key|relevant|prioriti[sz]ed)\s+"
+            r"(?:Gmail\s+)?(?:messages|threads)"
+            r"|(?:Gmail\s+)?(?:messages|threads)\s+(?:are\s+)?"
+            r"(?:only\s+)?(?:key|relevant|prioriti[sz]ed)",
+            re.IGNORECASE,
+        )
+        self.assertIsNone(limited_collection.search(visible_text))
 
     def test_tdd_key_capability_uses_evidence_triggered_direction_checks(self):
         tdd_md = self.contract_docs["tdd_md"]
