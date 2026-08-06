@@ -10,6 +10,18 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
+## [v1.8.1] - 2026-08-06: Gmail Cloud Bridge Correctness Fixes
+
+### Snapshot and Cursor Integrity
+
+* Aligns Gmail's second-resolution `before:` query boundary with the read endpoint's inclusive millisecond cutoff, preventing listed threads from becoming empty ghost pages.
+* Binds cursor payloads to the normalized thread manifest SHA-256 and rejects stale or mismatched cursors as `INVALID_CURSOR`.
+* Keeps the legacy search compatibility path bounded while honoring a caller-supplied `max_results`; exhaustive collection remains on the paginated context APIs.
+* Documents the intentional stateless re-fetch behavior and the trade-off against `CacheService` manifest invalidation.
+* Updates the existing Gmail MCP Web App deployment to Version 5 and verifies zero-result and full-case pagination/cursor/hash coverage.
+
+---
+
 ## [v1.8.0] - 2026-08-06: Exhaustive Context Collection
 
 ### Exhaustive Context Collection Deployment

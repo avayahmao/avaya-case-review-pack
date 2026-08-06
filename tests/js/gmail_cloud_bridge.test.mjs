@@ -214,24 +214,44 @@ test("list_threads handles zero results and rejects non-record queries", () => {
 test("cursors round trip and are bound to their thread and snapshot", () => {
   const { api } = loadBridge();
   const snapshot = "2026-08-04T10:15:30.000Z";
+  const manifest = "a".repeat(64);
   const cursor = api.encodeCursor({
-    version: 1,
+    version: 2,
     thread_id: "thread-a",
     snapshot_before: snapshot,
+    manifest_sha256: manifest,
     message_index: 2,
     chunk_index: 3,
   });
 
-  assert.deepEqual(api.decodeCursor(cursor, "thread-a", snapshot), {
-    version: 1,
+  assert.deepEqual(api.decodeCursor(cursor, "thread-a", snapshot, manifest), {
+    version: 2,
     thread_id: "thread-a",
     snapshot_before: snapshot,
+    manifest_sha256: manifest,
     message_index: 2,
     chunk_index: 3,
   });
   assert.match(cursor, /^[A-Za-z0-9_-]+$/);
   assert.throws(() => api.decodeCursor(cursor, "thread-b", snapshot), /INVALID_CURSOR/);
   assert.throws(() => api.decodeCursor(cursor, "thread-a", "2026-08-04T10:15:31.000Z"), /INVALID_CURSOR/);
+  assert.throws(() => api.decodeCursor(cursor, "thread-a", snapshot, "b".repeat(64)), /INVALID_CURSOR/);
+});
+
+test("read_thread_page uses the same inclusive second bucket as list_threads", () => {
+  const snapshot = "2026-08-04T10:15:30.250Z";
+  const boundaryMessage = rawMessage({
+    id: "same-second",
+    internalDate: "2026-08-04T10:15:30.500Z",
+    body: "within Gmail's second-resolution bucket",
+  });
+  const { api } = loadBridge({ threads: { "thread-boundary": { messages: [boundaryMessage] } } });
+
+  const response = api.readThreadPage({ thread_id: "thread-boundary", snapshot_before: snapshot });
+
+  assert.equal(api.snapshotCutoffMillis(snapshot), Date.parse("2026-08-04T10:15:30.999Z"));
+  assert.equal(response.message_count, 1);
+  assert.deepEqual(Array.from(response.segments, (segment) => segment.message_id), ["same-second"]);
 });
 
 test("read_thread_page filters after-snapshot messages and orders retained messages", () => {
@@ -524,13 +544,17 @@ test("legacy actions retain their search, read, and send contract", () => {
   });
 
   const search = JSON.parse(context.doGet({ parameter: { action: "search", q: "1-23508794022" } }).data);
+  JSON.parse(context.doGet({ parameter: { action: "search", q: "1-23508794022", max_results: "3" } }).data);
   const readResponse = JSON.parse(context.doGet({ parameter: { action: "read", id: "readable" } }).data);
   const missing = JSON.parse(context.doGet({ parameter: { action: "read" } }).data);
   const notFound = JSON.parse(context.doGet({ parameter: { action: "read", id: "missing" } }).data);
   const sent = JSON.parse(context.doGet({ parameter: { action: "send", to: "to@example.com", subject: "Subject", body: "Body" } }).data);
   const invalidSend = JSON.parse(context.doGet({ parameter: { action: "send", to: "to@example.com", subject: "", body: "Body" } }).data);
 
-  assert.deepEqual(calls.search, [{ query: "1-23508794022", start: 0, limit: 10 }]);
+  assert.deepEqual(calls.search, [
+    { query: "1-23508794022", start: 0, limit: 10 },
+    { query: "1-23508794022", start: 0, limit: 3 },
+  ]);
   assert.equal(search.success, true);
   assert.deepEqual(search.messages, [{
     id: "newer", threadId: "legacy-thread", subject: "Newest", from: "sender@example.com",

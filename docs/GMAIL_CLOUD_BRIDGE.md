@@ -253,6 +253,10 @@ to logs.
   exhausted before the thread is counted complete.
 - The first successful list response establishes a non-empty
   `snapshot_before`; every later list and read call uses that exact value.
+- Gmail search timestamps have second-level precision. The bridge queries
+  `before:<next whole second>` and reads through the end of that same second,
+  so a thread returned by `gmail_list_threads` cannot become an empty
+  snapshot page because of millisecond rounding.
 - The related-ID boundary is frozen only after every Case note has been
   processed. It includes the primary ID and supported related IDs explicitly
   present in the case notes; IDs discovered later in Gmail do not expand it.
@@ -262,6 +266,13 @@ to logs.
   `Context collection incomplete` and blocks analysis and report generation.
 - `gmail_search`, `gmail_read`, and `gmail_send` remain backward-compatible
   APIs. Search and read cannot satisfy the exhaustive completeness gate.
+- Legacy search remains bounded to 10 results by default and accepts an
+  optional bounded `max_results`; exhaustive callers must use the paginated
+  context tools instead.
+- Thread pages are intentionally stateless: each cursor request re-fetches
+  and normalizes the full thread. CacheService is not used because stale
+  manifests, cache-size limits, and cross-run invalidation would weaken the
+  completeness contract.
 
 This cloud source is operational Gmail MCP code. It is intentionally separate
 from the optional governance example, and `setup_env.ps1` does not copy it to

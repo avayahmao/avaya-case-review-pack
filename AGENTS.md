@@ -150,6 +150,8 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
+- **v1.8.1** — Gmail Cloud Bridge correctness fixes
+
 - **v1.8.0** — Exhaustive Context Collection
 - **v1.7.0** — Layered Executive and Technical Reporting
 - **v1.6.0** — Single Managed Edge Gmail Broker

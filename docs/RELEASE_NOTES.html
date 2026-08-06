@@ -119,6 +119,20 @@
         </ul>
     </div>
 
+    <!-- VERSION 1.8.1 -->
+    <div>
+        <span class="version-tag">v1.8.1</span>
+        <span class="version-date">2026-08-06 - Gmail Cloud Bridge Correctness Fixes</span>
+        <h3>Snapshot and Cursor Integrity</h3>
+        <ul>
+            <li>Aligns Gmail's second-resolution <code>before:</code> query boundary with the read endpoint's inclusive millisecond cutoff, preventing listed threads from becoming empty ghost pages.</li>
+            <li>Binds cursor payloads to the normalized thread manifest SHA-256 and rejects stale or mismatched cursors as <code>INVALID_CURSOR</code>.</li>
+            <li>Keeps the legacy search compatibility path bounded while honoring a caller-supplied <code>max_results</code>; exhaustive collection remains on the paginated context APIs.</li>
+            <li>Documents the intentional stateless re-fetch behavior and the trade-off against <code>CacheService</code> manifest invalidation.</li>
+            <li>Updates the existing Gmail MCP Web App deployment to Version 5 and verifies zero-result and full-case pagination/cursor/hash coverage.</li>
+        </ul>
+    </div>
+
     <!-- VERSION 1.8.0 -->
     <div>
         <span class="version-tag">v1.8.0</span>

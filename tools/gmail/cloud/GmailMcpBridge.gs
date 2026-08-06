@@ -1,6 +1,7 @@
-var GMAIL_BRIDGE_VERSION = 1;
+var GMAIL_BRIDGE_VERSION = 2;
 var MAX_LIST_RESULTS = 100;
 var DEFAULT_LIST_RESULTS = 100;
+var DEFAULT_LEGACY_SEARCH_RESULTS = 10;
 var BODY_CHUNK_MAX_BYTES = 96 * 1024;
 var THREAD_PAGE_MAX_SEGMENTS = 4;
 var MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
@@ -27,7 +28,11 @@ function jsonOutput_(value) {
 
 function legacySearch_(parameters) {
   var query = parameters.q || parameters.query || "";
-  var threads = GmailApp.search(query, 0, 10);
+  // Legacy compatibility remains bounded; exhaustive callers must use list_threads.
+  var maxResults = parameters.max_results === undefined || parameters.max_results === null || parameters.max_results === ""
+    ? DEFAULT_LEGACY_SEARCH_RESULTS
+    : boundedListResults_(parameters.max_results);
+  var threads = GmailApp.search(query, 0, maxResults);
   var messages = [];
   for (var index = 0; index < threads.length; index += 1) {
     var thread = threads[index];
@@ -95,8 +100,19 @@ function normalizeSnapshot_(value) {
 }
 
 function snapshotQuery_(recordId, snapshotBefore) {
-  var epoch = Math.floor(new Date(snapshotBefore).getTime() / 1000) + 1;
+  // Gmail search accepts second-resolution Unix timestamps. The query includes
+  // the complete second containing snapshotBefore; reads use the same inclusive
+  // millisecond cutoff so a listed thread cannot become an empty ghost page.
+  var epoch = snapshotEpochSeconds_(snapshotBefore);
   return '"' + recordId + '" before:' + epoch;
+}
+
+function snapshotEpochSeconds_(snapshotBefore) {
+  return Math.floor(new Date(snapshotBefore).getTime() / 1000) + 1;
+}
+
+function snapshotCutoffMillis_(snapshotBefore) {
+  return snapshotEpochSeconds_(snapshotBefore) * 1000 - 1;
 }
 
 function listThreads_(parameters) {
@@ -160,7 +176,7 @@ function encodeCursor_(cursor) {
   return encoded.replace(/=+$/, "");
 }
 
-function decodeCursor_(cursor, threadId, snapshotBefore) {
+function decodeCursor_(cursor, threadId, snapshotBefore, manifest) {
   if (typeof cursor !== "string" || !/^[A-Za-z0-9_-]+$/.test(cursor)) throw new Error("INVALID_CURSOR");
   var decoded;
   try {
@@ -173,7 +189,8 @@ function decodeCursor_(cursor, threadId, snapshotBefore) {
   } catch (error) {
     throw new Error("INVALID_CURSOR");
   }
-  if (decoded.thread_id !== threadId || decoded.snapshot_before !== snapshotBefore) {
+  if (decoded.thread_id !== threadId || decoded.snapshot_before !== snapshotBefore ||
+      decoded.manifest_sha256 !== manifest) {
     throw new Error("INVALID_CURSOR");
   }
   return decoded;
@@ -183,6 +200,7 @@ function validateCursorShape_(cursor) {
   if (!cursor || typeof cursor !== "object" || cursor.version !== GMAIL_BRIDGE_VERSION ||
       typeof cursor.thread_id !== "string" || !cursor.thread_id ||
       typeof cursor.snapshot_before !== "string" || !cursor.snapshot_before ||
+      typeof cursor.manifest_sha256 !== "string" || !/^[0-9a-f]{64}$/.test(cursor.manifest_sha256) ||
       !isNonNegativeInteger_(cursor.message_index) || !isNonNegativeInteger_(cursor.chunk_index)) {
     throw new Error("INVALID_CURSOR");
   }
@@ -195,7 +213,10 @@ function isNonNegativeInteger_(value) {
 function readThreadPage_(parameters) {
   var threadId = requireThreadId_(parameters.thread_id);
   var snapshotBefore = normalizeSnapshot_(parameters.snapshot_before);
-  var snapshotMillis = new Date(snapshotBefore).getTime();
+  var snapshotMillis = snapshotCutoffMillis_(snapshotBefore);
+  // This endpoint is intentionally stateless. Each cursor page re-fetches and
+  // normalizes the full thread; avoiding CacheService prevents stale manifests,
+  // cache-size failures, and cross-run cache invalidation hazards.
   var thread = Gmail.Users.Threads.get("me", threadId, { format: "full" });
   validateThreadResponse_(thread);
   var sourceMessages = Array.isArray(thread.messages) ? thread.messages : [];
@@ -215,7 +236,7 @@ function readThreadPage_(parameters) {
   }
   var manifest = sha256Hex_(manifestIds.join("\n"));
   var position = parameters.cursor
-    ? decodeCursor_(parameters.cursor, threadId, snapshotBefore)
+    ? decodeCursor_(parameters.cursor, threadId, snapshotBefore, manifest)
     : { message_index: 0, chunk_index: 0 };
   validateCursorPosition_(position, messages);
 
@@ -224,6 +245,7 @@ function readThreadPage_(parameters) {
     version: GMAIL_BRIDGE_VERSION,
     thread_id: threadId,
     snapshot_before: snapshotBefore,
+    manifest_sha256: manifest,
     message_index: emitted.message_index,
     chunk_index: emitted.chunk_index,
   });
@@ -808,4 +830,5 @@ var GmailBridgeTestExports = {
   sha256Hex: sha256Hex_,
   splitUtf8: splitUtf8_,
   snapshotQuery: snapshotQuery_,
+  snapshotCutoffMillis: snapshotCutoffMillis_,
 };
