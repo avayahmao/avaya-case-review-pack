@@ -114,13 +114,22 @@
     <!-- UNRELEASED -->
     <div>
         <span class="version-tag">Unreleased</span>
+        <ul>
+            <li>No unreleased changes.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.8.0 -->
+    <div>
+        <span class="version-tag">v1.8.0</span>
+        <span class="version-date">2026-08-06 - Exhaustive Context Collection</span>
         <h3>Exhaustive Context Collection Deployment</h3>
         <ul>
             <li>Adds the version-controlled Advanced Gmail Service cloud source at <code>tools/gmail/cloud/GmailMcpBridge.gs</code> and its existing-Web-App deployment and rollback runbook. The source is distributed but intentionally not copied by <code>setup_env.ps1</code>.</li>
             <li>Adds <code>gmail_list_threads</code> and <code>gmail_read_thread_page</code> deployment guidance for one stable snapshot, complete page-token and cursor chains, message/body counts, and hash verification.</li>
             <li>Aligns <strong>Complete Context Before Analysis</strong> documentation: process every Case note and every message in every matched Gmail thread before analysis. The primary and note-derived related-ID boundary is frozen before Gmail retrieval, and attachment bodies remain excluded.</li>
             <li>Requires <code>Context collection incomplete</code> with sanitized counts and a blocker whenever source or coverage verification fails. Existing <code>gmail_search</code>, <code>gmail_read</code>, and <code>gmail_send</code> remain backward-compatible APIs but cannot satisfy the exhaustive gate.</li>
-            <li>Keeps the Agent gate inactive until the cloud endpoint passes zero-result, real-case pagination, and multi-message cursor verification. No plugin version was changed and no release was published.</li>
+            <li>Keeps the Agent gate inactive until the cloud endpoint passes zero-result, real-case pagination, and multi-message cursor verification; this release records the verified deployment and runtime activation.</li>
         </ul>
     </div>
 

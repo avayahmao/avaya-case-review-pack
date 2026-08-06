@@ -6,13 +6,19 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
+* No unreleased changes.
+
+---
+
+## [v1.8.0] - 2026-08-06: Exhaustive Context Collection
+
 ### Exhaustive Context Collection Deployment
 
 * Adds the version-controlled Advanced Gmail Service cloud source at `tools/gmail/cloud/GmailMcpBridge.gs` and its existing-Web-App deployment and rollback runbook. The source is distributed but intentionally not copied by `setup_env.ps1`.
 * Adds `gmail_list_threads` and `gmail_read_thread_page` deployment guidance for one stable snapshot, complete page-token and cursor chains, message/body counts, and hash verification.
 * Aligns **Complete Context Before Analysis** documentation: process every Case note and every message in every matched Gmail thread before analysis. The primary and note-derived related-ID boundary is frozen before Gmail retrieval, and attachment bodies remain excluded.
 * Requires `Context collection incomplete` with sanitized counts and a blocker whenever source or coverage verification fails. Existing `gmail_search`, `gmail_read`, and `gmail_send` remain backward-compatible APIs but cannot satisfy the exhaustive gate.
-* Keeps the Agent gate inactive until the cloud endpoint passes zero-result, real-case pagination, and multi-message cursor verification. No plugin version was changed and no release was published.
+* Keeps the Agent gate inactive until the cloud endpoint passes zero-result, real-case pagination, and multi-message cursor verification; this release records the verified deployment and runtime activation.
 
 ---
 

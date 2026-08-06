@@ -150,14 +150,14 @@ def extract_html_list_items(section: str) -> list[str]:
     ]
 
 
-def extract_release_unreleased_section(content: str, html_document: bool) -> str:
+def extract_release_v1_8_section(content: str, html_document: bool) -> str:
     if html_document:
         return extract_between(
             content,
-            "<!-- UNRELEASED -->",
+            "<!-- VERSION 1.8.0 -->",
             "<!-- VERSION 1.7.0 -->",
         )
-    return extract_between(content, "## [Unreleased]", "## [v1.7.0]")
+    return extract_between(content, "## [v1.8.0]", "## [v1.7.0]")
 
 
 def extract_release_unreleased_items(section: str, html_document: bool) -> list[str]:
@@ -783,9 +783,9 @@ class CaseReviewContractTests(unittest.TestCase):
             agents,
         )
 
-    def test_unreleased_notes_cover_cloud_bridge_without_version_bump(self):
-        release_md = extract_release_unreleased_section(read(RELEASE_MD), html_document=False)
-        release_html = extract_release_unreleased_section(read(RELEASE_HTML), html_document=True)
+    def test_v1_8_release_notes_cover_cloud_bridge(self):
+        release_md = extract_release_v1_8_section(read(RELEASE_MD), html_document=False)
+        release_html = extract_release_v1_8_section(read(RELEASE_HTML), html_document=True)
         md_items = extract_release_unreleased_items(release_md, html_document=False)
         html_items = extract_release_unreleased_items(release_html, html_document=True)
         self.assertEqual(md_items, html_items)
@@ -817,7 +817,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(claim=claim):
                 self.assertTrue(
                     any(claim in item for item in md_items),
-                    f"Unreleased MD section missing claim: {claim}",
+                    f"v1.8.0 MD section missing claim: {claim}",
                 )
 
     def test_exhaustive_scenarios_are_checked_in_their_workflow_sections(self):
@@ -1565,9 +1565,11 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
-    def test_release_metadata_targets_v1_7_0(self):
+    def test_release_metadata_targets_v1_8_0(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
+        self.assertIn("[v1.8.0]", release_md)
+        self.assertIn("v1.8.0", release_html)
         self.assertIn("[v1.7.0]", release_md)
         self.assertIn("v1.7.0", release_html)
         self.assertIn("[v1.6.0]", release_md)
@@ -1584,12 +1586,12 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("Layered Executive and Technical Reporting", release_html)
 
         plugin = json.loads(read(PLUGIN_JSON))
-        self.assertEqual("1.7.0", plugin["version"])
+        self.assertEqual("1.8.0", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.7.0 - latest release", content)
+                self.assertIn("v1.8.0 - latest release", content)
                 self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
@@ -1597,6 +1599,7 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("- **v1.7.0** — Layered Executive and Technical Reporting", agents)
         self.assertIn("- **v1.6.0** — Single Managed Edge Gmail Broker", agents)
         self.assertIn("- **v1.5.0** — Executive Report Readability Redesign", agents)
+        self.assertIn("v1.8.0", agents)
         self.assertNotIn("Target release (not yet published)", agents)
 
     def test_distributable_docs_have_no_machine_specific_file_urls(self):

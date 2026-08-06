@@ -1,6 +1,6 @@
 {
   "name": "avaya-case-review",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Avaya Case Review Manager Suite - evidence-grounded Siebel SR and ServiceNow INC reviews with Gmail correlation and technical assessment.",
   "author": {
     "name": "Avaya Support Management"
