@@ -61,8 +61,16 @@ function legacyMessage({
   };
 }
 
-function loadBridge({ listPages = {}, threads = {}, attachments = {}, legacyThreads = [], legacyMessages = {} } = {}) {
-  const calls = { list: [], get: [], attachments: [], search: [], sent: [], blob: 0 };
+function loadBridge({
+  listPages = {},
+  threads = {},
+  threadGetFailures = {},
+  apiMessages = {},
+  attachments = {},
+  legacyThreads = [],
+  legacyMessages = {},
+} = {}) {
+  const calls = { list: [], get: [], messageGet: [], attachments: [], search: [], sent: [], blob: 0 };
   const Utilities = {
     Charset: { UTF_8: "UTF-8" },
     DigestAlgorithm: { SHA_256: "SHA_256" },
@@ -120,11 +128,22 @@ function loadBridge({ listPages = {}, threads = {}, attachments = {}, legacyThre
           },
           get(userId, threadId, options) {
             calls.get.push({ userId, threadId, options: { ...options } });
+            const failureKey = `${threadId}:${options.format}`;
+            if (Object.prototype.hasOwnProperty.call(threadGetFailures, failureKey)) {
+              throw new Error(threadGetFailures[failureKey]);
+            }
             const hasThread = Object.prototype.hasOwnProperty.call(threads, threadId);
             return structuredClone(hasThread ? threads[threadId] : { id: threadId, messages: [] });
           },
         },
         Messages: {
+          get(userId, messageId, options) {
+            calls.messageGet.push({ userId, messageId, options: { ...options } });
+            if (!Object.prototype.hasOwnProperty.call(apiMessages, messageId)) {
+              throw new Error("message not found");
+            }
+            return structuredClone(apiMessages[messageId]);
+          },
           Attachments: {
             get(userId, messageId, attachmentId) {
               calls.attachments.push({ userId, messageId, attachmentId });
@@ -508,6 +527,88 @@ test("read_thread_page returns at most four segments and advances a server-issue
   assert.equal(second.next_cursor, null);
 });
 
+test("read_thread_page falls back to per-message full fetch when a full thread fetch fails", () => {
+  const snapshot = "2026-08-04T11:00:00Z";
+  const message = rawMessage({
+    id: "large-message",
+    threadId: "thread-large",
+    body: "Recovered from per-message fetch",
+  });
+  const { api, calls } = loadBridge({
+    threads: {
+      "thread-large": {
+        id: "thread-large",
+        messages: [{
+          id: "large-message",
+          threadId: "thread-large",
+          internalDate: message.internalDate,
+        }],
+      },
+    },
+    threadGetFailures: { "thread-large:full": "response too large" },
+    apiMessages: { "large-message": message },
+  });
+
+  const page = api.readThreadPage({ thread_id: "thread-large", snapshot_before: snapshot });
+
+  assert.equal(page.complete, true);
+  assert.equal(page.message_count, 1);
+  assert.equal(page.segments[0].body_chunk, "Recovered from per-message fetch");
+  assert.deepEqual(calls.get, [
+    { userId: "me", threadId: "thread-large", options: { format: "full" } },
+    { userId: "me", threadId: "thread-large", options: { format: "minimal" } },
+  ]);
+  assert.deepEqual(calls.messageGet, [
+    { userId: "me", messageId: "large-message", options: { format: "full" } },
+  ]);
+});
+
+test("large-thread fallback fetches only messages required by each cursor page", () => {
+  const snapshot = "2026-08-04T11:00:00Z";
+  const messages = Array.from({ length: 7 }, (_, index) => rawMessage({
+    id: `lazy-${index}`,
+    threadId: "thread-lazy",
+    internalDate: index === 6 ? "2026-08-04T12:00:00.000Z" : `2026-08-04T10:00:0${index}.000Z`,
+    body: `lazy body ${index}`,
+  }));
+  const apiMessages = Object.fromEntries(messages.map((message) => [message.id, message]));
+  const { api, calls } = loadBridge({
+    threads: {
+      "thread-lazy": {
+        id: "thread-lazy",
+        messages: messages.map((message) => ({
+          id: message.id,
+          threadId: message.threadId,
+          internalDate: message.internalDate,
+        })),
+      },
+    },
+    threadGetFailures: { "thread-lazy:full": "response too large" },
+    apiMessages,
+  });
+
+  const first = api.readThreadPage({ thread_id: "thread-lazy", snapshot_before: snapshot });
+  assert.equal(first.message_count, 6);
+  assert.equal(first.segments.length, 4);
+  assert.equal(first.messages_completed, 4);
+  assert.equal(first.complete, false);
+  assert.deepEqual(calls.messageGet.map((call) => call.messageId), ["lazy-0", "lazy-1", "lazy-2", "lazy-3"]);
+
+  const second = api.readThreadPage({
+    thread_id: "thread-lazy",
+    snapshot_before: snapshot,
+    cursor: first.next_cursor,
+  });
+  assert.equal(second.manifest_sha256, first.manifest_sha256);
+  assert.equal(second.message_count, 6);
+  assert.equal(second.segments.length, 2);
+  assert.equal(second.messages_completed, 6);
+  assert.equal(second.complete, true);
+  assert.deepEqual(calls.messageGet.map((call) => call.messageId), [
+    "lazy-0", "lazy-1", "lazy-2", "lazy-3", "lazy-4", "lazy-5",
+  ]);
+});
+
 test("malformed Gmail responses, messages, and MIME data fail closed with sanitized errors", () => {
   const snapshot = "2026-08-04T11:00:00Z";
   const nullThread = loadBridge({ threads: { "thread-null": null } });
@@ -529,7 +630,7 @@ test("malformed Gmail responses, messages, and MIME data fail closed with saniti
   const malformedMessageResponse = JSON.parse(malformedMessage.context.doGet({
     parameter: { action: "read_thread_page", thread_id: "thread-malformed", snapshot_before: snapshot },
   }).data);
-  assert.deepEqual(malformedMessageResponse, { success: false, error: "APP_ERROR" });
+  assert.deepEqual(malformedMessageResponse, { success: false, error: "INVALID_MESSAGE" });
 
   const decodeFailure = loadBridge({
     threads: {
@@ -550,19 +651,19 @@ test("malformed Gmail responses, messages, and MIME data fail closed with saniti
   const decodeResponse = JSON.parse(decodeFailure.context.doGet({
     parameter: { action: "read_thread_page", thread_id: "thread-decode", snapshot_before: snapshot },
   }).data);
-  assert.deepEqual(decodeResponse, { success: false, error: "APP_ERROR" });
+  assert.deepEqual(decodeResponse, { success: false, error: "INVALID_BODY_ENCODING" });
 
   const malformedList = loadBridge({ listPages: { first: null } });
   const listResponse = JSON.parse(malformedList.context.doGet({
     parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
   }).data);
-  assert.deepEqual(listResponse, { success: false, error: "APP_ERROR" });
+  assert.deepEqual(listResponse, { success: false, error: "INVALID_THREAD_RESPONSE" });
 
   const malformedListShape = loadBridge({ listPages: { first: {} } });
   const malformedListShapeResponse = JSON.parse(malformedListShape.context.doGet({
     parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
   }).data);
-  assert.deepEqual(malformedListShapeResponse, { success: false, error: "APP_ERROR" });
+  assert.deepEqual(malformedListShapeResponse, { success: false, error: "INVALID_THREAD_RESPONSE" });
 
   const malformedParts = loadBridge({
     threads: {
@@ -583,13 +684,13 @@ test("malformed Gmail responses, messages, and MIME data fail closed with saniti
   const malformedPartsResponse = JSON.parse(malformedParts.context.doGet({
     parameter: { action: "read_thread_page", thread_id: "thread-parts", snapshot_before: snapshot },
   }).data);
-  assert.deepEqual(malformedPartsResponse, { success: false, error: "APP_ERROR" });
+  assert.deepEqual(malformedPartsResponse, { success: false, error: "INVALID_MIME_STRUCTURE" });
 
   const malformedToken = loadBridge({ listPages: { first: { threads: [], nextPageToken: 42 } } });
   const malformedTokenResponse = JSON.parse(malformedToken.context.doGet({
     parameter: { action: "list_threads", q: "INC7445969", snapshot_before: snapshot },
   }).data);
-  assert.deepEqual(malformedTokenResponse, { success: false, error: "APP_ERROR" });
+  assert.deepEqual(malformedTokenResponse, { success: false, error: "INVALID_THREAD_RESPONSE" });
 
   const oversizedParts = [
     { mimeType: "text/plain", body: { data: webSafe("body") } },

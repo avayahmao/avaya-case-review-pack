@@ -214,33 +214,191 @@ function readThreadPage_(parameters) {
   var threadId = requireThreadId_(parameters.thread_id);
   var snapshotBefore = normalizeSnapshot_(parameters.snapshot_before);
   var snapshotMillis = snapshotCutoffMillis_(snapshotBefore);
-  // This endpoint is intentionally stateless. Each cursor page re-fetches and
-  // normalizes the full thread; avoiding CacheService prevents stale manifests,
-  // cache-size failures, and cross-run cache invalidation hazards.
-  var thread = Gmail.Users.Threads.get("me", threadId, { format: "full" });
+  // This endpoint is intentionally stateless. Normal threads are re-fetched in
+  // full. If Gmail rejects a large full-thread response, a minimal manifest is
+  // re-fetched and only the messages needed for the current cursor page are
+  // fetched in full. Avoiding CacheService prevents stale-manifest hazards.
+  var thread = fetchThreadForRead_(threadId);
   validateThreadResponse_(thread);
   var sourceMessages = Array.isArray(thread.messages) ? thread.messages : [];
-  var messages = [];
-  for (var index = 0; index < sourceMessages.length; index += 1) {
-    var source = sourceMessages[index];
-    validateMessage_(source);
-    if (Number(source.internalDate) <= snapshotMillis) {
-      messages.push(normalizeMessage_(source, threadId));
-    }
+  if (thread.lazyMessageFetch === true) {
+    return readLazyThreadPage_(parameters, threadId, snapshotBefore, snapshotMillis, sourceMessages);
   }
-  messages.sort(compareMessages_);
+  var messages = [];
+  try {
+    for (var index = 0; index < sourceMessages.length; index += 1) {
+      var source = sourceMessages[index];
+      validateMessage_(source);
+      if (Number(source.internalDate) <= snapshotMillis) {
+        messages.push(normalizeMessage_(source, threadId));
+      }
+    }
+  } catch (error) {
+    var collectionError = error && error.message ? String(error.message) : "";
+    if (isSanitizedErrorCode_(collectionError)) throw error;
+    throw new Error("MESSAGE_COLLECTION_FAILED");
+  }
+  try {
+    messages.sort(compareMessages_);
+  } catch (error) {
+    throw new Error("THREAD_SORT_FAILED");
+  }
 
   var manifestIds = [];
   for (var messageIndex = 0; messageIndex < messages.length; messageIndex += 1) {
     manifestIds.push(messages[messageIndex].message_id);
   }
-  var manifest = sha256Hex_(manifestIds.join("\n"));
+  var manifest;
+  try {
+    manifest = sha256Hex_(manifestIds.join("\n"));
+  } catch (error) {
+    throw new Error("MANIFEST_BUILD_FAILED");
+  }
   var position = parameters.cursor
     ? decodeCursor_(parameters.cursor, threadId, snapshotBefore, manifest)
     : { message_index: 0, chunk_index: 0 };
   validateCursorPosition_(position, messages);
 
-  var emitted = emitSegments_(messages, position.message_index, position.chunk_index);
+  var emitted;
+  try {
+    emitted = emitSegments_(messages, position.message_index, position.chunk_index);
+  } catch (error) {
+    throw new Error("SEGMENT_EMISSION_FAILED");
+  }
+  return buildThreadPageResult_(threadId, snapshotBefore, messages.length, manifest, emitted);
+}
+
+function fetchThreadForRead_(threadId) {
+  try {
+    return Gmail.Users.Threads.get("me", threadId, { format: "full" });
+  } catch (fullThreadError) {
+    // Gmail can reject a large full-thread response even when each message is
+    // individually readable. The minimal response supplies a stable ordered
+    // manifest; the page reader fetches only the messages needed by its cursor.
+  }
+
+  var minimalThread;
+  try {
+    minimalThread = Gmail.Users.Threads.get("me", threadId, { format: "minimal" });
+  } catch (minimalThreadError) {
+    throw new Error("THREAD_FETCH_FAILED");
+  }
+  validateThreadResponse_(minimalThread);
+
+  minimalThread.lazyMessageFetch = true;
+  return minimalThread;
+}
+
+function readLazyThreadPage_(parameters, threadId, snapshotBefore, snapshotMillis, sourceMessages) {
+  var messageStubs = [];
+  for (var index = 0; index < sourceMessages.length; index += 1) {
+    var source = sourceMessages[index];
+    validateMessageStub_(source, threadId);
+    var internalMillis = Number(source.internalDate);
+    if (internalMillis <= snapshotMillis) {
+      messageStubs.push({
+        message_id: String(source.id),
+        internal_millis: internalMillis,
+      });
+    }
+  }
+  messageStubs.sort(compareMessageStubs_);
+
+  var manifestIds = [];
+  for (var stubIndex = 0; stubIndex < messageStubs.length; stubIndex += 1) {
+    manifestIds.push(messageStubs[stubIndex].message_id);
+  }
+  var manifest;
+  try {
+    manifest = sha256Hex_(manifestIds.join("\n"));
+  } catch (error) {
+    throw new Error("MANIFEST_BUILD_FAILED");
+  }
+  var position = parameters.cursor
+    ? decodeCursor_(parameters.cursor, threadId, snapshotBefore, manifest)
+    : { message_index: 0, chunk_index: 0 };
+  validateLazyCursorPosition_(position, messageStubs.length);
+
+  var emitted;
+  try {
+    emitted = emitLazySegments_(messageStubs, threadId, position.message_index, position.chunk_index);
+  } catch (error) {
+    var emissionError = error && error.message ? String(error.message) : "";
+    if (isSanitizedErrorCode_(emissionError)) throw error;
+    throw new Error("SEGMENT_EMISSION_FAILED");
+  }
+  return buildThreadPageResult_(threadId, snapshotBefore, messageStubs.length, manifest, emitted);
+}
+
+function validateMessageStub_(message, threadId) {
+  if (!message || typeof message !== "object" || Array.isArray(message) ||
+      typeof message.id !== "string" || !message.id ||
+      (message.threadId !== undefined && String(message.threadId) !== threadId) ||
+      message.internalDate === undefined || message.internalDate === null || message.internalDate === "" ||
+      !isFinite(Number(message.internalDate))) {
+    throw new Error("INVALID_THREAD_RESPONSE");
+  }
+}
+
+function compareMessageStubs_(left, right) {
+  if (left.internal_millis < right.internal_millis) return -1;
+  if (left.internal_millis > right.internal_millis) return 1;
+  if (left.message_id < right.message_id) return -1;
+  if (left.message_id > right.message_id) return 1;
+  return 0;
+}
+
+function validateLazyCursorPosition_(position, messageCount) {
+  if (position.message_index > messageCount) throw new Error("INVALID_CURSOR");
+  if (position.message_index === messageCount && position.chunk_index !== 0) {
+    throw new Error("INVALID_CURSOR");
+  }
+}
+
+function fetchFullMessage_(messageId) {
+  try {
+    return Gmail.Users.Messages.get("me", messageId, { format: "full" });
+  } catch (error) {
+    throw new Error("MESSAGE_FETCH_FAILED");
+  }
+}
+
+function emitLazySegments_(messageStubs, threadId, messageIndex, chunkIndex) {
+  var segments = [];
+  var messagesCompleted = messageIndex;
+  var currentMessage = messageIndex;
+  var currentChunk = chunkIndex;
+  while (currentMessage < messageStubs.length && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
+    var stub = messageStubs[currentMessage];
+    var source = fetchFullMessage_(stub.message_id);
+    validateMessage_(source);
+    if (source.id !== stub.message_id || source.threadId !== threadId ||
+        Number(source.internalDate) !== stub.internal_millis) {
+      throw new Error("THREAD_MANIFEST_CHANGED");
+    }
+    var message = normalizeMessage_(source, threadId);
+    var chunkCount = message.body_chunks.length;
+    if (currentChunk >= chunkCount) throw new Error("INVALID_CURSOR");
+    while (currentChunk < chunkCount && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
+      segments.push(messageSegment_(message, currentChunk, chunkCount));
+      currentChunk += 1;
+    }
+    if (currentChunk === chunkCount) {
+      currentMessage += 1;
+      currentChunk = 0;
+      messagesCompleted += 1;
+    }
+  }
+  return {
+    segments: segments,
+    messages_completed: messagesCompleted,
+    message_index: currentMessage,
+    chunk_index: currentChunk,
+    complete: currentMessage === messageStubs.length,
+  };
+}
+
+function buildThreadPageResult_(threadId, snapshotBefore, messageCount, manifest, emitted) {
   var nextCursor = emitted.complete ? null : encodeCursor_({
     version: GMAIL_BRIDGE_VERSION,
     thread_id: threadId,
@@ -254,14 +412,19 @@ function readThreadPage_(parameters) {
     bridge_version: GMAIL_BRIDGE_VERSION,
     thread_id: threadId,
     snapshot_before: snapshotBefore,
-    message_count: messages.length,
+    message_count: messageCount,
     manifest_sha256: manifest,
     segments: emitted.segments,
     messages_completed: emitted.messages_completed,
     next_cursor: nextCursor,
     complete: emitted.complete,
   };
-  assertResponseSize_(result);
+  try {
+    assertResponseSize_(result);
+  } catch (error) {
+    if (error && error.message === "RESPONSE_TOO_LARGE") throw error;
+    throw new Error("RESPONSE_SERIALIZATION_FAILED");
+  }
   return result;
 }
 
@@ -301,21 +464,7 @@ function emitSegments_(messages, messageIndex, chunkIndex) {
   while (currentMessage < messages.length && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
     var message = messages[currentMessage];
     var chunkCount = message.body_chunks.length;
-    segments.push({
-      message_id: message.message_id,
-      thread_id: message.thread_id,
-      internal_date: message.internal_date,
-      from: message.from,
-      to: message.to,
-      cc: message.cc,
-      subject: message.subject,
-      body_chunk: message.body_chunks[currentChunk],
-      chunk_index: currentChunk,
-      chunk_count: chunkCount,
-      body_bytes: message.body_bytes,
-      body_sha256: message.body_sha256,
-      attachment_names: message.attachment_names,
-    });
+    segments.push(messageSegment_(message, currentChunk, chunkCount));
     currentChunk += 1;
     if (currentChunk === chunkCount) {
       currentMessage += 1;
@@ -332,25 +481,81 @@ function emitSegments_(messages, messageIndex, chunkIndex) {
   };
 }
 
+function messageSegment_(message, chunkIndex, chunkCount) {
+  return {
+    message_id: message.message_id,
+    thread_id: message.thread_id,
+    internal_date: message.internal_date,
+    from: message.from,
+    to: message.to,
+    cc: message.cc,
+    subject: message.subject,
+    body_chunk: message.body_chunks[chunkIndex],
+    chunk_index: chunkIndex,
+    chunk_count: chunkCount,
+    body_bytes: message.body_bytes,
+    body_sha256: message.body_sha256,
+    attachment_names: message.attachment_names,
+  };
+}
+
 function normalizeMessage_(message, fallbackThreadId) {
   validateMessage_(message);
   var payload = message && message.payload ? message.payload : {};
   validateMimeStructure_(payload);
-  var headers = lowerCaseHeaders_(payload.headers);
-  var body = normalizedBody_(payload, String(message.id || ""));
-  var bodyBytes = utf8ByteLength_(body);
+  var headers;
+  try {
+    headers = lowerCaseHeaders_(payload.headers);
+  } catch (error) {
+    throw new Error("HEADER_NORMALIZATION_FAILED");
+  }
+  var body;
+  try {
+    body = normalizedBody_(payload, String(message.id || ""));
+  } catch (error) {
+    var bodyError = error && error.message ? String(error.message) : "";
+    if (bodyError === "INVALID_BODY_ENCODING" || bodyError === "INVALID_BODY_ATTACHMENT" ||
+        bodyError === "BODY_ATTACHMENT_UNAVAILABLE") {
+      throw error;
+    }
+    throw new Error("BODY_NORMALIZATION_FAILED");
+  }
+  var bodyBytes;
+  var bodyHash;
+  var bodyChunks;
+  try {
+    bodyBytes = utf8ByteLength_(body);
+    bodyHash = sha256Hex_(body);
+    bodyChunks = splitUtf8_(body);
+  } catch (error) {
+    throw new Error("BODY_SEGMENTATION_FAILED");
+  }
+  var attachmentNames;
+  try {
+    attachmentNames = attachmentNames_(payload);
+  } catch (error) {
+    throw new Error("ATTACHMENT_METADATA_FAILED");
+  }
+  var to;
+  var cc;
+  try {
+    to = commaSeparated_(headerValue_(headers, "to"));
+    cc = commaSeparated_(headerValue_(headers, "cc"));
+  } catch (error) {
+    throw new Error("MESSAGE_METADATA_FAILED");
+  }
   return {
     message_id: String(message.id || ""),
     thread_id: String(message.threadId || fallbackThreadId || ""),
     internal_date: internalDateIso_(message.internalDate),
     from: headerValue_(headers, "from"),
-    to: commaSeparated_(headerValue_(headers, "to")),
-    cc: commaSeparated_(headerValue_(headers, "cc")),
+    to: to,
+    cc: cc,
     subject: headerValue_(headers, "subject"),
     body_bytes: bodyBytes,
-    body_sha256: sha256Hex_(body),
-    body_chunks: splitUtf8_(body),
-    attachment_names: attachmentNames_(payload),
+    body_sha256: bodyHash,
+    body_chunks: bodyChunks,
+    attachment_names: attachmentNames,
   };
 }
 
@@ -857,17 +1062,43 @@ function assertResponseSize_(value) {
   if (utf8ByteLength_(serialized) > MAX_RESPONSE_BYTES) throw new Error("RESPONSE_TOO_LARGE");
 }
 
-function sanitizedError_(error) {
-  var code = error && error.message ? String(error.message) : "";
-  var allowed = {
+function sanitizedErrorCodes_() {
+  return {
     INVALID_RECORD_ID: true,
     INVALID_SNAPSHOT: true,
     INVALID_CURSOR: true,
     INVALID_THREAD_ID: true,
+    INVALID_THREAD_RESPONSE: true,
+    INVALID_MESSAGE: true,
+    INVALID_MESSAGE_DATE: true,
+    INVALID_MIME_STRUCTURE: true,
+    INVALID_BODY_ENCODING: true,
+    HEADER_NORMALIZATION_FAILED: true,
+    BODY_NORMALIZATION_FAILED: true,
+    BODY_SEGMENTATION_FAILED: true,
+    ATTACHMENT_METADATA_FAILED: true,
+    MESSAGE_METADATA_FAILED: true,
+    THREAD_FETCH_FAILED: true,
+    MESSAGE_FETCH_FAILED: true,
+    MESSAGE_COLLECTION_FAILED: true,
+    THREAD_SORT_FAILED: true,
+    THREAD_MANIFEST_CHANGED: true,
+    MANIFEST_BUILD_FAILED: true,
+    SEGMENT_EMISSION_FAILED: true,
+    RESPONSE_SERIALIZATION_FAILED: true,
     RESPONSE_TOO_LARGE: true,
     INVALID_BODY_ATTACHMENT: true,
     BODY_ATTACHMENT_UNAVAILABLE: true,
   };
+}
+
+function isSanitizedErrorCode_(code) {
+  return sanitizedErrorCodes_()[String(code || "")] === true;
+}
+
+function sanitizedError_(error) {
+  var code = error && error.message ? String(error.message) : "";
+  var allowed = sanitizedErrorCodes_();
   return allowed[code] ? code : "APP_ERROR";
 }
 

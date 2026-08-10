@@ -7,6 +7,9 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 ## [Unreleased]
 
 * Adds a GitHub-rendered **How does it work** Mermaid flowchart to the README and a synchronized pure HTML/CSS workflow view to `README.html`.
+* Falls back from rejected full-thread Gmail responses to a snapshot-filtered minimal manifest and cursor-lazy full-message fetches, keeping large threads inside the 30-second broker page timeout without weakening message-count or manifest integrity.
+* Returns stable sanitized fetch, validation, normalization, manifest, cursor, and response-stage errors instead of collapsing expected blockers into `APP_ERROR`.
+* Updates the existing Gmail MCP Web App deployment to Version 13 and verifies a 100-message thread through 36 cursor pages with 100/100 body byte-count and SHA-256 checks.
 
 ---
 

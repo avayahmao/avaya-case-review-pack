@@ -276,10 +276,17 @@ to logs.
 - Legacy search remains bounded to 10 results by default and accepts an
   optional bounded `max_results`; exhaustive callers must use the paginated
   context tools instead.
-- Thread pages are intentionally stateless: each cursor request re-fetches
-  and normalizes the full thread. CacheService is not used because stale
-  manifests, cache-size limits, and cross-run invalidation would weaken the
-  completeness contract.
+- Thread pages are intentionally stateless. The normal path re-fetches and
+  normalizes the full thread. If Gmail rejects an oversized full-thread
+  response, the bridge re-fetches a minimal manifest and full-fetches only the
+  messages needed to emit the current page's four-segment maximum. Every page
+  still derives the same snapshot-filtered message count and manifest hash.
+  CacheService is not used because stale manifests, cache-size limits, and
+  cross-run invalidation would weaken the completeness contract.
+- Expected fetch, validation, normalization, manifest, cursor, and response
+  failures return stable sanitized codes. `APP_ERROR` is reserved for
+  unexpected failures so a collection blocker remains actionable without
+  exposing message content.
 
 This cloud source is operational Gmail MCP code. It is intentionally separate
 from the optional governance example, and `setup_env.ps1` does not copy it to
