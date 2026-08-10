@@ -28,7 +28,7 @@
 <blockquote>
 <p>[!NOTE]<br />
 🌐 <strong>HTML Version Available</strong>: If you do not have a Markdown reader, open <strong><a href="MANAGER_ONBOARDING_GUIDE.html">MANAGER_ONBOARDING_GUIDE.html</a></strong> directly in any web browser.</p>
-<p>This guide is designed for <strong>Avaya Operations &amp; Support Managers</strong>. It walks you through setting up <strong>Antigravity</strong>, the <strong>Case Review Plugin</strong>, and <strong>Gmail / CaseToMD MCP Servers</strong> to generate automated, executive-ready reviews for Siebel SRs and ServiceNow INCs.</p>
+<p>This guide is designed for <strong>Avaya Operations &amp; Support Managers</strong>. It walks you through setting up the <strong>Case Review Plugin</strong> and <strong>Gmail / CaseToMD MCP Servers</strong> in Antigravity; Codex users follow the parallel installation path in <a href="../INSTALL.md">../INSTALL.md</a>.</p>
 </blockquote>
 <hr />
 <h2>1. Prerequisites</h2>
@@ -42,8 +42,12 @@
 <hr />
 <h2>2. Quick Start: One-Click Automated Setup</h2>
 <h3>Required Cloud Prerequisite (Before Local Installation)</h3>
-<p>Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow <a href="GMAIL_CLOUD_BRIDGE.md">GMAIL_CLOUD_BRIDGE.md</a>. Enable the <strong>Advanced Gmail Service</strong> named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any <code>install.bat</code>, <code>setup_env.ps1</code>, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.</p>
-<h3>Local Component Setup</h3>
+<p>Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow <a href="GMAIL_CLOUD_BRIDGE.md">GMAIL_CLOUD_BRIDGE.md</a>. Enable the <strong>Advanced Gmail Service</strong> named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any <code>install-codex.ps1</code>, <code>install.bat</code>, <code>setup_env.ps1</code>, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.</p>
+<h3>Codex Setup</h3>
+<p>For Codex, follow <a href="../INSTALL.md">../INSTALL.md</a> or run the checked-out installer after the cloud gate passes:</p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified</code></pre>
+<p>Start a new Codex task after the installer reports success. The Antigravity-specific steps below are not required for a Codex-only installation.</p>
+<h3>Antigravity Local Component Setup</h3>
 <p>After the cloud deployment and verification gate passes, configure the local components using the included PowerShell script (<code>setup_env.ps1</code>).</p>
 <h3>Step-by-Step Execution</h3>
 <ol>

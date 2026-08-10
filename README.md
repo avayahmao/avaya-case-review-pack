@@ -2,7 +2,7 @@
 
 > **HTML Version Available**: Open **[README.html](README.html)** directly in your browser.
 
-This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It integrates **Antigravity**, **CaseToMD**, **Gmail**, and the **Embedded 10-Domain Avaya Debugger Knowledge Base** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with evidence-grounded technical direction checks.
+This package provides an automated **Case Review Suite** for Avaya Support & Operations Managers. It supports **Codex** and **Antigravity** and integrates **CaseToMD**, **Gmail**, and the **Embedded 10-Domain Avaya Debugger Knowledge Base** to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with evidence-grounded technical direction checks.
 
 ---
 
@@ -25,9 +25,29 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 
 ## Cloud Prerequisite (Complete Before Local Setup)
 
-Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow [`docs/GMAIL_CLOUD_BRIDGE.md`](docs/GMAIL_CLOUD_BRIDGE.md). Enable the Advanced Gmail Service named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any `install.bat`, `setup_env.ps1`, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.
+Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow [`docs/GMAIL_CLOUD_BRIDGE.md`](docs/GMAIL_CLOUD_BRIDGE.md). Enable the Advanced Gmail Service named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any `install-codex.ps1`, `install.bat`, `setup_env.ps1`, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.
 
-## Quick Setup (1-Click)
+## Install Directly from the GitHub URL
+
+Codex and Antigravity agents can follow this request:
+
+```text
+install this plugin: https://github.com/avayahmao/avaya-case-review-pack
+```
+
+The normative machine-actionable steps are in [`INSTALL.md`](INSTALL.md). The agent clones the repository into a unique temporary directory, verifies the cloud prerequisite above, selects the current host, runs the checked-out installer, completes SSO/MFA when requested, and verifies the installed plugin. Remote scripts are never executed without first checking out and inspecting them.
+
+### Codex
+
+After cloud verification, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified
+```
+
+This uses the native Codex marketplace flow (`codex plugin marketplace add` followed by `codex plugin add`), installs the bundled Gmail and CaseToMD MCP definitions, and shares the existing per-user Managed Edge broker. Start a new Codex task after installation.
+
+## Antigravity Quick Setup (1-Click)
 
 **Recommended (works under corporate Group Policy):**
 1. Unzip the pack.
@@ -83,6 +103,9 @@ All project documentation, release notes, installation guides, design specificat
 ## Package Structure
 
 - **`setup_env.ps1`**: Automated environment installer script.
+- **`install-codex.ps1`**: Cloud-gated Codex marketplace, plugin, dependency, and Gmail login installer.
+- **`INSTALL.md`**: Agent-readable GitHub URL installation contract for Codex and Antigravity.
+- **`.codex-plugin/plugin.json` / `.agents/plugins/marketplace.json` / `.mcp.json`**: Codex plugin, marketplace, and bundled MCP metadata.
 - **`docs/GMAIL_EDGE_BROKER.md`**: Managed Edge broker operation, authentication, diagnostics, and rollback guide.
 - **`docs/GMAIL_CLOUD_BRIDGE.md`**: Advanced Gmail Service deployment, verification, sequencing, and rollback runbook.
 - **`docs/`**: Centralized documentation suite (Release Notes, Guides, TDD, Presentations, PowerPoint).

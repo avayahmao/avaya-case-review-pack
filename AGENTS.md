@@ -6,16 +6,35 @@
 
 ## 1. What this repo is
 
-The **Avaya Case Review Suite** — a distributable pack for Avaya Support & Operations Managers. It ships:
+The **Avaya Case Review Suite** — a distributable pack for Avaya Support & Operations Managers. It supports both Codex and Antigravity and ships:
 
-Before any local installation or Agent activation, deploy and verify the existing Gmail MCP Apps Script with the **Advanced Gmail Service** named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any `install.bat`, `setup_env.ps1`, or local Agent SKILL activation; keep the exhaustive gate inactive until the cloud checks pass.
+Before any local installation or Agent activation, deploy and verify the existing Gmail MCP Apps Script with the **Advanced Gmail Service** named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any `install-codex.ps1`, `install.bat`, `setup_env.ps1`, or local Agent SKILL activation; keep the exhaustive gate inactive until the cloud checks pass.
 
 - an Antigravity/Claude-style **skill** (`case-review`) that turns a raw Siebel SR / ServiceNow INC ID into an executive-ready management brief
+- a Codex repository plugin (`.codex-plugin/plugin.json`) and repository marketplace (`.agents/plugins/marketplace.json`) that expose the same canonical workflow and bundled MCP servers
 - two **MCP servers** the skill depends on:
   - **CaseToMD** — fetches the case JSON/Markdown from the internal endpoint `https://192.168.67.160:8000/mcp`
   - **Gmail** (single Managed Edge broker with a broker-owned persistent Edge profile; explicit legacy Chromium rollback only) — provides exhaustive case-bounded thread/message collection for `@avaya.com`
 - a Windows installer (`install.bat` → `setup_env.ps1`) that deploys the local plugin, MCP, dependency, and broker components into `%USERPROFILE%\.gemini\`; the cloud bridge remains in the existing Apps Script Web App
 - 10 embedded Avaya-domain reference guides used for progressive-disclosure knowledge loading
+
+---
+
+## URL-based Agent installation
+
+Canonical request:
+
+```text
+install this plugin: https://github.com/avayahmao/avaya-case-review-pack
+```
+
+Follow [`INSTALL.md`](INSTALL.md). Do not execute a remote script directly: clone the repository into a unique temporary directory, inspect the checked-out installer, and select the current host's supported entry point.
+
+- **Codex:** after the Gmail cloud gate passes, run `install-codex.ps1 -CloudBridgeVerified`. This installs Python dependencies, registers the Git-backed marketplace, installs `avaya-case-review@avaya-case-review-pack`, and completes Managed Edge login when required.
+- **Antigravity:** after the same cloud gate passes, run `install.bat`; it retains the existing `setup_env.ps1` deployment into `%USERPROFILE%\.gemini\`.
+- **Claude Code:** out of scope. Do not create or install a `.claude-plugin` package.
+
+Cloud deployment and exhaustive verification remain mandatory before either local skill is activated. Interactive SSO/MFA is a legitimate pause; never claim it succeeded without evidence. After installation, start a new Codex task or restart Antigravity.
 
 ---
 
@@ -58,6 +77,8 @@ The local files in this repo are deployed by `install.bat` — the runtime paths
 
 | Concept | Repo (source of truth, edit here) | Runtime (deployed by installer) |
 |---|---|---|
+| Codex plugin | repository root: `.codex-plugin/plugin.json`, `.mcp.json`, `skills/`, `tools/` | Codex plugin cache managed by `codex plugin add` |
+| Codex marketplace | `.agents/plugins/marketplace.json` | Git-backed marketplace snapshot managed by `codex plugin marketplace add` |
 | Plugin | `plugins/avaya-case-review/` | `%USERPROFILE%\.gemini\config\plugins\avaya-case-review\` |
 | Skill | `plugins/avaya-case-review/skills/case-review/` | same, under runtime plugin dir |
 | Gmail MCP + Edge broker | `tools/gmail/` | `%USERPROFILE%\.gemini\tools\gmail\` (broker state is under `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker`) |
@@ -77,9 +98,14 @@ The installer sets `GMAIL_BACKEND=edge_broker`. `GMAIL_BACKEND=legacy_playwright
 
 ```
 avaya-case-review-pack/
+├── .agents/plugins/marketplace.json ← Codex repository marketplace
+├── .codex-plugin/plugin.json        ← Codex plugin manifest
+├── .mcp.json                        ← Codex-bundled Gmail + CaseToMD servers
 ├── AGENTS.md                       ← you are here
+├── INSTALL.md                      ← URL-driven Agent installation contract
 ├── README.md / README.html         ← human-facing quick-start
 ├── install.bat                     ← 1-click entry point (calls PowerShell w/ -ExecutionPolicy Bypass)
+├── install-codex.ps1               ← Codex marketplace/plugin/dependency installer
 ├── setup_env.ps1                   ← does the actual installation (6 phases)
 ├── .gitattributes                  ← ENFORCES CRLF + UTF-8 BOM on *.ps1/*.bat/*.cmd
 ├── .gitignore                      ← ignores avaya-case-review-pack-v*.zip (release-only)
@@ -90,6 +116,7 @@ avaya-case-review-pack/
 │       │   ├── SKILL.md                  ← the workflow
 │       │   └── references/               ← 10 domain guides
 │       └── gmail-capability/SKILL.md     ← tells the agent Gmail MCP is available
+├── skills/                          ← thin Codex entry points to canonical plugin skills
 ├── tools/
 │   ├── casetomd/casetomd_mcp_bridge.py   ← internal HTTPS MCP bridge
 │   ├── gmail/gmail_mcp_server.py         ← async MCP entry point; defaults to GMAIL_BACKEND=edge_broker
@@ -112,6 +139,8 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 2. **Distribution zips (`avaya-case-review-pack-v*.zip`) are not tracked in git.** They live only on GitHub Releases. If you build one locally, `gh release create ...` it — do not `git add`.
 3. **Never bypass corporate SSL globally.** The installer's `NODE_TLS_REJECT_UNAUTHORIZED=0` is scoped to the single `playwright install chromium` call and restored immediately. If you're adding new network operations that fail behind corp proxy, prefer honoring `NODE_EXTRA_CA_CERTS` first.
 4. **Browser login recovery must survive early browser-window close.** The active Managed Edge broker restores and verifies its headless context after login interaction. Any legacy rollback code that reads a page after user interaction must guard with `page.is_closed()` and wrap `context.close()` in `try/except`.
+5. **Keep Codex and Antigravity on one canonical workflow.** Root `skills/` files are thin Codex entry points; the full workflow remains under `plugins/avaya-case-review/skills/`. Do not fork the report contract.
+6. **Keep the Codex installer cloud-gated.** `install-codex.ps1` must refuse state changes unless `-CloudBridgeVerified` is supplied; dry-run is the only exception.
 
 ---
 
@@ -119,6 +148,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 
 | Task | Where |
 |---|---|
+| Change Codex packaging or URL installation | `.codex-plugin/plugin.json`, `.mcp.json`, `.agents/plugins/marketplace.json`, `install-codex.ps1`, and `INSTALL.md` |
 | Change the case-review workflow | `plugins/avaya-case-review/skills/case-review/SKILL.md` |
 | Add a new Avaya-domain reference | new `.md` in `plugins/avaya-case-review/skills/case-review/references/`, plus a row in the SKILL.md routing table |
 | Change the installer | `setup_env.ps1` (invoked by `install.bat`) — verify with `powershell -NoProfile -Command "[PSParser]::Tokenize((Get-Content -Raw './setup_env.ps1'),[ref]$null)|Out-Null"` |
@@ -174,3 +204,4 @@ Version history (all on GitHub Releases, most recent first):
 - **Do not** edit `%USERPROFILE%\.gemini\…` files as if they're the source; they're deployment artifacts. Edit under `plugins/` or `tools/` here, then re-run `install.bat` (or copy the specific file across).
 - **Do not** re-commit a zip. `.gitignore` will refuse; if you defeat it, the release process breaks.
 - **Do not** disable Windows-script encoding normalization in `.gitattributes` — that's what stops the v1.2.0 bug from ever recurring.
+- **Do not** add Claude Code packaging; the supported installation targets are Codex and Antigravity.

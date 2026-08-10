@@ -23,7 +23,7 @@ The architecture consists of five primary decoupled layers:
 ```
 +-----------------------------------------------------------------------------------+
 | 1. CLIENT INTERFACE LAYER                                                          |
-|    Antigravity Windows Desktop App (Agent Runtime & Markdown Renderer)             |
+|    Codex or Antigravity Windows App (Agent Runtime & Markdown Renderer)            |
 +-----------------------------------------------------------------------------------+
                                          |
                                          v
@@ -57,10 +57,11 @@ The architecture consists of five primary decoupled layers:
 
 ## 3. Subsystem Specifications
 
-### 3.1 Client Layer: Antigravity Desktop App Runtime
+### 3.1 Client Layer: Codex and Antigravity Runtimes
 - **Target OS**: Windows 10 / 11 64-bit
-- **Discovery**: Automatically scans `%USERPROFILE%\.gemini\config\plugins` for active skills and MCP configurations.
-- **Execution Mode**: Non-sandboxed subagent execution with structured JSON tool invocations and live streaming Markdown report output.
+- **Codex Discovery**: Loads `.codex-plugin/plugin.json`, root `skills/`, and `.mcp.json` through the Git-backed `avaya-case-review-pack` marketplace.
+- **Antigravity Discovery**: Scans `%USERPROFILE%\.gemini\config\plugins` for active skills and MCP configurations deployed by `setup_env.ps1`.
+- **Execution Mode**: Host-controlled agent execution with structured tool invocations and live streaming Markdown report output; filesystem/network permissions follow the selected host's policy.
 
 ---
 
@@ -243,7 +244,19 @@ This payload applies only to a manually deployed optional extension and a separa
 
 ## 5. Deployment & Installation Architecture
 
-The cloud deployment is an explicit prerequisite: deploy and verify the existing Gmail MCP Apps Script with the Advanced Gmail Service named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any local install or local Agent SKILL activation. Once that gate passes, local component installation is automated via `install.bat` / PowerShell (`setup_env.ps1`); the installer handles only the local plugin, MCP, dependency, and broker components and does not deploy the cloud source:
+The cloud deployment is an explicit prerequisite: deploy and verify the existing Gmail MCP Apps Script with the Advanced Gmail Service named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any local install or local Agent SKILL activation. The checked-out repository then exposes two supported local installation modes; neither installer deploys the cloud source:
+
+```powershell
+# Codex: validate the acknowledgement, install dependencies, add the Git marketplace,
+# install avaya-case-review@avaya-case-review-pack, and complete broker login if required.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified
+
+# Antigravity: install.bat invokes setup_env.ps1 to deploy the plugin and MCP runtime
+# under %USERPROFILE%\.gemini\.
+.\install.bat
+```
+
+The Antigravity setup path performs these local phases:
 
 ```powershell
 # 1. Environment Verification
@@ -272,3 +285,4 @@ playwright install chromium
 3. **Contract Validator**: `python -m unittest tests.test_case_review_contract -v` verifies the runtime skill, MD/HTML parity, release state, and portable links.
 4. **Optional Apps Script Validation**: Only when the governance extension is separately deployed, execute its `doGet()` health check, a controlled `doPost()` test payload, and the configured trigger. This is not part of the standard release validation.
 5. **Presentation & Doc Generation**: Validate the PowerPoint and interactive HTML artifacts when those files change.
+6. **Codex Packaging**: Run the plugin validator, `tests/test_codex_plugin_packaging.py`, the PowerShell parser, and a reversible local marketplace/plugin installation smoke test.

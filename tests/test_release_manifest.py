@@ -27,17 +27,25 @@ EXPECTED_GMAIL_DEPLOYMENT_FILES = frozenset(
     }
 )
 
-INSTALLER_ENTRY_POINTS = frozenset({"install.bat", "setup_env.ps1"})
+INSTALLER_ENTRY_POINTS = frozenset(
+    {"install.bat", "install-codex.ps1", "setup_env.ps1"}
+)
 
 REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
     {
         "release-manifest.txt",
+        ".agents/plugins/marketplace.json",
+        ".codex-plugin/plugin.json",
+        ".mcp.json",
+        "INSTALL.md",
         "docs/GMAIL_CLOUD_BRIDGE.md",
         "docs/GMAIL_EDGE_BROKER.md",
         "tools/casetomd/casetomd_mcp_bridge.py",
         "plugins/avaya-case-review/plugin.json",
         "plugins/avaya-case-review/skills/case-review/SKILL.md",
         "plugins/avaya-case-review/skills/gmail-capability/SKILL.md",
+        "skills/case-review/SKILL.md",
+        "skills/gmail-capability/SKILL.md",
     }
 )
 
@@ -88,6 +96,23 @@ class ReleaseManifestTests(unittest.TestCase):
                 self.assertNotIn("*", name)
                 self.assertEqual(posix_path.as_posix(), name)
                 self.assertTrue((ROOT / name).is_file())
+
+    def test_windows_entry_points_preserve_utf8_bom_and_crlf(self):
+        windows_scripts = [
+            ROOT / name
+            for name in manifest_entries()
+            if PurePosixPath(name).suffix.lower() in {".ps1", ".bat", ".cmd"}
+        ]
+        self.assertTrue(windows_scripts, "release has no Windows entry points")
+
+        for path in windows_scripts:
+            with self.subTest(path=path.relative_to(ROOT).as_posix()):
+                raw = path.read_bytes()
+                self.assertTrue(raw.startswith(b"\xef\xbb\xbf"), "missing UTF-8 BOM")
+                self.assertIsNone(
+                    re.search(rb"(?<!\r)\n", raw),
+                    "Windows entry point contains LF-only line endings",
+                )
 
     def test_manifest_contains_installer_runtime_and_plugin_content(self):
         entries = set(manifest_entries())

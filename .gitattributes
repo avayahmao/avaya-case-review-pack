@@ -2,9 +2,9 @@
 # PowerShell 5.1 / cmd.exe execute directly. This is what prevents the
 # regression that shipped in v1.2.0, where LF-only .ps1 files broke
 # the here-string parser and made the installer unrunnable.
-*.ps1  text eol=crlf working-tree-encoding=UTF-8-BOM
-*.bat  text eol=crlf working-tree-encoding=UTF-8-BOM
-*.cmd  text eol=crlf working-tree-encoding=UTF-8-BOM
+*.ps1  text eol=crlf working-tree-encoding=UTF-8
+*.bat  text eol=crlf working-tree-encoding=UTF-8
+*.cmd  text eol=crlf working-tree-encoding=UTF-8
 
 # Zips / other binaries — never touch.
 *.zip  binary

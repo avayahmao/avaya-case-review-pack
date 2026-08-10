@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "python",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/tools/gmail/gmail_mcp_server.py"
+      ],
+      "env": {
+        "GMAIL_BACKEND": "edge_broker",
+        "PYTHONIOENCODING": "utf-8"
+      }
+    },
+    "CaseToMD": {
+      "command": "python",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/tools/casetomd/casetomd_mcp_bridge.py"
+      ],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}

@@ -1,9 +1,14 @@
 # Explicit release contents. One repository-relative path per line.
+.agents/plugins/marketplace.json
+.codex-plugin/plugin.json
+.mcp.json
 .gitignore
+INSTALL.md
 README.html
 README.md
 AGENTS.md
 install.bat
+install-codex.ps1
 setup_env.ps1
 release-manifest.txt
 docs/ANTIGRAVITY_INSTALLATION_GUIDE.html
@@ -31,6 +36,8 @@ plugins/avaya-case-review/skills/case-review/references/recording-wfo.md
 plugins/avaya-case-review/skills/case-review/references/security-vulnerability.md
 plugins/avaya-case-review/skills/case-review/references/sip-voice-quality.md
 plugins/avaya-case-review/skills/gmail-capability/SKILL.md
+skills/case-review/SKILL.md
+skills/gmail-capability/SKILL.md
 tools/casetomd/casetomd_mcp_bridge.py
 tools/gmail/cloud/GmailMcpBridge.gs
 tools/gmail/gmail_broker_client.py
