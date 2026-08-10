@@ -61,8 +61,8 @@ function legacyMessage({
   };
 }
 
-function loadBridge({ listPages = {}, threads = {}, legacyThreads = [], legacyMessages = {} } = {}) {
-  const calls = { list: [], get: [], search: [], sent: [], blob: 0 };
+function loadBridge({ listPages = {}, threads = {}, attachments = {}, legacyThreads = [], legacyMessages = {} } = {}) {
+  const calls = { list: [], get: [], attachments: [], search: [], sent: [], blob: 0 };
   const Utilities = {
     Charset: { UTF_8: "UTF-8" },
     DigestAlgorithm: { SHA_256: "SHA_256" },
@@ -122,6 +122,18 @@ function loadBridge({ listPages = {}, threads = {}, legacyThreads = [], legacyMe
             calls.get.push({ userId, threadId, options: { ...options } });
             const hasThread = Object.prototype.hasOwnProperty.call(threads, threadId);
             return structuredClone(hasThread ? threads[threadId] : { id: threadId, messages: [] });
+          },
+        },
+        Messages: {
+          Attachments: {
+            get(userId, messageId, attachmentId) {
+              calls.attachments.push({ userId, messageId, attachmentId });
+              const key = `${messageId}:${attachmentId}`;
+              if (!Object.prototype.hasOwnProperty.call(attachments, key)) {
+                throw new Error("attachment not found");
+              }
+              return structuredClone(attachments[key]);
+            },
           },
         },
       },
@@ -216,7 +228,7 @@ test("cursors round trip and are bound to their thread and snapshot", () => {
   const snapshot = "2026-08-04T10:15:30.000Z";
   const manifest = "a".repeat(64);
   const cursor = api.encodeCursor({
-    version: 2,
+    version: 3,
     thread_id: "thread-a",
     snapshot_before: snapshot,
     manifest_sha256: manifest,
@@ -225,7 +237,7 @@ test("cursors round trip and are bound to their thread and snapshot", () => {
   });
 
   assert.deepEqual(api.decodeCursor(cursor, "thread-a", snapshot, manifest), {
-    version: 2,
+    version: 3,
     thread_id: "thread-a",
     snapshot_before: snapshot,
     manifest_sha256: manifest,
@@ -368,6 +380,76 @@ test("normalization prefers nested text/plain, reads HTML fallback, and excludes
   assert.equal(normalized.body_chunks.join("").includes("CONTINUATION SECRET"), false);
   assert.equal(normalized.body_chunks.join("").includes("SPLIT UTF8 SECRET"), false);
   assert.equal(normalized.body_chunks.join("").includes("SHIFT SECRET"), false);
+});
+
+test("normalization retrieves externalized text MIME bodies without including attachments", () => {
+  const message = rawMessage({
+    id: "externalized-message",
+    mimeType: "multipart/alternative",
+    parts: [],
+  });
+  message.payload.parts = [
+    { mimeType: "text/plain", body: { attachmentId: "body-part" } },
+    { mimeType: "image/png", filename: "inline.png", body: { attachmentId: "image-part" } },
+  ];
+  const { api, calls } = loadBridge({
+    attachments: {
+      "externalized-message:body-part": { data: webSafe("Externalized message body") },
+      "externalized-message:image-part": { data: webSafe("image bytes") },
+    },
+  });
+
+  const normalized = api.normalizeMessage(message, "thread-1");
+
+  assert.deepEqual(Array.from(normalized.body_chunks), ["Externalized message body"]);
+  assert.equal(normalized.body_bytes, Buffer.byteLength("Externalized message body", "utf8"));
+  assert.deepEqual(Array.from(normalized.attachment_names), ["inline.png"]);
+  assert.deepEqual(calls.attachments, [{
+    userId: "me",
+    messageId: "externalized-message",
+    attachmentId: "body-part",
+  }]);
+});
+
+test("normalization retrieves text MIME bodies with empty inline data and an attachment id", () => {
+  const message = rawMessage({
+    id: "externalized-empty-data",
+    mimeType: "multipart/alternative",
+    parts: [],
+  });
+  message.payload.parts = [
+    { mimeType: "text/plain", body: { data: "", attachmentId: "body-part" } },
+  ];
+  const { api, calls } = loadBridge({
+    attachments: {
+      "externalized-empty-data:body-part": { data: webSafe("Body stored behind attachment id") },
+    },
+  });
+
+  const normalized = api.normalizeMessage(message, "thread-1");
+
+  assert.deepEqual(Array.from(normalized.body_chunks), ["Body stored behind attachment id"]);
+  assert.equal(normalized.body_bytes, Buffer.byteLength("Body stored behind attachment id", "utf8"));
+  assert.deepEqual(calls.attachments, [{
+    userId: "me",
+    messageId: "externalized-empty-data",
+    attachmentId: "body-part",
+  }]);
+});
+
+test("normalization accepts Apps Script byte-array MIME body data", () => {
+  const message = rawMessage({
+    id: "byte-array-body",
+    mimeType: "text/html",
+    body: "ignored",
+  });
+  message.payload.body = { data: Array.from(Buffer.from("<p>Byte array body</p>", "utf8")) };
+
+  const { api } = loadBridge();
+  const normalized = api.normalizeMessage(message, "thread-1");
+
+  assert.deepEqual(Array.from(normalized.body_chunks), ["Byte array body"]);
+  assert.equal(normalized.body_bytes, Buffer.byteLength("Byte array body", "utf8"));
 });
 
 test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting code points", () => {

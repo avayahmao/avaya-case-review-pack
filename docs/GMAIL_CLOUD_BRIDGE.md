@@ -261,7 +261,14 @@ to logs.
   processed. It includes the primary ID and supported related IDs explicitly
   present in the case notes; IDs discovered later in Gmail do not expand it.
 - Attachments are excluded from content retrieval. Attachment metadata may be
-  reported, but attachment bodies are outside this completeness contract.
+  reported, but attachment bodies are outside this completeness contract. Gmail
+  may externalize a large `text/plain` or `text/html` MIME body behind
+  `body.attachmentId`; when that part has no filename or attachment disposition,
+  the bridge retrieves it through `Gmail.Users.Messages.Attachments.get` and
+  includes it as message text rather than treating it as an attachment. The
+  Advanced Gmail Service may also materialize inline `body.data` (and fetched
+  attachment `data`) as an Apps Script byte array rather than a base64url
+  string; the bridge decodes that byte array as UTF-8 before normalization.
 - Any source, page, cursor, manifest, hash, count, or snapshot failure returns
   `Context collection incomplete` and blocks analysis and report generation.
 - `gmail_search`, `gmail_read`, and `gmail_send` remain backward-compatible

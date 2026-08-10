@@ -1,4 +1,4 @@
-var GMAIL_BRIDGE_VERSION = 2;
+var GMAIL_BRIDGE_VERSION = 3;
 var MAX_LIST_RESULTS = 100;
 var DEFAULT_LIST_RESULTS = 100;
 var DEFAULT_LEGACY_SEARCH_RESULTS = 10;
@@ -337,7 +337,7 @@ function normalizeMessage_(message, fallbackThreadId) {
   var payload = message && message.payload ? message.payload : {};
   validateMimeStructure_(payload);
   var headers = lowerCaseHeaders_(payload.headers);
-  var body = normalizedBody_(payload);
+  var body = normalizedBody_(payload, String(message.id || ""));
   var bodyBytes = utf8ByteLength_(body);
   return {
     message_id: String(message.id || ""),
@@ -427,35 +427,78 @@ function commaSeparated_(value) {
   return result;
 }
 
-function normalizedBody_(payload) {
+function normalizedBody_(payload, messageId) {
   var plainParts = [];
   var htmlParts = [];
-  collectTextParts_(payload, plainParts, htmlParts);
-  if (plainParts.length) return plainParts[0];
-  if (htmlParts.length) return htmlToText_(htmlParts[0]);
+  collectTextParts_(payload, plainParts, htmlParts, messageId);
+  for (var plainIndex = 0; plainIndex < plainParts.length; plainIndex += 1) {
+    if (plainParts[plainIndex]) return plainParts[plainIndex];
+  }
+  for (var htmlIndex = 0; htmlIndex < htmlParts.length; htmlIndex += 1) {
+    if (htmlParts[htmlIndex]) return htmlToText_(htmlParts[htmlIndex]);
+  }
   return "";
 }
 
-function collectTextParts_(part, plainParts, htmlParts) {
+function collectTextParts_(part, plainParts, htmlParts, messageId) {
   if (!part) return;
   if (isAttachmentPart_(part)) return;
   var mimeType = String(part.mimeType || "").toLowerCase();
-  var text = partBody_(part);
+  var text = partBody_(part, messageId);
   if (text !== null) {
     if (mimeType === "text/plain") plainParts.push(text);
     if (mimeType === "text/html") htmlParts.push(text);
   }
   var children = Array.isArray(part.parts) ? part.parts : [];
   for (var index = 0; index < children.length; index += 1) {
-    collectTextParts_(children[index], plainParts, htmlParts);
+    collectTextParts_(children[index], plainParts, htmlParts, messageId);
   }
 }
 
-function partBody_(part) {
-  if (!part.body || typeof part.body.data !== "string") return null;
+function partBody_(part, messageId) {
+  if (!part.body) return null;
+  var bodyData = part.body.data;
+  var attachmentId = part.body.attachmentId;
+  if (hasBodyData_(bodyData)) {
+    return decodePartBodyData_(bodyData);
+  }
+  if (typeof attachmentId !== "string" || !attachmentId ||
+      !isTextMimeType_(part) || isAttachmentPart_(part)) {
+    return bodyData === undefined || bodyData === null ? null : decodePartBodyData_(bodyData);
+  }
+  if (!messageId) throw new Error("INVALID_BODY_ATTACHMENT");
+  var attachment;
   try {
-    if (!/^[A-Za-z0-9_-]*={0,2}$/.test(part.body.data)) throw new Error("invalid base64");
-    var bytes = Utilities.base64DecodeWebSafe(part.body.data);
+    attachment = Gmail.Users.Messages.Attachments.get("me", messageId, attachmentId);
+  } catch (error) {
+    throw new Error("BODY_ATTACHMENT_UNAVAILABLE");
+  }
+  if (!attachment || !hasBodyData_(attachment.data)) {
+    throw new Error("BODY_ATTACHMENT_UNAVAILABLE");
+  }
+  return decodePartBodyData_(attachment.data);
+}
+
+function hasBodyData_(value) {
+  if (typeof value === "string") return value.length > 0;
+  return Array.isArray(value) && value.length > 0;
+}
+
+function decodePartBodyData_(value) {
+  if (Array.isArray(value)) {
+    try {
+      return utf8FromBytes_(value);
+    } catch (error) {
+      throw new Error("INVALID_BODY_ENCODING");
+    }
+  }
+  return decodeBodyData_(value);
+}
+
+function decodeBodyData_(value) {
+  try {
+    if (!/^[A-Za-z0-9_-]*={0,2}$/.test(value)) throw new Error("invalid base64");
+    var bytes = Utilities.base64DecodeWebSafe(value);
     if (!bytes || typeof bytes.length !== "number") throw new Error("invalid decoded bytes");
     return utf8FromBytes_(bytes);
   } catch (error) {
@@ -463,12 +506,18 @@ function partBody_(part) {
   }
 }
 
+function isTextMimeType_(part) {
+  var mimeType = String(part && part.mimeType || "").toLowerCase();
+  return mimeType === "text/plain" || mimeType === "text/html";
+}
+
 function isAttachmentPart_(part) {
   if (!part || typeof part !== "object") return false;
   if (part.filename) return true;
   if (part.attachmentId !== undefined && part.attachmentId !== null && String(part.attachmentId)) return true;
   if (part.body && part.body.attachmentId !== undefined && part.body.attachmentId !== null &&
-      String(part.body.attachmentId)) return true;
+      String(part.body.attachmentId) &&
+      (hasBodyData_(part.body.data) || !isTextMimeType_(part))) return true;
   var headers = Array.isArray(part.headers) ? part.headers : [];
   for (var index = 0; index < headers.length; index += 1) {
     var header = headers[index];
@@ -816,6 +865,8 @@ function sanitizedError_(error) {
     INVALID_CURSOR: true,
     INVALID_THREAD_ID: true,
     RESPONSE_TOO_LARGE: true,
+    INVALID_BODY_ATTACHMENT: true,
+    BODY_ATTACHMENT_UNAVAILABLE: true,
   };
   return allowed[code] ? code : "APP_ERROR";
 }
