@@ -119,6 +119,20 @@
         </ul>
     </div>
 
+    <!-- VERSION 1.9.0 -->
+    <div>
+        <span class="version-tag">v1.9.0</span>
+        <span class="version-date">2026-08-10 - Codex and Antigravity Installation</span>
+        <h3>Dual-Host Plugin Distribution</h3>
+        <ul>
+            <li>Adds a Codex-native repository plugin manifest, Git-backed marketplace, bundled Gmail and CaseToMD MCP definitions, and thin Codex skill entry points that preserve the existing canonical case-review workflow.</li>
+            <li>Adds a cloud-gated, idempotent <code>install-codex.ps1</code> flow while retaining the established Antigravity <code>install.bat</code> and <code>setup_env.ps1</code> deployment path.</li>
+            <li>Adds an Agent installation contract so Codex and Antigravity can safely follow <code>install this plugin: https://github.com/avayahmao/avaya-case-review-pack</code>, including checkout inspection, cloud verification, SSO/MFA, and post-install checks.</li>
+            <li>Corrects the Git for Windows working-tree encoding attribute while preserving release-wide UTF-8 BOM and CRLF regression enforcement for PowerShell, batch, and cmd entry points.</li>
+            <li>Adds Codex packaging and installer regression coverage plus reversible real-install validation, with the complete suite passing 260 tests, 530 subtests, and 14 Apps Script tests.</li>
+        </ul>
+    </div>
+
     <!-- VERSION 1.8.2 -->
     <div>
         <span class="version-tag">v1.8.2</span>

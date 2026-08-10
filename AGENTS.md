@@ -180,6 +180,7 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
+- **v1.9.0** — Codex and Antigravity installation
 - **v1.8.2** — Gmail body decoding for Apps Script byte-array payloads
 - **v1.8.1** — Gmail Cloud Bridge correctness fixes
 

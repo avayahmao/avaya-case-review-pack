@@ -10,6 +10,18 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
+## [v1.9.0] - 2026-08-10: Codex and Antigravity Installation
+
+### Dual-Host Plugin Distribution
+
+* Adds a Codex-native repository plugin manifest, Git-backed marketplace, bundled Gmail and CaseToMD MCP definitions, and thin Codex skill entry points that preserve the existing canonical case-review workflow.
+* Adds a cloud-gated, idempotent `install-codex.ps1` flow while retaining the established Antigravity `install.bat` and `setup_env.ps1` deployment path.
+* Adds an Agent installation contract so Codex and Antigravity can safely follow `install this plugin: https://github.com/avayahmao/avaya-case-review-pack`, including checkout inspection, cloud verification, SSO/MFA, and post-install checks.
+* Corrects the Git for Windows working-tree encoding attribute while preserving release-wide UTF-8 BOM and CRLF regression enforcement for PowerShell, batch, and cmd entry points.
+* Adds Codex packaging and installer regression coverage plus reversible real-install validation, with the complete suite passing 260 tests, 530 subtests, and 14 Apps Script tests.
+
+---
+
 ## [v1.8.2] - 2026-08-10: Gmail Body Payload Decoding
 
 ### Gmail Cloud Bridge Message Completeness
