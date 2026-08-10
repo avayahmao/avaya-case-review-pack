@@ -91,6 +91,67 @@
             margin: 20px 0;
             border-radius: 0 6px 6px 0;
         }
+        .workflow-flow {
+            max-width: 760px;
+            margin: 24px auto;
+            display: grid;
+            gap: 10px;
+        }
+        .workflow-step {
+            border: 2px solid var(--blue-accent);
+            background: #eff6ff;
+            border-radius: 8px;
+            padding: 12px 16px;
+            text-align: center;
+            font-weight: 600;
+        }
+        .workflow-hosts,
+        .workflow-branches {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+        .workflow-source {
+            background: #fff7ed;
+            border-color: #c2410c;
+        }
+        .workflow-decision {
+            background: #fef3c7;
+            border-color: #d97706;
+        }
+        .workflow-fail {
+            background: #fee2e2;
+            border-color: #dc2626;
+        }
+        .workflow-success {
+            background: #dcfce7;
+            border-color: #15803d;
+        }
+        .workflow-arrow {
+            color: var(--blue-accent);
+            font-size: 1.35rem;
+            font-weight: 700;
+            line-height: 1;
+            text-align: center;
+        }
+        .workflow-path {
+            display: grid;
+            align-content: start;
+            gap: 10px;
+        }
+        .workflow-label {
+            color: #475569;
+            font-size: 0.8rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-align: center;
+        }
+        @media (max-width: 640px) {
+            .workflow-hosts,
+            .workflow-branches {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -105,6 +166,42 @@
 <div class="main-container">
 
     <p>This package provides an automated <strong>Case Review Suite</strong> for Avaya Support & Operations Managers. It supports <strong>Codex</strong> and <strong>Antigravity</strong> and integrates <strong>CaseToMD</strong>, <strong>Gmail</strong>, and the <strong>Embedded 10-Domain Avaya Debugger Knowledge Base</strong> to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with evidence-grounded technical direction checks.</p>
+
+    <h2>How does it work</h2>
+    <div class="workflow-flow" role="img" aria-label="How the Avaya Case Review workflow works">
+        <div class="workflow-step">Manager requests a review for an SR, INC, or related record</div>
+        <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+        <div class="workflow-hosts">
+            <div class="workflow-step">Codex</div>
+            <div class="workflow-step">Antigravity</div>
+        </div>
+        <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+        <div class="workflow-step">Shared case-review workflow</div>
+        <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+        <div class="workflow-step workflow-source">CaseToMD retrieves the official case record</div>
+        <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+        <div class="workflow-step workflow-source">Process every case note and freeze the related record IDs</div>
+        <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+        <div class="workflow-step workflow-source">Gmail enumerates every matching thread under one stable snapshot</div>
+        <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+        <div class="workflow-step workflow-source">Read every message and body chunk; verify tokens, counts, and hashes</div>
+        <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+        <div class="workflow-step workflow-decision">Complete Context gate passed?</div>
+        <div class="workflow-branches">
+            <div class="workflow-path">
+                <div class="workflow-label">NO</div>
+                <div class="workflow-step workflow-fail">Stop: Context collection incomplete<br>Return sanitized counts and the exact blocker</div>
+            </div>
+            <div class="workflow-path">
+                <div class="workflow-label">YES</div>
+                <div class="workflow-step workflow-success">Build the evidence ledger and load only relevant Avaya references</div>
+                <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+                <div class="workflow-step workflow-success">Assess progress, ownership, technical direction, RCA state, and mitigation maturity</div>
+                <div class="workflow-arrow" aria-hidden="true">&darr;</div>
+                <div class="workflow-step workflow-success">Generate the management review<br>Executive Summary + Technical Assessment + Progress/Ownership + Evidence Register</div>
+            </div>
+        </div>
+    </div>
 
     <h2>Evidence-Grounded Review Contract</h2>
     <ul>

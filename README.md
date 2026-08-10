@@ -6,6 +6,40 @@ This package provides an automated **Case Review Suite** for Avaya Support & Ope
 
 ---
 
+## How does it work
+
+```mermaid
+flowchart TD
+    Request(["Manager requests a review for an SR, INC, or related record"])
+    Request --> Host{"Run in"}
+    Host --> Codex["Codex"]
+    Host --> Antigravity["Antigravity"]
+    Codex --> Workflow["Shared case-review workflow"]
+    Antigravity --> Workflow
+    Workflow --> CaseToMD["CaseToMD retrieves the official case record"]
+    CaseToMD --> Scope["Process every case note and freeze the related record IDs"]
+    Scope --> Gmail["Gmail enumerates every matching thread under one stable snapshot"]
+    Gmail --> Verify["Read every message and body chunk; verify tokens, counts, and hashes"]
+    Verify --> Gate{"Complete Context gate passed?"}
+    Gate -->|No| Blocked["Stop: Context collection incomplete<br/>Return sanitized counts and the exact blocker"]
+    Gate -->|Yes| Evidence["Build the evidence ledger and load only relevant Avaya references"]
+    Evidence --> Assess["Assess progress, ownership, technical direction, RCA state, and mitigation maturity"]
+    Assess --> Report(["Generate the management review<br/>Executive Summary + Technical Assessment + Progress/Ownership + Evidence Register"])
+
+    classDef host fill:#e0f2fe,stroke:#1e3a5f,color:#0f172a;
+    classDef source fill:#fff7ed,stroke:#c2410c,color:#0f172a;
+    classDef gate fill:#fef3c7,stroke:#d97706,color:#0f172a;
+    classDef blocked fill:#fee2e2,stroke:#dc2626,color:#0f172a;
+    classDef output fill:#dcfce7,stroke:#15803d,color:#0f172a;
+    class Codex,Antigravity,Workflow host;
+    class CaseToMD,Scope,Gmail,Verify source;
+    class Gate gate;
+    class Blocked blocked;
+    class Evidence,Assess,Report output;
+```
+
+---
+
 ## Evidence-Grounded Review Contract
 
 - The executive body is citation-free; all supporting material appears in the final **Appendix A - Evidence Register**.

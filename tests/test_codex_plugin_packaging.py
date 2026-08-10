@@ -205,6 +205,37 @@ class CodexPluginPackagingTests(unittest.TestCase):
                     content.index("install-codex.ps1"),
                 )
 
+    def test_readme_has_a_github_mermaid_workflow_and_html_equivalent(self):
+        markdown = README_MD.read_text(encoding="utf-8")
+        html = README_HTML.read_text(encoding="utf-8")
+
+        for marker in (
+            "## How does it work",
+            "```mermaid",
+            "flowchart TD",
+            'Gate{"Complete Context gate passed?"}',
+            "Context collection incomplete",
+            "Evidence Register",
+        ):
+            self.assertIn(marker, markdown)
+        self.assertLess(
+            markdown.index("## How does it work"),
+            markdown.index("## Evidence-Grounded Review Contract"),
+        )
+
+        for marker in (
+            "<h2>How does it work</h2>",
+            'class="workflow-flow"',
+            "Complete Context gate passed?",
+            "Context collection incomplete",
+            "Evidence Register",
+        ):
+            self.assertIn(marker, html)
+        self.assertLess(
+            html.index("<h2>How does it work</h2>"),
+            html.index("<h2>Evidence-Grounded Review Contract</h2>"),
+        )
+
     def test_codex_files_are_in_the_release_manifest(self):
         entries = {
             line.strip()

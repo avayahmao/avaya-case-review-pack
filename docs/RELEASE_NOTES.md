@@ -6,7 +6,7 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
-* No unreleased changes.
+* Adds a GitHub-rendered **How does it work** Mermaid flowchart to the README and a synchronized pure HTML/CSS workflow view to `README.html`.
 
 ---
 
