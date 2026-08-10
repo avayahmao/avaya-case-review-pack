@@ -10,6 +10,17 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
+## [v1.8.2] - 2026-08-10: Gmail Body Payload Decoding
+
+### Gmail Cloud Bridge Message Completeness
+
+* Decodes inline Gmail MIME body data returned by the Advanced Gmail Service as an Apps Script byte array instead of silently treating it as an empty body.
+* Retrieves large `text/plain` and `text/html` body parts exposed through `body.attachmentId` when they are not actual attachments, while continuing to exclude attachment content.
+* Adds regression coverage for inline byte-array bodies, externalized text bodies, empty inline data with an attachment ID, and attachment exclusion.
+* Updates the existing Gmail MCP Web App deployment to Version 8 and verifies the affected case at 3 threads, 22 messages, and 22 non-empty message bodies through exhausted cursors.
+
+---
+
 ## [v1.8.1] - 2026-08-06: Gmail Cloud Bridge Correctness Fixes
 
 ### Snapshot and Cursor Integrity

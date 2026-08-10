@@ -119,6 +119,19 @@
         </ul>
     </div>
 
+    <!-- VERSION 1.8.2 -->
+    <div>
+        <span class="version-tag">v1.8.2</span>
+        <span class="version-date">2026-08-10 - Gmail Body Payload Decoding</span>
+        <h3>Gmail Cloud Bridge Message Completeness</h3>
+        <ul>
+            <li>Decodes inline Gmail MIME body data returned by the Advanced Gmail Service as an Apps Script byte array instead of silently treating it as an empty body.</li>
+            <li>Retrieves large <code>text/plain</code> and <code>text/html</code> body parts exposed through <code>body.attachmentId</code> when they are not actual attachments, while continuing to exclude attachment content.</li>
+            <li>Adds regression coverage for inline byte-array bodies, externalized text bodies, empty inline data with an attachment ID, and attachment exclusion.</li>
+            <li>Updates the existing Gmail MCP Web App deployment to Version 8 and verifies the affected case at 3 threads, 22 messages, and 22 non-empty message bodies through exhausted cursors.</li>
+        </ul>
+    </div>
+
     <!-- VERSION 1.8.1 -->
     <div>
         <span class="version-tag">v1.8.1</span>
