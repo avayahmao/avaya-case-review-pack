@@ -115,7 +115,20 @@
     <div>
         <span class="version-tag">Unreleased</span>
         <ul>
-            <li>Limits case-review Gmail enumeration to the primary raw Case ID only. Every Case note is still processed and related records remain available for Case analysis, but note-derived and Gmail-discovered IDs no longer trigger additional Gmail queries.</li>
+            <li>No unreleased changes.</li>
+        </ul>
+    </div>
+
+    <!-- VERSION 1.9.2 -->
+    <div>
+        <span class="version-tag">v1.9.2</span>
+        <span class="version-date">2026-08-11 - Primary Case ID-Only Gmail Collection</span>
+        <h3>Faster Case-Bounded Gmail Retrieval</h3>
+        <ul>
+            <li>Limits case-review Gmail enumeration to the primary raw Case ID only, reducing multi-ID query latency.</li>
+            <li>Continues to process every Case note and retain explicitly stated related records for Case analysis, ownership, escalation, and multi-problem assessment.</li>
+            <li>Prevents Case-note-derived and Gmail-discovered related IDs from expanding the Gmail query plan; the Context Coverage Ledger requires exactly one completed record-ID query.</li>
+            <li>Synchronizes the canonical Codex/Antigravity skills, README, AGENTS, Manager and technical guides, HTML presentation, and PowerPoint deck with the primary-only contract.</li>
         </ul>
     </div>
 
