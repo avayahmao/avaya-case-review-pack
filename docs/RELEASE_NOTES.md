@@ -6,7 +6,7 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
-* No unreleased changes.
+* Limits case-review Gmail enumeration to the primary raw Case ID only. Every Case note is still processed and related records remain available for Case analysis, but note-derived and Gmail-discovered IDs no longer trigger additional Gmail queries.
 
 ---
 

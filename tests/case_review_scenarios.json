@@ -98,13 +98,13 @@
   {
     "id": "all_case_notes_before_gmail",
     "input": "The CaseToMD record contains status pings, technical notes, and multiple related record IDs.",
-    "expected": "Process and count every Case note before freezing the primary-plus-related-ID Gmail query set.",
-    "contract_markers": ["every discrete Case note", "case_notes_discovered == case_notes_processed", "freeze the record-ID query set"]
+    "expected": "Process and count every Case note, retain related records as Case context, and query Gmail only with the primary raw Case ID.",
+    "contract_markers": ["every discrete Case note", "case_notes_discovered == case_notes_processed", "primary raw Case ID"]
   },
   {
     "id": "multipage_gmail_threads",
-    "input": "A record-ID Gmail search returns several pages and duplicate threads across IDs.",
-    "expected": "Follow every next page token, deduplicate by thread ID, preserve match provenance, and do not analyze until all queries complete.",
+    "input": "The primary Case ID Gmail search returns several pages and duplicate thread entries.",
+    "expected": "Follow every next page token, deduplicate by thread ID, preserve primary-query provenance, and do not analyze until the query completes.",
     "contract_markers": ["next_page_token", "thread_id", "record_id_queries_completed", "unique_threads_discovered"]
   },
   {
@@ -121,9 +121,9 @@
   },
   {
     "id": "complete_zero_gmail_results",
-    "input": "Every frozen record-ID query returns zero threads with complete pagination.",
+    "input": "The primary Case ID query returns zero threads with complete pagination.",
     "expected": "Treat Gmail coverage as complete with zero threads and continue from the fully processed Case record.",
-    "contract_markers": ["zero-result query", "complete=true", "all query pagination chains"]
+    "contract_markers": ["zero-result primary-ID query", "complete=true", "pagination chain completed"]
   },
   {
     "id": "token_and_cursor_loops_block_review",
@@ -146,7 +146,7 @@
   {
     "id": "attachment_metadata_out_of_scope_content",
     "input": "A matched message has attachments plus customer, product, owner, participant, and Gmail-only record references.",
-    "expected": "Record attachment metadata without fetching payloads, and do not expand the frozen query set from out-of-scope content.",
+    "expected": "Record attachment metadata without fetching payloads, and never expand the primary-only Gmail query plan from related content.",
     "contract_markers": ["Attachment metadata", "attachment payloads", "Gmail-discovered IDs"]
   }
 ]

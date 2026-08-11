@@ -53,7 +53,7 @@ flowchart TD
 - Mitigation maturity is one of Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
 - Risk and action judgments remain with the Manager. Ownership fields only restate commitments already present in evidence.
 
-**Complete Context Before Analysis** uses the Advanced Gmail Service cloud bridge to process every Case note and every message in every matched Gmail thread under one stable snapshot. The primary and note-derived related-ID boundary is frozen before Gmail collection; attachment bodies are excluded. If any source, page-token, cursor, count, hash, manifest, or snapshot check fails, the only result is `Context collection incomplete` with sanitized coverage counts and the blocker. `gmail_search`, `gmail_read`, and `gmail_send` remain backward-compatible APIs, but search and read cannot satisfy this exhaustive gate.
+**Complete Context Before Analysis** uses the Advanced Gmail Service cloud bridge to process every Case note, query Gmail using the primary raw Case ID only, and process every message in every primary-ID-matched Gmail thread under one stable snapshot. Note-derived related IDs remain available for Case analysis but do not trigger Gmail queries; attachment bodies are excluded. If any source, page-token, cursor, count, hash, manifest, or snapshot check fails, the only result is `Context collection incomplete` with sanitized coverage counts and the blocker. `gmail_search`, `gmail_read`, and `gmail_send` remain backward-compatible APIs, but search and read cannot satisfy this exhaustive gate.
 
 ---
 

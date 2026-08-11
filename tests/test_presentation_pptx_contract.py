@@ -242,7 +242,8 @@ class PresentationPptxContractTests(unittest.TestCase):
         required = (
             "Complete Context Before Analysis",
             "Every Case note",
-            "Every message in every matched Gmail thread",
+            "primary raw Case ID only",
+            "Every message in every primary-ID-matched Gmail thread",
             "Incomplete collection blocks the review",
             "Attachment payloads are excluded; filenames and MIME metadata may be recorded.",
         )
@@ -250,6 +251,7 @@ class PresentationPptxContractTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.visible_deck_text)
         self.assertNotIn("Attachments are excluded", self.visible_deck_text)
+        self.assertNotIn("Case-note-related IDs", self.visible_deck_text)
 
         limited_collection = re.compile(
             r"(?:only\s+)?(?:key|relevant|prioriti[sz]ed)\s+"

@@ -19,10 +19,10 @@ launches a browser in the default mode.
 
 ## Exhaustive case-review contract
 
-**Complete Context Before Analysis** processes every Case note before freezing
-the primary and note-derived related-ID boundary. The Advanced Gmail Service
-cloud bridge then exposes `gmail_list_threads` and `gmail_read_thread_page` so
-the Agent can read every message in every matched Gmail thread under one stable
+**Complete Context Before Analysis** processes every Case note, retains related
+IDs as Case context, and sends one Gmail query for the primary raw Case ID only.
+The Advanced Gmail Service cloud bridge then exposes `gmail_list_threads` and `gmail_read_thread_page` so
+the Agent can read every message in every primary-ID-matched Gmail thread under one stable
 snapshot, exhaust every page token and cursor, and verify counts and hashes.
 Attachment bodies are excluded. Any incomplete source, pagination, cursor,
 manifest, count, hash, or snapshot check returns `Context collection incomplete`

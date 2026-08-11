@@ -297,7 +297,7 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertIn(field, ledger_fields)
         for marker in [
             "case_notes_discovered == case_notes_processed",
-            "record_ids_planned == record_id_queries_completed",
+            "record_ids_planned == record_id_queries_completed == 1",
             "query_pages_completed",
             "unique_threads_discovered == threads_read_complete",
             "messages_expected == messages_completed",
@@ -348,7 +348,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "#### Context Coverage Ledger",
         )
         bootstrap = gmail.index(
-            "The bootstrap input for the first frozen-ID query may be empty",
+            "The bootstrap input for the primary Case ID query may be empty",
         )
         bootstrap_input = gmail.index('snapshot_before: ""', bootstrap)
         bootstrap_output = gmail.index(
@@ -362,6 +362,30 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertLess(bootstrap_input, bootstrap_output)
         self.assertLess(bootstrap_output, reused_snapshot)
         self.assertNotIn("non-empty on every Gmail list and read call", gmail)
+
+    def test_gmail_query_scope_uses_primary_case_id_only(self):
+        retrieval = extract_between(
+            self.skill,
+            "### Complete Context Before Analysis",
+            "### Step 4 - Analyze Only What the Evidence Supports",
+        )
+        gmail_capability = read(GMAIL_CAPABILITY_SKILL)
+
+        for marker in [
+            "primary raw Case ID only",
+            "Related records remain case context only",
+            "record_ids_planned == record_id_queries_completed == 1",
+        ]:
+            self.assertIn(marker, retrieval)
+        self.assertIn("Do not query Case-note-derived or Gmail-discovered related IDs", gmail_capability)
+
+        for forbidden in [
+            "For every frozen record ID",
+            "enumerate every Gmail thread for every frozen ID",
+            "For each frozen primary or Case-note-derived record ID",
+            "freeze the primary plus every supported related ID",
+        ]:
+            self.assertNotIn(forbidden, retrieval + gmail_capability)
 
     def test_snapshot_reflection_repeats_bootstrap_exception_and_reuse_rule(self):
         retrieval = extract_between(
@@ -385,7 +409,7 @@ class CaseReviewContractTests(unittest.TestCase):
             retrieval + reflection,
         )
         self.assertLess(
-            retrieval.index("bootstrap input for the first frozen-ID query may be empty"),
+            retrieval.index("bootstrap input for the primary Case ID query may be empty"),
             retrieval.index("Every later list/read call must pass that **exact same non-empty `snapshot_before`**"),
         )
 
@@ -453,7 +477,7 @@ class CaseReviewContractTests(unittest.TestCase):
         required = [
             "Complete Context Before Analysis",
             "every Case note",
-            "every message in every matched Gmail thread",
+            "every message in every primary-ID-matched Gmail thread",
             "Context collection incomplete",
             "Advanced Gmail Service",
         ]
@@ -495,7 +519,7 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertEqual(offsets, sorted(offsets))
         for marker in [
             "optional governance example",
-            "related-ID boundary",
+            "primary raw Case ID",
             "Attachments are excluded",
             "Context collection incomplete",
             "gmail_search",
@@ -1183,7 +1207,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "Evidence-Grounded Technical Review",
             "Evidence-Grounded Technical Assessment",
             "Complete Context Before Analysis",
-            "frozen record IDs",
+            "primary raw Case ID",
             "Incomplete collection blocks the review",
             "manager judgment",
             "Single Managed Edge Broker",
@@ -1268,7 +1292,7 @@ class CaseReviewContractTests(unittest.TestCase):
         for marker in [
             "Complete Context Before Analysis",
             "Every Case note",
-            "Every message in every matched Gmail thread",
+            "Every message in every primary-ID-matched Gmail thread",
             "Incomplete collection blocks the review",
             "Attachment payloads are excluded; filenames and MIME metadata may be recorded.",
         ]:

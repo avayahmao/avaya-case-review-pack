@@ -10,7 +10,7 @@ This skill allows Antigravity to interact with the user's Gmail / Avaya email in
 ## Capabilities
 
 1. **Enumerate Case Threads**:
-   For each frozen primary or Case-note-derived record ID, use `gmail_list_threads(query, snapshot_before, page_token, max_results)` until every `next_page_token` is exhausted under one shared non-empty snapshot.
+   Use `gmail_list_threads(query, snapshot_before, page_token, max_results)` for the primary raw Case ID only until every `next_page_token` is exhausted under one shared non-empty snapshot. Do not query Case-note-derived or Gmail-discovered related IDs.
 
 2. **Read Complete Threads**:
    Use `gmail_read_thread_page(thread_id, snapshot_before, cursor)` for every unique matched thread until every `next_cursor` is exhausted. Read every snapshot-eligible message and verify body chunks, byte counts, hashes, and stable manifests.
@@ -24,7 +24,7 @@ This skill allows Antigravity to interact with the user's Gmail / Avaya email in
 
 ## Complete Context Before Analysis
 
-Process every Case note before Gmail collection, freeze the primary plus every supported related ID explicitly present in those notes, and maintain the Context Coverage Ledger. Do not analyze or generate a review until every list page, unique thread, message, body chunk, hash, and manifest check passes. If collection fails, return `Context collection incomplete` with only sanitized counts and the blocker; do not emit review sections.
+Process every Case note before Gmail collection, retain supported related IDs as Case context, set the Gmail query plan to the primary raw Case ID only, and maintain the Context Coverage Ledger with `record_ids_planned == record_id_queries_completed == 1`. Do not analyze or generate a review until every primary-query list page, unique thread, message, body chunk, hash, and manifest check passes. If collection fails, return `Context collection incomplete` with only sanitized counts and the blocker; do not emit review sections.
 
 ## MCP Tools
 When the `gmail` MCP server is active in Antigravity, use native tools:

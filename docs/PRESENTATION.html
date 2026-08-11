@@ -230,7 +230,7 @@
                     </div>
                     <div style="margin-bottom: 15px;">
                         <strong style="color: var(--red-accent);">📧 Unified Off-System Visibility</strong>
-                        <div style="font-size: 0.9rem;">The Managed Edge Gmail broker searches only the frozen primary and Case-note-related record IDs, then surfaces matching management signals and customer communications for the evidence timeline.</div>
+                        <div style="font-size: 0.9rem;">The Managed Edge Gmail broker searches only the primary raw Case ID, then surfaces matching management signals and customer communications for the evidence timeline. Related IDs remain Case context.</div>
                     </div>
                     <div>
                         <strong style="color: var(--red-accent);">🧠 Embedded 10-Domain Debugger Engine</strong>
@@ -240,7 +240,7 @@
                 <div style="display: flex; flex-direction: column; gap: 20px;">
                     <div class="card">
                         <h3>🎯 Evidence-Grounded Technical Review</h3>
-                        <p><strong>Complete Context Before Analysis</strong> freezes the primary and Case-note-related IDs. Every Case note must be processed. Every message in every matched Gmail thread must be processed before analysis. Incomplete collection blocks the review; no partial review is generated. Attachment payloads are excluded; filenames and MIME metadata may be recorded.</p>
+                        <p><strong>Complete Context Before Analysis</strong> queries Gmail only with the primary raw Case ID. Every Case note is processed and related IDs remain Case context. Every message in every primary-ID-matched Gmail thread is processed before analysis. Incomplete collection blocks the review; no partial review is generated. Attachment payloads are excluded; filenames and MIME metadata may be recorded.</p>
                     </div>
                     <div class="card">
                         <h3>🚀 Operational Velocity & Accountability</h3>
@@ -356,7 +356,7 @@ get_case_markdown(report_id: "1-23659220672")
                 </div>
                 <div class="card">
                     <h3>Step 2: Deep Inbox Cross-Search</h3>
-                    <p>After CaseToMD notes are processed, the skill freezes the primary and Case-note-related record IDs. The broker exhaustively searches each of those frozen record IDs in @avaya.com Gmail and reads every matched thread and message under one shared snapshot.</p>
+                    <p>After CaseToMD notes are processed, the skill retains related record IDs as Case context but sends only the primary raw Case ID to @avaya.com Gmail. The broker exhausts that primary-ID pagination chain and reads every matched thread and message under one shared snapshot.</p>
                 </div>
                 <div class="card">
                     <h3>Step 3: Off-System Signal Extraction</h3>

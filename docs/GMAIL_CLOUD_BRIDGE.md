@@ -257,9 +257,10 @@ to logs.
   `before:<next whole second>` and reads through the end of that same second,
   so a thread returned by `gmail_list_threads` cannot become an empty
   snapshot page because of millisecond rounding.
-- The related-ID boundary is frozen only after every Case note has been
-  processed. It includes the primary ID and supported related IDs explicitly
-  present in the case notes; IDs discovered later in Gmail do not expand it.
+- The Agent processes every Case note before Gmail collection but sends exactly
+  one list query: the primary raw Case ID. Supported related IDs explicitly
+  present in Case notes remain source-ledger context only; neither note-derived
+  nor Gmail-discovered related IDs expand the Gmail query plan.
 - Attachments are excluded from content retrieval. Attachment metadata may be
   reported, but attachment bodies are outside this completeness contract. Gmail
   may externalize a large `text/plain` or `text/html` MIME body behind

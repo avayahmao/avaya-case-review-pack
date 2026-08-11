@@ -37,7 +37,7 @@ Reference guides support interpretation only. They are not proof that a conditio
 ### Step 1 - Plan the Retrieval
 
 1. Extract the primary identifier. Supported record types are **INC, SR, Activity, CTASK, CHG, or PRJTASK**.
-2. Retrieve CaseToMD first. Do not start Gmail collection until every Case note has been processed and the record-ID query set has been frozen.
+2. Retrieve CaseToMD first. Do not start Gmail collection until every Case note has been processed and the Gmail query scope has been fixed to the primary raw Case ID only.
 3. Do not analyze evidence, draft conclusions, or generate any review content until the complete-context gate passes.
 4. Select domain references only after case symptoms and components are known.
 5. Reserve a final context-coverage, evidence-coverage, and format review before producing the answer.
@@ -65,29 +65,29 @@ Blocker: CaseToMD unavailable — <exact sanitized failure>
 
 ### Complete Context Before Analysis
 
-Before generating any review content, process **every discrete Case note** returned by CaseToMD, including routine status pings; freeze the primary raw Case ID plus every supported related record ID explicitly present in those notes; enumerate every Gmail thread for every frozen ID; and read every message in every unique matched thread. Relevance ranking may affect display only after this gate passes; it must never determine what is retrieved, read, or processed.
+Before generating any review content, process **every discrete Case note** returned by CaseToMD, including routine status pings; retain explicitly stated related record IDs in the Case source ledger for analysis; query Gmail using the **primary raw Case ID only**; and read every message in every unique matched thread. Relevance ranking may affect display only after this gate passes; it must never determine what is read or processed within the primary-ID-matched thread set.
 
-#### Case notes and frozen query scope
+#### Case notes and primary-only Gmail query scope
 
 1. Identify every discrete note or activity block from the structured boundaries in the CaseToMD Markdown. Count each note in `case_notes_discovered`, process it into the internal source ledger, and count it in `case_notes_processed` before making any Gmail call.
 2. Status-only notes are processed and counted even when they will not appear in the rendered Timeline or Evidence Appendix.
-3. Extract and deduplicate the primary raw Case ID plus every supported INC, SR, Activity, CTASK, CHG, PRJTASK, PEA, escalation, or related-record ID explicitly present in the Case notes, then **freeze the record-ID query set**.
-4. Do not add customer-name-only, product-name-only, owner-only, participant-only, broad date-only, or **Gmail-discovered IDs** to the frozen query set.
+3. Extract and deduplicate supported INC, SR, Activity, CTASK, CHG, PRJTASK, PEA, escalation, or related-record IDs explicitly present in the Case notes for the source ledger and related-record analysis, but set the Gmail query plan to exactly one ID: the **primary raw Case ID**. Set `record_ids_planned` to `1`.
+4. Do not add any related record ID, customer name, product name, owner, participant, broad date, or **Gmail-discovered IDs** to the Gmail query plan. Related records remain case context only.
 5. Ambiguous note boundaries, a truncation indicator, or a note-parsing failure makes context collection incomplete.
 
 #### Gmail
 
-1. The bootstrap input for the first frozen-ID query may be empty: call `gmail_list_threads(query: "<record ID>", snapshot_before: "", page_token: "", max_results: 100)`. The first successful response **must return a non-empty `snapshot_before`**; if it is absent or empty, block collection. Save that returned value exactly.
-2. For every frozen record ID, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Every later list/read call must pass that **exact same non-empty `snapshot_before`**; never send an empty value or create a new snapshot after bootstrap. Record each successful page in `query_pages_completed`, and increment `record_id_queries_completed` only after that ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
+1. The bootstrap input for the primary Case ID query may be empty: call `gmail_list_threads(query: "<primary raw Case ID>", snapshot_before: "", page_token: "", max_results: 100)`. The first successful response **must return a non-empty `snapshot_before`**; if it is absent or empty, block collection. Save that returned value exactly.
+2. For the primary Case ID only, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Every later list/read call must pass that **exact same non-empty `snapshot_before`**; never send an empty value or create a new snapshot after bootstrap. Record each successful page in `query_pages_completed`, and set `record_id_queries_completed` to `1` only after the primary ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
 3. Track tokens within each query chain. A missing completion field or a malformed, **repeated or regressing** page token or cursor is a **protocol failure**; never infer completion and never impose an arbitrary thread limit.
-4. Deduplicate the union by `thread_id` while retaining match provenance: every record-ID query that returned each thread. Record the canonical deduplicated count as `unique_threads_discovered`; `gmail_threads_discovered` and `gmail_threads_enumerated` are collection-detail aliases that must resolve to the same deduplicated set before reads begin.
+4. Deduplicate the primary-ID query results by `thread_id` and retain primary-query provenance. Record the canonical deduplicated count as `unique_threads_discovered`; `gmail_threads_discovered` and `gmail_threads_enumerated` are collection-detail aliases that must resolve to the same deduplicated set before reads begin.
 5. For every unique thread, call `gmail_read_thread_page(thread_id: "<thread ID>", snapshot_before: "<shared snapshot>", cursor: "")`, then pass each real `next_cursor` unchanged until `next_cursor` is absent and `complete=true`. Read every message in the thread at or before the shared snapshot, even when an individual message does not contain the searched ID.
 6. Track cursors per thread and reject missing, malformed, repeated, or regressing values. If a listed thread **disappears or becomes unreadable** before completion, the gate fails.
 7. Deduplicate by `message_id`, retain thread/query provenance, derive canonical `messages_expected` from each stable thread message count and `message_chunks_expected` from each message's stable chunk count, and reassemble every message body from all ordered chunks. Verify the reassembled normalized UTF-8 body against the advertised `body_bytes` and SHA-256 `body_sha256`; increment canonical `messages_completed` and `message_chunks_completed` only after successful completion. The `gmail_messages_expected`, `gmail_messages_read`, `body_chunks_expected`, and `body_chunks_read` collection-detail aliases must mirror those canonical counters exactly.
 8. Require the ordered message count and `manifest_sha256` to remain identical on every page for a thread. Any changed manifest, count mismatch, chunk gap, byte mismatch, or hash mismatch blocks the review.
 9. **Attachment metadata** such as filename and MIME type may be recorded, but attachment payloads are out of scope and are not fetched; unread attachment content does not block completeness.
 10. Messages received after `snapshot_before` are intentionally excluded from the current run. Messages received at or before the shared snapshot are all in scope.
-11. A **zero-result query** is complete only when its successful response has no next page token and `complete=true`. If every frozen-ID query has zero results and all query pagination chains completed, continue with the fully processed CaseToMD evidence and state: `Gmail: no additional relevant evidence found`. This is the complete-context form of the existing branch where **Gmail search succeeds but returns no relevant messages**.
+11. A **zero-result primary-ID query** is complete only when its successful response has no next page token and `complete=true`. If the primary-ID query has zero results and its pagination chain completed, continue with the fully processed CaseToMD evidence and state: `Gmail: no additional relevant evidence found`. This is the complete-context form of the existing branch where **Gmail search succeeds but returns no relevant messages**.
 12. If the **Gmail tool is missing or the search call fails**, including authentication, timeout, quota, application, pagination, cursor, or read failure, identify Gmail as the unavailable required server and block the review.
 13. User-supplied documents may supplement these sources after the complete-context gate passes. Label them by filename and date; do not present a parsed shell, extraction artifact, or unsupported inference as a live case record.
 
@@ -122,7 +122,7 @@ manifest_hashes_stable
 The complete-context gate passes only when all of these checks succeed:
 
 - `case_notes_discovered == case_notes_processed`.
-- `record_ids_planned == record_id_queries_completed`, and all query pagination chains ended with `complete=true`; `query_pages_completed` contains every successfully traversed page.
+- `record_ids_planned == record_id_queries_completed == 1`, and the primary-ID query pagination chain ended with `complete=true`; `query_pages_completed` contains every successfully traversed page.
 - `unique_threads_discovered == threads_read_complete`.
 - `messages_expected == messages_completed`.
 - `message_chunks_expected == message_chunks_completed`.
@@ -288,7 +288,7 @@ Every factual answer must pass the internal evidence gate before rendering:
 
 Before rendering:
 
-1. Revalidate `case_notes_discovered == case_notes_processed` and `record_ids_planned == record_id_queries_completed`, with every query pagination chain ending in `complete=true`.
+1. Revalidate `case_notes_discovered == case_notes_processed` and `record_ids_planned == record_id_queries_completed == 1`, with the primary-ID query pagination chain ending in `complete=true`.
 2. Revalidate the canonical equalities `unique_threads_discovered == threads_read_complete`, `messages_expected == messages_completed`, and `message_chunks_expected == message_chunks_completed`.
 3. Revalidate `body_hashes_verified == messages_completed`, confirm all thread manifest hashes were stable, verify every Gmail/thread/message/chunk alias still equals its canonical counter, and confirm the bootstrap request may be empty, the bootstrap response establishes a non-empty `snapshot_before`, and subsequent list/read calls reuse that exact value.
 4. If any coverage check fails during reflection, discard the draft and emit only the prescribed context-collection blocking output.
@@ -361,7 +361,7 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 
 ## Non-Negotiable Rules
 
-- Complete source context before analysis: process every Case note, exhaust every frozen record-ID query page, and read and verify every snapshot-eligible message in every unique matched Gmail thread before analysis or review generation. Relevance affects display only, never retrieval.
+- Complete source context before analysis: process every Case note, exhaust the primary Case ID query pages, and read and verify every snapshot-eligible message in every unique matched Gmail thread before analysis or review generation. Related record IDs remain Case context and never expand Gmail retrieval.
 - Evidence over opinion; unknown over invention.
 - Case-specific evidence is required for case-specific conclusions.
 - Evidence numbering is dynamic, not a three-item quota.
