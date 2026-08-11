@@ -6,6 +6,12 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
+* No unreleased changes.
+
+---
+
+## [v1.9.3] - 2026-08-11: Whole-Case Storyline and Problem Lineage
+
 ### Whole-Case Storyline and Problem Lineage
 
 * Reconstructs the original customer objective, intended action, blocker, intermediate hypotheses, corrected finding, implemented action, and primary outcome before drafting the report.

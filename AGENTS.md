@@ -180,6 +180,7 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
+- **v1.9.3** — Whole-case storyline and problem lineage
 - **v1.9.2** — Primary Case ID-only Gmail collection
 - **v1.9.1** — Large Gmail thread cursor pagination
 - **v1.9.0** — Codex and Antigravity installation
