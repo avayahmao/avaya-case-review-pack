@@ -133,30 +133,34 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 4. **Log Evidence Sufficiency**: Distinguish logs that were requested, collected, attached, and analyzed, then identify evidence gaps without assuming silence means absence. `getlogs`, `csta_trace`, and `g3trace` are conditional examples, not universal requirements.
 
 #### Output Brief Schema
-1. **Executive Summary & Status**: One citation-free 6-8 sentence paragraph containing conclusion-level incident, timing/location, affected scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint.
+Before rendering, the analysis builds a **whole-case storyline and problem lineage**: original customer objective, intended action, blocker or decision point, intermediate working hypotheses, corrected finding, implemented action and primary outcome, and secondary problems with their relationship to the primary problem. Source recency and message length do not determine narrative weight; later evidence receives precedence only for current state or an explicit, better-supported correction.
+
+1. **Executive Summary & Status**: One citation-free 6-8 sentence paragraph proportioned across the complete case lifecycle. It starts with the primary problem before secondary problems and contains conclusion-level timing/location, affected scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint. Future prevention is excluded from Executive Summary.
 2. **Freshness Model**:
    - **Case record freshness** measures the age of the official record update.
    - **Last substantive progress age** measures the age of the latest concrete technical or operational change.
    - Closed/Resolved records are excluded from age-only staleness flags.
-3. **Conditional Technical Assessment**: Starts with problem clarification and adds technical reasoning through environment and findings, causal mechanism, solution and validation, and unresolved gaps. It uses exactly one multi-problem `Problem Statement` or single-issue `Incident & RCA Summary`.
+3. **Conditional Technical Assessment**: Starts with the primary problem and adds technical reasoning while following its lineage through blockers, working hypotheses, corrected findings, causal mechanism, solution and validation, and unresolved gaps. Blocking and secondary problems remain classified and ordered by their relationship to the primary problem. It uses exactly one multi-problem `Problem Statement` or single-issue `Incident & RCA Summary`. Existing prevention controls appear only when evidence confirms they are implemented. Planned or committed preventive work remains an evidence-stated next checkpoint and is never labeled an Existing prevention control or an agent recommendation.
 4. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
-5. **Progress Summary and Timeline**: Progress Summary renders up to five substantive milestones supported by evidence and renders one when only one exists; it never pads or repeats evidence. Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.
+5. **Progress Summary and Timeline**: Progress Summary renders up to five substantive state transitions in the primary problem lifecycle and renders one when only one exists; it never pads or repeats evidence. When supported, transitions include the original objective, pause, corrected understanding, implemented action, and outcome. Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.
 6. **Ownership & Next Step**: Assignee, last concrete action, stated next action, owner, and due date. It only restates evidence-backed commitments.
 7. **Appendix A — Evidence Register**: The final section, using `Ref | Date | Source | Verbatim evidence / data | Supports`.
 
 #### Evidence Processing Contract
 1. **Evidentiary authority** is evaluated independently from management display priority.
 2. Direct logs and official record facts outrank summaries for factual conclusions.
-3. Source conflicts remain visible and disputed conclusions remain `unknown` until resolved.
-4. Evidence entries are never split, duplicated, or invented to reach a target count.
-5. A reference guide may explain case evidence but cannot replace it.
-6. The body contains no Evidence IDs; `Supports` reverse-maps each appendix row to exact body conclusions.
-7. The agent does not generate risk lists, scores, or directives. The agent does not generate recommendations. Evidence-backed commitments may be restated only as planned work or evidence-stated next checkpoints.
-8. Any rendered list or table containing dates or timestamps is sorted ascending by normalized date/time; the freshness calculation still uses the newest dated evidence internally.
-9. Generate Technical & Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.
-10. Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.
-11. Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
-12. Progress Summary has no minimum count; its displayed milestone count follows the available substantive evidence and never pads or repeats evidence.
+3. Case notes and Gmail form one chronological evidence stream, but latest-message recency and verbosity do not determine the primary problem or narrative weight.
+4. Later evidence may establish current state or explicitly supersede an earlier interpretation; it does not erase the original objective, the reason work paused, or intermediate actions.
+5. Source conflicts remain visible and disputed conclusions remain `unknown` until resolved.
+6. Evidence entries are never split, duplicated, or invented to reach a target count.
+7. A reference guide may explain case evidence but cannot replace it.
+8. The body contains no Evidence IDs; `Supports` reverse-maps each appendix row to exact body conclusions.
+9. The agent does not generate risk lists, scores, or directives. The agent does not generate recommendations. Evidence-backed commitments may be restated only as planned work or evidence-stated next checkpoints.
+10. Any rendered list or table containing dates or timestamps is sorted ascending by normalized date/time; the freshness calculation still uses the newest dated evidence internally.
+11. Generate Technical & Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.
+12. Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.
+13. Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
+14. Progress Summary has no minimum count; its displayed milestone count follows the available substantive evidence and never pads or repeats evidence.
 
 #### Vendor Handoff Reference Matrix
 This reference applies only after case evidence establishes the failing component. It does not assign vendor ownership; the Manager retains ownership and risk judgment.

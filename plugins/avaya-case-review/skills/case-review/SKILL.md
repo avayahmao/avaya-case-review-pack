@@ -166,6 +166,20 @@ Apply two separate orderings:
 
 Management display priority controls what the manager sees first. It must never override evidentiary authority.
 
+### Whole-case storyline and problem lineage
+
+Before classifying RCA or drafting any report section, reconstruct an internal whole-case storyline from the complete corpus in chronological order:
+
+- **Primary problem / original customer objective:** identify the earliest evidenced fault, risk, planned change, or service objective that opened the case. A later source may refine or explicitly supersede it, but recency or message length alone never redefines it.
+- **Intended action:** record what the customer or support team originally planned to do to address the primary problem.
+- **Blocking question or decision point:** record why the intended action paused, changed, or required additional investigation.
+- **Working hypotheses and actions:** retain intermediate interpretations, troubleshooting advice, and proposed actions as the state of knowledge at that time; do not rewrite them as confirmed causes merely because they drove activity.
+- **Corrected finding:** record later evidence that confirms, rejects, or supersedes an earlier interpretation, and state what changed in the understanding.
+- **Implemented action and primary outcome:** identify the action that actually addressed the original objective and the evidence-supported outcome.
+- **Secondary problems:** record issues discovered or caused during investigation or implementation, including their relationship to the primary problem. Do not promote them to the primary problem merely because the latest or longest source emphasizes them.
+
+Treat Case notes and Gmail as one chronological evidence stream. **Latest-message recency and verbosity must not determine narrative weight.** Use recency to establish the current state and use stronger later evidence to correct earlier claims, but allocate summary space according to each event's role in the primary problem lifecycle. Distinguish a primary cause from a blocker, a secondary symptom, an implementation side effect, and an incidental observation.
+
 ### Chronological output order
 
 - Any rendered list or table that contains dates or timestamps — including Progress Summary, Timeline, Appendix A, ADM chronology, and dated log excerpts — must be sorted by normalized date/time in ascending order (oldest first).
@@ -226,6 +240,9 @@ Use the vendor handoff matrix only after the failing component is evidenced:
 
 - Use a single-issue assessment for one fault.
 - Use a multi-problem assessment when there are distinct failure modes or related records requiring separate conclusions.
+- Classify each material item as the primary problem, a blocker or decision point, a secondary problem, or an incidental observation before selecting the report structure.
+- In a multi-problem assessment, present the primary problem first, then blockers and secondary problems in causal or chronological relationship to it; do not flatten every finding into an equal problem.
+- Do not force a planned renewal, migration, maintenance activity, or other original customer objective into an RCA state unless evidence shows that it is itself a fault requiring causal analysis.
 - Keep telemetry calculations inside the relevant problem description and show the source inputs.
 - Use RCA states: `Under Investigation`, `Suspected`, `Identified`, or `Validated`. Do not label a root cause Identified/Validated without supporting evidence.
 - Use exactly one mitigation maturity state:
@@ -243,6 +260,9 @@ The **Executive Summary** owns conclusion-level information, while **Technical &
 #### Executive Summary contract
 
 - Write one natural-language paragraph of 6-8 sentences with no subheadings, bullets, field labels, or citation markers.
+- Anchor the paragraph in the whole-case storyline: state the primary problem or original customer objective before the blocker, intermediate investigation, or secondary problems.
+- Allocate narrative weight across the complete lifecycle. Explain why the original activity paused, what evidence changed the technical understanding, what action addressed the primary problem, and its outcome; a latest or longest message must not dominate solely because it is recent or detailed.
+- Mention secondary problems only after the primary problem and only to the extent needed to explain their relationship, disposition, or remaining impact.
 - Cover the following conclusion-level information in this order, combining adjacent points when needed to stay within 6-8 sentences: the incident with its evidenced time and location; affected scope; business or customer impact; key response; a one-sentence technical conclusion stating the RCA state or supported cause; mitigation maturity and production outcome; current status; and the next evidenced checkpoint with owner and ETA.
 - Use lowercase `unknown` for an unsupported detail. Do not substitute a plausible assumption or silently omit a required conclusion-level point.
 - No dedicated `Future prevention` field, recommendation, or prevention narrative belongs in the Executive Summary. Exclude raw logs, detailed troubleshooting, configuration detail, and extended cause analysis.
@@ -251,6 +271,7 @@ The **Executive Summary** owns conclusion-level information, while **Technical &
 #### Technical & Incident Assessment contract
 
 - Start with problem clarification, then explain the evidence and reasoning needed to support or qualify the summary conclusion.
+- Follow the whole-case storyline and problem hierarchy: explain the primary problem first, preserve the blocker and intermediate working hypotheses, identify any corrected finding, and treat secondary problems according to their relationship to the primary problem.
 - Every paragraph must add at least one of the following: environment or affected-component detail; a finding or interpreted log excerpt; causal reasoning or an RCA-state explanation; a ruled-out alternative, unresolved gap, or missing validation; solution, workaround, implementation, or verification detail; or **Existing prevention controls** already implemented and evidenced.
 - Remove any paragraph that only paraphrases an Executive Summary sentence. Do not repeat the full incident, impact, response, status, owner, or ETA unless the technical explanation requires a specific distinction.
 - Existing prevention controls appear only in the technical assessment under the relevant problem and only when evidence shows they are implemented. Planned or committed preventive work that is not implemented must not be labeled an Existing prevention control; describe it only as planned or committed work or as the next committed checkpoint. Omit controls when absent and never generate a prevention recommendation.
@@ -264,10 +285,12 @@ The **Executive Summary** owns conclusion-level information, while **Technical &
 
 #### Generation order
 
-1. Complete the evidence ledger, RCA state, mitigation maturity, production-outcome assessment, and case classification.
-2. Draft the Technical & Incident Assessment from problem clarification through evidence, reasoning, solution or validation, and unresolved gaps.
-3. Extract only the conclusion-level information needed for the Executive Summary.
-4. Deduplicate in both directions: remove technical detail from the summary and remove technical paragraphs that add no explanation beyond the summary.
+1. Complete the evidence ledger.
+2. Reconstruct the whole-case storyline and problem lineage, including the primary problem, blocker, working hypotheses, corrected finding, implemented action, primary outcome, and secondary problems.
+3. Complete the RCA state, mitigation maturity, production-outcome assessment, and case classification for the appropriately classified problems.
+4. Draft the Technical & Incident Assessment from the primary problem through evidence, reasoning, solution or validation, secondary-problem disposition, and unresolved gaps.
+5. Extract only the conclusion-level information needed for the Executive Summary, preserving the full-case proportions.
+6. Deduplicate in both directions: remove technical detail from the summary and remove technical paragraphs that add no explanation beyond the summary.
 
 ### Step 5 - Enforce the Evidence Gate
 
@@ -307,6 +330,9 @@ Before rendering:
 17. Remove any technical paragraph that merely paraphrases the summary without adding a finding, mechanism, validation result, or unresolved gap.
 18. When explicit ADM mode applies, verify: For each of the four ADM dimensions, include evidence-supported content or, when relevant evidence is unavailable, an explicit unresolved evidence or investigation gap; omit inapplicable dimensions, never add rigid filler or invention, and do not create a second outline or ADM block.
 19. Confirm the displayed Progress Summary count follows the available substantive evidence: include up to five milestones, render one when only one exists, and do not pad or repeat evidence.
+20. Confirm the whole-case storyline begins with the evidenced primary problem or original customer objective and is not re-anchored by the latest or longest message without explicit superseding evidence.
+21. Confirm blockers, intermediate working hypotheses, corrected findings, and secondary problems remain distinct, and that secondary problems are not promoted above the primary problem.
+22. Confirm Progress Summary milestones represent meaningful state transitions in the primary problem lifecycle, including the pause, corrected understanding, implemented action, and outcome when evidenced.
 
 ### Step 7 - Produce the Review
 
@@ -322,10 +348,10 @@ After both the complete-context gate and the evidence gate pass, use this common
 **Customer:** <account/site/contact or unknown>
 
 ## Executive Summary
-<Write one natural-language paragraph of 6-8 sentences covering the conclusion-level incident with time and location, affected scope, impact, key response, one-sentence technical conclusion, mitigation and production outcome, current status, and the next evidenced checkpoint with owner and ETA; use lowercase unknown for unsupported details; exclude raw logs, detailed diagnostics, configuration detail, extended cause analysis, and any dedicated prevention field, recommendation, or narrative; an evidence-stated preventive next checkpoint is allowed only as an existing commitment or current planned work, never as an agent recommendation or implemented control.>
+<Write one natural-language paragraph of 6-8 sentences anchored in the whole-case storyline: primary problem or original objective, why progress paused, the material change in understanding, the action and primary outcome, and only then materially relevant secondary problems; also cover time/location, scope, impact, one-sentence technical conclusion, mitigation and production outcome, current status, and the next evidenced checkpoint with owner and ETA; use lowercase unknown for unsupported details; do not let the latest message dominate by recency or length; exclude raw logs, detailed diagnostics, configuration detail, extended cause analysis, and any dedicated prevention field, recommendation, or narrative; an evidence-stated preventive next checkpoint is allowed only as an existing commitment or current planned work, never as an agent recommendation or implemented control.>
 
 ## Technical & Incident Assessment
-<Start with problem clarification; add environment or affected-component detail, findings or interpreted log evidence, causal or RCA-state reasoning, solution or workaround implementation and verification, and unresolved gaps or missing validation; distinguish planned preventive work from implemented controls; do not fully restate the event, impact, response, or status from the Executive Summary.>
+<Start with problem clarification by identifying the primary problem and reconstructing its lineage through blockers, working hypotheses, corrected findings, implemented action, and outcome; then explain secondary problems in relationship to the primary problem; add environment or affected-component detail, findings or interpreted log evidence, causal or RCA-state reasoning, solution or workaround implementation and verification, and unresolved gaps or missing validation; distinguish planned preventive work from implemented controls; do not fully restate the event, impact, response, or status from the Executive Summary.>
 
 ## Progress Summary
 <Up to five substantive milestones supported by evidence, oldest first, without citation markers; render one when only one exists. Do not pad or repeat evidence.>
@@ -351,7 +377,7 @@ After both the complete-context gate and the evidence gate pass, use this common
 For the conditional technical section:
 
 - Choose exactly one structure for the section; the multi-problem and single-issue structures are mutually exclusive.
-- **Multi-problem:** use `Problem Statement`, then `Problem 1 - <Record ID>`, `Problem 2 - <Record ID>`, and so on. For each problem, cover problem clarification, evidence-backed findings, cause or RCA-state reasoning, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
+- **Multi-problem:** use `Problem Statement`, then present `Problem 1 - <Record ID>` as the primary problem, followed by blocking or secondary problems in causal or chronological relationship to it. For each problem, cover problem clarification, evidence-backed findings, cause or RCA-state reasoning when applicable, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
 - **Single issue:** use `Incident & RCA Summary` and cover the same semantic sequence: problem clarification, evidence-backed findings, cause or RCA-state reasoning, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
 - Put **Existing prevention controls** only under the relevant problem and only when evidence confirms they are implemented. Describe evidence-stated but not-yet-implemented preventive work as planned or committed work, not as an existing control.
 
@@ -362,6 +388,8 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 ## Non-Negotiable Rules
 
 - Complete source context before analysis: process every Case note, exhaust the primary Case ID query pages, and read and verify every snapshot-eligible message in every unique matched Gmail thread before analysis or review generation. Related record IDs remain Case context and never expand Gmail retrieval.
+- Reconstruct the complete case storyline before summarizing. The original customer objective anchors the review; later blockers, hypotheses, corrections, actions, outcomes, and secondary problems retain their proportional place in that lifecycle.
+- Latest-message recency or verbosity never substitutes for whole-case importance. Use later evidence to establish current state or explicitly correct earlier claims, not to erase the path that produced the outcome.
 - Evidence over opinion; unknown over invention.
 - Case-specific evidence is required for case-specific conclusions.
 - Evidence numbering is dynamic, not a three-item quota.

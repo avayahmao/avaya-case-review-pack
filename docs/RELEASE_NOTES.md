@@ -6,7 +6,12 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
-* No unreleased changes.
+### Whole-Case Storyline and Problem Lineage
+
+* Reconstructs the original customer objective, intended action, blocker, intermediate hypotheses, corrected finding, implemented action, and primary outcome before drafting the report.
+* Prevents a latest or unusually detailed email from dominating the review solely because of recency or verbosity.
+* Orders multi-problem assessments with the primary problem first and preserves secondary problems in causal or chronological relationship to it.
+* Adds regression coverage for a license-renewal workflow where usage mismatch and association count are secondary to the original expiration and installation objective.
 
 ---
 

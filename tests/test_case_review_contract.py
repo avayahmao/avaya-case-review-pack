@@ -883,6 +883,50 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, self.skill)
 
+    def test_whole_case_storyline_resists_latest_message_bias(self):
+        storyline = extract_between(
+            self.skill,
+            "### Whole-case storyline and problem lineage",
+            "### Chronological output order",
+        )
+        for marker in [
+            "original customer objective",
+            "Blocking question or decision point",
+            "Working hypotheses and actions",
+            "Corrected finding",
+            "Implemented action and primary outcome",
+            "Secondary problems",
+            "relationship to the primary problem",
+            "Latest-message recency and verbosity",
+            "current state",
+        ]:
+            self.assertIn(marker, storyline)
+
+        executive_contract = extract_template_section(
+            self.skill,
+            "#### Executive Summary contract",
+            "#### Technical & Incident Assessment contract",
+        )
+        technical_contract = extract_template_section(
+            self.skill,
+            "#### Technical & Incident Assessment contract",
+            "#### Adaptive ADM depth",
+        )
+        reflection = extract_template_section(
+            self.skill,
+            "### Step 6 - Reflection and Coverage Review",
+            "### Step 7 - Produce the Review",
+        )
+        for marker in [
+            "whole-case storyline",
+            "primary problem",
+            "secondary problems",
+        ]:
+            self.assertIn(marker, executive_contract)
+            self.assertIn(marker, technical_contract)
+            self.assertIn(marker, reflection)
+        self.assertIn("state transitions", reflection)
+
     def test_rendered_date_time_content_is_ascending(self):
         for marker in [
             "Chronological output order",
@@ -1186,6 +1230,31 @@ class CaseReviewContractTests(unittest.TestCase):
                     self.assertIn(marker, contract)
                 self.assertRegex(contract, r"timing(?:/| and )location")
                 self.assertNotIn(old_summary, contract)
+
+    def test_contract_docs_describe_whole_case_storyline(self):
+        for name, content in self.contract_docs.items():
+            with self.subTest(document=name):
+                normalized = normalize_contract_item(content)
+                for marker in [
+                    "whole-case storyline",
+                    "primary problem",
+                    "secondary problems",
+                ]:
+                    self.assertIn(marker, normalized)
+
+        presentation = normalize_contract_item(read(PRESENTATION_HTML))
+        for marker in [
+            "whole-case storyline",
+            "primary problem",
+            "state transitions",
+        ]:
+            self.assertIn(marker, presentation)
+
+        for path in [RELEASE_MD, RELEASE_HTML]:
+            with self.subTest(document=path.name):
+                content = normalize_contract_item(read(path))
+                self.assertIn("Whole-Case Storyline and Problem Lineage", content)
+                self.assertIn("recency or verbosity", content)
 
     def test_adm_spec_and_presentation_follow_layered_contract(self):
         adm_spec = read(ADM_SPEC)
@@ -1621,7 +1690,6 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.2", release_html)
         self.assertIn("Primary Case ID-Only Gmail Collection", release_md)
         self.assertIn("Primary Case ID-Only Gmail Collection", release_html)
-
         plugin = json.loads(read(PLUGIN_JSON))
         self.assertEqual("1.9.2", plugin["version"])
 
@@ -1706,6 +1774,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "chronological_output_order",
             "executive_summary_layering",
             "executive_technical_deduplication",
+            "whole_case_storyline_and_problem_lineage",
             "adm_technical_depth_without_duplicate_sections",
             "adm_sparse_evidence",
             "preventive_next_checkpoint",

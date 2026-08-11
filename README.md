@@ -23,7 +23,8 @@ flowchart TD
     Verify --> Gate{"Complete Context gate passed?"}
     Gate -->|No| Blocked["Stop: Context collection incomplete<br/>Return sanitized counts and the exact blocker"]
     Gate -->|Yes| Evidence["Build the evidence ledger and load only relevant Avaya references"]
-    Evidence --> Assess["Assess progress, ownership, technical direction, RCA state, and mitigation maturity"]
+    Evidence --> Storyline["Reconstruct the whole-case storyline<br/>Primary problem -> blocker -> correction -> outcome -> secondary problems"]
+    Storyline --> Assess["Assess progress, ownership, technical direction, RCA state, and mitigation maturity"]
     Assess --> Report(["Generate the management review<br/>Executive Summary + Technical Assessment + Progress/Ownership + Evidence Register"])
 
     classDef host fill:#e0f2fe,stroke:#1e3a5f,color:#0f172a;
@@ -35,7 +36,7 @@ flowchart TD
     class CaseToMD,Scope,Gmail,Verify source;
     class Gate gate;
     class Blocked blocked;
-    class Evidence,Assess,Report output;
+    class Evidence,Storyline,Assess,Report output;
 ```
 
 ---
@@ -43,8 +44,9 @@ flowchart TD
 ## Evidence-Grounded Review Contract
 
 - The executive body is citation-free; all supporting material appears in the final **Appendix A - Evidence Register**.
-- The report starts with one 6-8 sentence **Executive Summary** paragraph for management and technical readers. It contains conclusion-level incident, timing/location, affected scope, impact, response, RCA-state, mitigation, status, and next-checkpoint information.
-- **Technical & Incident Assessment** supplies the technical reasoning: environment, findings, causal mechanism, validation, and unresolved gaps without restating the summary.
+- Before drafting, the review reconstructs a **whole-case storyline and problem lineage**: original customer objective, intended action, blocker, intermediate working hypotheses, corrected finding, implemented action and primary outcome, then secondary problems in relationship to the primary problem. Latest-message recency or verbosity does not determine narrative weight.
+- The report starts with one 6-8 sentence **Executive Summary** paragraph for management and technical readers. It is anchored in the primary problem and complete case lifecycle, then contains conclusion-level timing/location, affected scope, impact, response, RCA-state, mitigation, status, and next-checkpoint information.
+- **Technical & Incident Assessment** supplies the technical reasoning: environment, findings, causal mechanism, validation, and unresolved gaps without restating the summary or promoting a secondary issue above the original problem.
 - Future prevention is excluded from Executive Summary. **Existing prevention controls** appear only in the technical assessment when case evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
 - The appendix table contains Ref, Date, Source, **Verbatim evidence / data**, and **Supports**. The Supports column reverse-maps each row to the body conclusion it validates.
 - Any rendered list or table containing dates or timestamps is ordered oldest to newest; undated entries follow dated entries.

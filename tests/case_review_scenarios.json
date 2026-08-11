@@ -48,6 +48,12 @@
     "contract_markers": ["only paraphrases an Executive Summary sentence", "environment or affected-component detail", "solution, workaround, implementation, or verification detail"]
   },
   {
+    "id": "whole_case_storyline_and_problem_lineage",
+    "input": "A license-renewal case starts because the existing license is expiring. Installation pauses when the purchased quantity is below the configured allocation and AES consumption differs from the SMGR value. An intermediate engineer recommends service restarts. The latest engineer update explains the allocation configuration, installs and pushes the new license, and also discusses usage and association discrepancies found during the activity.",
+    "expected": "Anchor the review on the original license-renewal objective, show why installation paused, preserve the restart advice as an intermediate working action, record the later configuration correction and successful license push, and classify the usage and association discrepancies as secondary problems instead of letting the latest update redefine the case.",
+    "contract_markers": ["Whole-case storyline and problem lineage", "original customer objective", "Blocking question or decision point", "Working hypotheses and actions", "Corrected finding", "primary outcome", "Secondary problems", "Latest-message recency and verbosity"]
+  },
+  {
     "id": "adm_technical_depth_without_duplicate_sections",
     "input": "The user explicitly requests ADM or Avaya Diagnostic Methodology analysis.",
     "expected": "Deepen the technical assessment across Details/Findings, Problem Clarification, Cause, and Solution without creating a second four-heading report or expanding the Executive Summary.",
