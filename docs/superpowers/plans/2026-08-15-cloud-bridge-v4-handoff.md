@@ -1,6 +1,6 @@
 # Handoff — Cloud Bridge v4 性能改造 Code Review
 
-> **评审对象：** main 分支提交 `a91d6e1`（7 files，+1338/−335），以及已执行的线上部署（详见 §6）。
+> **评审对象：** main 分支提交区间 `8fe39e4..603422a`，共两个提交、8 个文件——`a91d6e1`（实现：7 files，+1338/−335）与 `603422a`（评审修复：2 files，+226/−22），以及已执行的线上部署（详见 §6）。
 > **背景文档：** [`2026-08-15-cloud-bridge-pagination-speedup.md`](2026-08-15-cloud-bridge-pagination-speedup.md) — 经 7 轮评审批准的实施方案（rev 7），§0 含全部 16 条评审意见的响应索引。**已定稿的设计决策请勿在本轮重复辩论，除非发现实现与方案不符。**
 > **评审通过后：** 执行 Task 7（v1.9.4 发布 + 8 文件版本同步）。版本元数据 bump 故意不在本提交内。
 
@@ -21,6 +21,7 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 | `tests/test_gmail_cloud_bridge_wire.py` | 新增 | 跨层契约：JS 预算模型 ↔ Python `encode_response` 膨胀公式 |
 | `docs/GMAIL_CLOUD_BRIDGE.md` | 修改 | 行为陈述重写 + runbook 的 `Invoke-WebRequest -UseBasicParsing` 改法与逐页字节断言 |
 | `docs/superpowers/plans/2026-08-15-…speedup.md` | 新增 | 方案本体（历史记录，不需逐字审） |
+| `docs/superpowers/plans/2026-08-15-…v4-handoff.md` | 新增（`603422a`） | 本文档：行为变更表、验证证据、回滚流程 |
 
 ## 3. .gs 核心改动的正确性主张（请逐条核验）
 
@@ -65,39 +66,36 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 3. `clasp deploy --deploymentId` 更新**既有部署**（`AKfycbwfqUG…`，@14→@15），URL 不变；
 4. 部署后现网探针确认 `bridge_version: 4`。
 
-部署用凭据：clasp（hmao@avaya.com，OAuth 经用户在 Edge 手工授权）。Apps Script 项目 scriptId：`1xnC5q_CjYUqu9Om5zRSCo1ApWacu5P5mPcTHdobH1zdkd0DtXBHX9YvS`，工作目录 `tmp/clasp-bridge/`（未入库）。
+部署操作账号与 Apps Script `scriptId` 属受控运维信息，不入公开文档：见本地 `tmp/clasp-bridge/.clasp.json`（未入库）及受控运维记录。部署 ID 与 `tools/gmail/gmail_edge_common.py` 的 `APP_SCRIPT_URL` 一致（运行时代码既有的公开标识，无新增披露）。历史提交中曾出现的账号/scriptId 是否需要进一步处置由安全策略决定；已推送历史不擅自改写。
 
-**回滚（若评审否决）——必须按以下字节安全流程，勿用 shell 重定向：**
+**云端回滚（若评审否决）——单进程原子脚本，与调用 shell 无关：**
 
-> ⚠️ Windows PowerShell 5.1 的 `>` 重定向会把 `git show` 输出写成 UTF-16LE（实测首字节 `FF FE`、39,525 → 81,284 bytes），推上去会损坏脚本。且 `HEAD^` 在 Task 7 release commit 后会指向 v4，不可使用。回滚必须固定 v3 的完整 SHA。
+> ⚠️ 不可手敲链式命令：Windows PowerShell 5.1 的 `>` 重定向会把 `git show` 输出写成 UTF-16LE（实测首字节 `FF FE`、39,525 → 81,284 bytes），`&&` 在 PS 5.1 下不可解析，且 `HEAD^` 会随后续提交漂移。
 
-v3 固定源：`8fe39e47a9ae2149a22ede22bf69fcf566a1a872`（v1.9.3 release commit）。
+回滚由 `tmp/rollback_bridge_v3.mjs`（未入库，随运维记录分发）完成：Node 单进程内依次执行 git 提取（固定 v1.9.3 提交 `8fe39e47a9ae2149a22ede22bf69fcf566a1a872`，`execFileSync` 直传 Buffer，无 shell 重定向）→ 首行 / SHA-256 / 字节数三重门禁（期望 `ceecde43…` / 39,525）→ `clasp push` → `clasp deploy --deploymentId`（同 URL）→ 提示核验；**任一步失败立即以非零退出中止，后续步骤不执行**。支持 `--dry-run` 只跑提取与哈希门禁（2026-08-15 实测通过，产物与此前 `clasp pull` 拉回的远端 v3 逐字节一致）。
 
 ```bash
-# 1) 二进制安全提取（Node execFileSync 直传 Buffer，无 shell 重定向），并自校验
-node -e "
-const { execFileSync } = require('child_process');
-const { writeFileSync } = require('fs');
-const buf = execFileSync('git', ['show', '8fe39e47a9ae2149a22ede22bf69fcf566a1a872:tools/gmail/cloud/GmailMcpBridge.gs'], { maxBuffer: 64 * 1024 * 1024 });
-const text = buf.toString('utf8').replace(/\r\n/g, '\n');
-if (!text.startsWith('var GMAIL_BRIDGE_VERSION = 3;')) throw new Error('pinned blob is not v3');
-writeFileSync('tmp/clasp-bridge/Code.js', text);
-console.log('bytes=' + Buffer.byteLength(text));
-"
-# 期望输出 bytes=39525；SHA-256 必须等于 ceecde437612bd3f99427907b7797c37df68b585715ea58c8489d02667bb2119
-python -c "import hashlib;d=open('tmp/clasp-bridge/Code.js','rb').read().replace(b'\r\n',b'\n');h=hashlib.sha256(d).hexdigest();assert h=='ceecde437612bd3f99427907b7797c37df68b585715ea58c8489d02667bb2119' and len(d)==39525, h;print('ROLLBACK_SOURCE_VERIFIED')"
-# 2) 推送并重部署（哈希核验通过后才执行）
-cd tmp/clasp-bridge && npx --yes @google/clasp push
-npx --yes @google/clasp deploy --deploymentId "AKfycbwfqUGLMBppaPEtdzAC74_TeT34shpYkIVv5FMY1JjhqPDH0MXEp-WdeTOp8zmCDL0F" --description "rollback to v3 (8fe39e4)"
-# 3) 验证：现网探针 bridge_version 应回到 3
+node tmp/rollback_bridge_v3.mjs --dry-run   # 1) 先验证提取与哈希门禁
+node tmp/rollback_bridge_v3.mjs             # 2) 门禁通过后执行推送与重部署
+# 3) 现网探针确认 bridge_version 回到 3
 ```
 
-该提取流程已于 2026-08-15 实测：提取产物与此前 `clasp pull` 拉回的远端 v3 逐字节一致（同一 SHA-256）。备选：通过 Apps Script API `deployments.update` 把部署直接指回不可变版本 @14（clasp CLI 不暴露该操作，需直接调 API）。仓库侧 revert `a91d6e1`。
+备选：通过 Apps Script API `deployments.update` 把部署直接指回不可变版本 @14（clasp CLI 不暴露该操作，需直接调 API）。
+
+**仓库侧回滚——两个提交都要 revert（新到旧），并复跑完整回归：**
+
+```bash
+git revert --no-edit 603422a a91d6e1
+python -m unittest discover tests
+node --test tests/js/gmail_cloud_bridge.test.mjs
+```
+
+只 revert `a91d6e1` 会留下依赖 v4 的测试与本文档，且可能冲突；回归全绿才算回滚完成。
 
 ## 7. 已知限制 / 残留风险（有意不在本次解决）
 
 - **元数据巨型线程仍不可收集**（`RESPONSE_TOO_LARGE`）：与 v3 相同的失败集合，元数据分块化列为后续方案（方案 §2 非目标）。
-- **wire 模型是保守估计**（逐段累加 + 4 KiB 信封余量），非整页精确序列化；余量 2 MiB 覆盖近似误差。跨层测试将模型固化为契约。
+- **wire 模型是保守估计**（逐段累加，非整页精确序列化）：inner 6 MiB 与 wire 8 MiB 是两个**独立**上限（分别对应 `MAX_RESPONSE_BYTES` 与 broker `MAX_FRAME_BYTES`），**二者差值不是安全余量**；每轨真正的信封与近似误差余量是 `PAGE_ENVELOPE_RESERVE_BYTES` 的 4 KiB。跨层测试将模型固化为契约。
 - **每页仍全量重抓线程**（无状态设计、每页重算 manifest）：带宽随页数同比下降，但 O(N)/页 仍在；懒加载默认化是后续选项。
 - runbook 的 PowerShell 逐页断言已写入文档，但本次线上验证走的是 Python 采集器（`tmp/task6_collect.py`，未入库），两者断言逻辑等价（inner/wire 公式相同）。
 
