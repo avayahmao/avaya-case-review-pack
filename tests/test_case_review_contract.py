@@ -1658,7 +1658,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
-    def test_release_metadata_targets_v1_9_3(self):
+    def test_release_metadata_targets_v1_9_4(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
         self.assertIn("[v1.8.0]", release_md)
@@ -1694,13 +1694,17 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.3", release_html)
         self.assertIn("Whole-Case Storyline and Problem Lineage", release_md)
         self.assertIn("Whole-Case Storyline and Problem Lineage", release_html)
+        self.assertIn("[v1.9.4]", release_md)
+        self.assertIn("v1.9.4", release_html)
+        self.assertIn("Cloud Bridge Pagination Speedup", release_md)
+        self.assertIn("Cloud Bridge Pagination Speedup", release_html)
         plugin = json.loads(read(PLUGIN_JSON))
-        self.assertEqual("1.9.3", plugin["version"])
+        self.assertEqual("1.9.4", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.9.3 - latest release", content)
+                self.assertIn("v1.9.4 - latest release", content)
                 self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
@@ -1713,6 +1717,7 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.1", agents)
         self.assertIn("v1.9.2", agents)
         self.assertIn("v1.9.3", agents)
+        self.assertIn("v1.9.4", agents)
         self.assertNotIn("Target release (not yet published)", agents)
 
     def test_distributable_docs_have_no_machine_specific_file_urls(self):

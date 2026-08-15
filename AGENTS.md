@@ -180,6 +180,7 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
+- **v1.9.4** — Cloud bridge pagination speedup
 - **v1.9.3** — Whole-case storyline and problem lineage
 - **v1.9.2** — Primary Case ID-only Gmail collection
 - **v1.9.1** — Large Gmail thread cursor pagination

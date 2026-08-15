@@ -119,6 +119,20 @@
         </ul>
     </div>
 
+    <!-- VERSION 1.9.4 -->
+    <div>
+        <span class="version-tag">v1.9.4</span>
+        <span class="version-date">2026-08-16 - Cloud Bridge Pagination Speedup</span>
+        <h3>Cloud Bridge Pagination Speedup</h3>
+        <ul>
+            <li>Raises the Gmail cloud bridge read-thread page capacity from four to thirty-two body segments under dual byte budgets — the Apps Script response itself (inner, 6 MiB) and the broker frame after the outer JSON re-escaping of quotes and backslashes (wire, 8 MiB) — preserving exactly the set of threads earlier versions could collect.</li>
+            <li>Derives thread order and manifest hashes from message IDs and internal dates only, and decodes message payloads exclusively for the segments the current page emits, removing the per-page full-thread normalization that made collection cost grow with pages times messages.</li>
+            <li>Upgrades the bridge to version 4; live validation on a 39-message thread cut cursor round trips from ten to two (5.0x) with byte-identical message digests, manifest parity, and zero budget failures.</li>
+            <li>Adds a cross-layer frame regression that drives the real doGet output through the broker encoder, and per-page inner/wire budget assertions in the cloud runbook (Invoke-WebRequest -UseBasicParsing keeps the raw page text).</li>
+            <li>Ships fail-fast rollback tooling with a hash-gated v3 snapshot, six identity and inventory gates, staged isolated pushes, and fourteen fault-injection tests.</li>
+        </ul>
+    </div>
+
     <!-- VERSION 1.9.3 -->
     <div>
         <span class="version-tag">v1.9.3</span>
