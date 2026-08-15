@@ -74,6 +74,25 @@ function replayNextFit(orderedSegments) {
   return boundaries;
 }
 
+function projectedSegment(api, message, threadId) {
+  const normalized = api.normalizeMessage(message, threadId);
+  return api.segmentWireBytes({
+    message_id: normalized.message_id,
+    thread_id: normalized.thread_id,
+    internal_date: normalized.internal_date,
+    from: normalized.from,
+    to: normalized.to,
+    cc: normalized.cc,
+    subject: normalized.subject,
+    body_chunk: normalized.body_chunks[0],
+    chunk_index: 0,
+    chunk_count: normalized.body_chunks.length,
+    body_bytes: normalized.body_bytes,
+    body_sha256: normalized.body_sha256,
+    attachment_names: normalized.attachment_names,
+  });
+}
+
 test("list_threads uses an exact snapshot query and preserves Gmail pagination", () => {
   const { api, calls } = loadBridge({
     listPages: {
@@ -575,22 +594,7 @@ test("a first segment over either real budget fails with RESPONSE_TOO_LARGE", ()
   const { api, context } = loadBridge({ threads: { "thread-over": { messages: [message] } } });
   const snapshot = "2026-08-04T11:00:00Z";
 
-  const normalized = api.normalizeMessage(message, "thread-over");
-  const projected = api.segmentWireBytes({
-    message_id: normalized.message_id,
-    thread_id: normalized.thread_id,
-    internal_date: normalized.internal_date,
-    from: normalized.from,
-    to: normalized.to,
-    cc: normalized.cc,
-    subject: normalized.subject,
-    body_chunk: normalized.body_chunks[0],
-    chunk_index: 0,
-    chunk_count: normalized.body_chunks.length,
-    body_bytes: normalized.body_bytes,
-    body_sha256: normalized.body_sha256,
-    attachment_names: normalized.attachment_names,
-  });
+  const projected = projectedSegment(api, message, "thread-over");
   assert.ok(projected.inner <= INNER_BUDGET, "rejection must come from the wire track, not inner");
   assert.ok(projected.wire > WIRE_BUDGET, "wire must exceed the effective budget");
 
@@ -602,6 +606,85 @@ test("a first segment over either real budget fails with RESPONSE_TOO_LARGE", ()
     parameter: { action: "read_thread_page", thread_id: "thread-over", snapshot_before: snapshot },
   }).data);
   assert.deepEqual(errorResponse, { success: false, error: "RESPONSE_TOO_LARGE" });
+});
+
+test("snapshot-ineligible messages are skipped without payload validation", () => {
+  // v3 validated every payload before the snapshot filter, so a malformed
+  // message received after the snapshot failed the whole page. v4 filters by
+  // internalDate first, so that message is silently excluded from the corpus.
+  const snapshot = "2026-08-04T11:00:00Z";
+  const eligible = rawMessage({
+    id: "eligible",
+    threadId: "thread-late-bad",
+    internalDate: "2026-08-04T10:00:00Z",
+    body: "fine",
+  });
+  const malformedAfterSnapshot = {
+    id: "late-malformed",
+    threadId: "thread-late-bad",
+    internalDate: String(Date.parse("2026-08-04T12:00:00Z")),
+    payload: { mimeType: "text/plain", body: { data: "%%%" }, headers: [] },
+  };
+  const { api } = loadBridge({
+    threads: { "thread-late-bad": { messages: [eligible, malformedAfterSnapshot] } },
+  });
+
+  const page = api.readThreadPage({ thread_id: "thread-late-bad", snapshot_before: snapshot });
+
+  assert.equal(page.message_count, 1);
+  assert.equal(page.segments.length, 1);
+  assert.equal(page.segments[0].message_id, "eligible");
+  assert.equal(page.complete, true);
+});
+
+test("threadId handling: stub phase rejects mismatches; missing ids defer to the path", () => {
+  const snapshot = "2026-08-04T11:00:00Z";
+
+  // A present-but-mismatched id fails fast in the stub phase.
+  const mismatched = rawMessage({
+    id: "wrong-thread",
+    threadId: "thread-other",
+    internalDate: "2026-08-04T10:00:00Z",
+    body: "body",
+  });
+  const strict = loadBridge({ threads: { "thread-mismatch": { messages: [mismatched] } } });
+  assert.throws(
+    () => strict.api.readThreadPage({ thread_id: "thread-mismatch", snapshot_before: snapshot }),
+    /INVALID_THREAD_RESPONSE/,
+  );
+
+  // A missing id passes the stub phase (minimal-format compatibility) and is
+  // caught by validateMessage_ when the normal path normalizes the payload.
+  const missing = rawMessage({
+    id: "no-thread-id",
+    internalDate: "2026-08-04T10:00:00Z",
+    body: "body",
+  });
+  delete missing.threadId;
+  const normalMissing = loadBridge({ threads: { "thread-missing-id": { messages: [missing] } } });
+  assert.throws(
+    () => normalMissing.api.readThreadPage({ thread_id: "thread-missing-id", snapshot_before: snapshot }),
+    /INVALID_MESSAGE/,
+  );
+
+  // The lazy path never validates stub payloads: the per-page full fetch
+  // carries its own threadId, so a stub without one succeeds end to end.
+  const lazyFull = rawMessage({
+    id: "lazy-no-thread-id",
+    threadId: "thread-lazy-missing",
+    internalDate: "2026-08-04T10:00:00Z",
+    body: "lazy body",
+  });
+  const lazyStub = { id: lazyFull.id, internalDate: lazyFull.internalDate };
+  const lazy = loadBridge({
+    threads: { "thread-lazy-missing": { messages: [lazyStub] } },
+    threadGetFailures: { "thread-lazy-missing:full": "response too large" },
+    apiMessages: { "lazy-no-thread-id": lazyFull },
+  });
+  const page = lazy.api.readThreadPage({ thread_id: "thread-lazy-missing", snapshot_before: snapshot });
+  assert.equal(page.message_count, 1);
+  assert.equal(page.segments[0].message_id, "lazy-no-thread-id");
+  assert.equal(page.segments[0].thread_id, "thread-lazy-missing");
 });
 
 test("unknown helper failures keep their sanitized wrapper codes, never APP_ERROR", () => {
@@ -839,13 +922,19 @@ test("malformed Gmail responses, messages, and MIME data fail closed with saniti
       body: {},
     })),
   ];
-  const oversized = loadBridge({
-    threads: {
-      "thread-oversized": {
-        messages: [rawMessage({ id: "oversized", threadId: "thread-oversized", mimeType: "multipart/mixed", parts: oversizedParts })],
-      },
-    },
+  const oversizedMessage = rawMessage({
+    id: "oversized",
+    threadId: "thread-oversized",
+    mimeType: "multipart/mixed",
+    parts: oversizedParts,
   });
+  // Lock the inner-budget branch of the dual-track emitter: this fixture must
+  // overflow the inner track while staying inside the wire track, so a future
+  // regression that only trips the final assertResponseSize_ cannot mask it.
+  const oversizedSizes = projectedSegment(loadBridge().api, oversizedMessage, "thread-oversized");
+  assert.ok(oversizedSizes.inner > INNER_BUDGET, `inner ${oversizedSizes.inner} must exceed the inner budget`);
+  assert.ok(oversizedSizes.wire <= WIRE_BUDGET, `wire ${oversizedSizes.wire} must stay within the wire budget`);
+  const oversized = loadBridge({ threads: { "thread-oversized": { messages: [oversizedMessage] } } });
   assert.throws(
     () => oversized.api.readThreadPage({ thread_id: "thread-oversized", snapshot_before: snapshot }),
     /RESPONSE_TOO_LARGE/,
