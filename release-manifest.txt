@@ -40,6 +40,7 @@ skills/case-review/SKILL.md
 skills/gmail-capability/SKILL.md
 tools/casetomd/casetomd_mcp_bridge.py
 tools/gmail/cloud/GmailMcpBridge.gs
+tools/gmail/cloud/rollback_bridge_v3.mjs
 tools/gmail/gmail_broker_client.py
 tools/gmail/gmail_broker_protocol.py
 tools/gmail/gmail_broker_state.py

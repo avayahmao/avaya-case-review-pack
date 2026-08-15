@@ -1,6 +1,9 @@
 # Handoff — Cloud Bridge v4 性能改造 Code Review
 
-> **评审对象：** main 分支提交区间 `8fe39e4..603422a`，共两个提交、8 个文件——`a91d6e1`（实现：7 files，+1338/−335）与 `603422a`（评审修复：2 files，+226/−22），以及已执行的线上部署（详见 §6）。
+> **评审对象（按角色划分，截至本轮修复提交）：**
+> - **生产实现范围：** `a91d6e1`（实现：7 files，+1338/−335）+ `603422a`（评审修复：2 files，+226/−22）。其后提交对 `.gs` 与测试**零改动**。
+> - **Handoff/回滚交付修复范围（文档与运维脚本，零生产代码）：** `7f672f8`、`258078a`、本轮提交（回滚脚本入库 `tools/gmail/cloud/rollback_bridge_v3.mjs` + `release-manifest.txt` + 本文档）。
+> - 另含已执行的线上部署（详见 §6）。
 > **背景文档：** [`2026-08-15-cloud-bridge-pagination-speedup.md`](2026-08-15-cloud-bridge-pagination-speedup.md) — 经 7 轮评审批准的实施方案（rev 7），§0 含全部 16 条评审意见的响应索引。**已定稿的设计决策请勿在本轮重复辩论，除非发现实现与方案不符。**
 > **评审通过后：** 执行 Task 7（v1.9.4 发布 + 8 文件版本同步）。版本元数据 bump 故意不在本提交内。
 
@@ -20,6 +23,7 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 | `tests/js/gmail_cloud_bridge_wire_probe.mjs` | 新增 | 长度前缀帧协议的正确性；错误页也走真实 `doGet` |
 | `tests/test_gmail_cloud_bridge_wire.py` | 新增 | 跨层契约：JS 预算模型 ↔ Python `encode_response` 膨胀公式 |
 | `docs/GMAIL_CLOUD_BRIDGE.md` | 修改 | 行为陈述重写 + runbook 的 `Invoke-WebRequest -UseBasicParsing` 改法与逐页字节断言 |
+| `tools/gmail/cloud/rollback_bridge_v3.mjs` | 新增（本轮） | 云端回滚脚本：固定 SHA 提取 + 哈希门禁 + fail-fast push/deploy + 探针成功门禁；随发行包交付 |
 | `docs/superpowers/plans/2026-08-15-…speedup.md` | 新增 | 方案本体（历史记录，不需逐字审） |
 | `docs/superpowers/plans/2026-08-15-…v4-handoff.md` | 新增（`603422a`） | 本文档：行为变更表、验证证据、回滚流程 |
 
@@ -68,30 +72,39 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 
 部署操作账号与 Apps Script `scriptId` 属受控运维信息，不入公开文档：见本地 `tmp/clasp-bridge/.clasp.json`（未入库）及受控运维记录。部署 ID 与 `tools/gmail/gmail_edge_common.py` 的 `APP_SCRIPT_URL` 一致（运行时代码既有的公开标识，无新增披露）。历史提交中曾出现的账号/scriptId 是否需要进一步处置由安全策略决定；已推送历史不擅自改写。
 
-**云端回滚（若评审否决）——单进程原子脚本，与调用 shell 无关：**
+**云端回滚（若评审否决）——fail-fast 单进程脚本，与调用 shell 无关：**
 
 > ⚠️ 不可手敲链式命令：Windows PowerShell 5.1 的 `>` 重定向会把 `git show` 输出写成 UTF-16LE（实测首字节 `FF FE`、39,525 → 81,284 bytes），`&&` 在 PS 5.1 下不可解析，且 `HEAD^` 会随后续提交漂移。
+>
+> **语义是 fail-fast，不是原子事务**：`clasp push` 与 `clasp deploy` 是两个独立远端变更。各失败阶段的效应与恢复动作：提取/门禁失败=零远端变更，修复后重跑；push 失败=项目源仍为 v4，重跑脚本；**push 成功 + deploy 失败=中间态"项目源 v3、线上仍 v4"——部署钉在自己的版本号上，线上行为不变，重跑脚本即可收敛**；deploy 成功后以现网探针（`bridge_version === 3`）作为**成功门禁**而非提示。重复重跑安全：push 生成同一已验证 v3 内容的新版本，deploy 重新指向既有部署。
 
-回滚由 `tmp/rollback_bridge_v3.mjs`（未入库，随运维记录分发）完成：Node 单进程内依次执行 git 提取（固定 v1.9.3 提交 `8fe39e47a9ae2149a22ede22bf69fcf566a1a872`，`execFileSync` 直传 Buffer，无 shell 重定向）→ 首行 / SHA-256 / 字节数三重门禁（期望 `ceecde43…` / 39,525）→ `clasp push` → `clasp deploy --deploymentId`（同 URL）→ 提示核验；**任一步失败立即以非零退出中止，后续步骤不执行**。支持 `--dry-run` 只跑提取与哈希门禁（2026-08-15 实测通过，产物与此前 `clasp pull` 拉回的远端 v3 逐字节一致）。
+回滚脚本**已入库并随发行包交付**：`tools/gmail/cloud/rollback_bridge_v3.mjs`（在 `release-manifest.txt` 中，与 .gs 相邻）。固定 v1.9.3 提交 `8fe39e47a9ae2149a22ede22bf69fcf566a1a872` 为 v3 源（`execFileSync` 直传 Buffer，无 shell 重定向），首行/SHA-256/字节数三重门禁（期望 `ceecde43…` / 39,525），部署 ID 参数化（`--deployment-id=` 或环境变量 `GMAIL_BRIDGE_DEPLOYMENT_ID`，取自 `tools/gmail/gmail_edge_common.py` 的 `APP_SCRIPT_URL`）。`--dry-run` 只做提取与哈希门禁、**不写任何文件**（2026-08-15 实测：门禁通过、工作目录保持 v4 未被触碰）。
 
 ```bash
-node tmp/rollback_bridge_v3.mjs --dry-run   # 1) 先验证提取与哈希门禁
-node tmp/rollback_bridge_v3.mjs             # 2) 门禁通过后执行推送与重部署
-# 3) 现网探针确认 bridge_version 回到 3
+node tools/gmail/cloud/rollback_bridge_v3.mjs --dry-run                     # 1) 零副作用预检
+node tools/gmail/cloud/rollback_bridge_v3.mjs \
+  --deployment-id=<APP_SCRIPT_URL 中的部署 ID>                              # 2) push + deploy + 探针门禁
 ```
 
-备选：通过 Apps Script API `deployments.update` 把部署直接指回不可变版本 @14（clasp CLI 不暴露该操作，需直接调 API）。
+备选：通过 Apps Script API `deployments.update` 把部署直接指回不可变版本 @14（clasp CLI 不暴露该操作，需直接调 API），可完全避开 push/deploy 两段式中间态。
 
-**仓库侧回滚——revert 全部 v4 相关提交（新到旧），并复跑完整回归：**
+**仓库侧回滚——先完成云端回滚（脚本来自回滚前的树），再 revert 全部 v4 相关提交（新到旧），并复跑完整回归：**
 
 ```bash
-# 当前栈为 a91d6e1（实现）→ 603422a（评审修复）→ 7f672f8 及之后的纯文档提交
-git revert --no-edit <最新文档提交> 603422a a91d6e1
+# 1) 确认范围内只有本次变更的提交，无无关提交混入
+git log --oneline 8fe39e4..HEAD
+# 2) 范围 revert（2026-08-15 已在隔离 clone 验证：列表式与范围式均成功，
+#    最终 tree 与 8fe39e4 完全一致）
+git revert --no-commit 8fe39e4..HEAD
+# 3) commit 前核对最终 tree 等于 v3（输出必须为空）
+git diff --cached 8fe39e4 --stat
+git commit -m "revert: cloud bridge v4 candidate per review"
+# 4) 全量回归全绿才算回滚完成
 python -m unittest discover tests
 node --test tests/js/gmail_cloud_bridge.test.mjs
 ```
 
-规则：`603422a` 与 `a91d6e1` 必须按新到旧一并 revert——只 revert `a91d6e1` 会留下依赖 v4 的测试与本文档，且可能冲突；其后的纯 handoff 文档提交可一并 revert（保持文档与代码一致）或保留（无代码依赖）。回归全绿才算回滚完成。
+注意：范围 revert 会连同回滚脚本本身一起移除（它属于 v4 提交栈），因此云端回滚必须先行；如需保留脚本供事后审计，在 revert 前另存副本。
 
 ## 7. 已知限制 / 残留风险（有意不在本次解决）
 
