@@ -23,7 +23,7 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 | `tests/js/gmail_cloud_bridge_wire_probe.mjs` | 新增 | 长度前缀帧协议的正确性；错误页也走真实 `doGet` |
 | `tests/test_gmail_cloud_bridge_wire.py` | 新增 | 跨层契约：JS 预算模型 ↔ Python `encode_response` 膨胀公式 |
 | `docs/GMAIL_CLOUD_BRIDGE.md` | 修改 | 行为陈述重写 + runbook 的 `Invoke-WebRequest -UseBasicParsing` 改法与逐页字节断言 |
-| `tools/gmail/cloud/rollback_bridge_v3.mjs` | 新增（本轮） | 云端回滚脚本：固定 SHA 提取 + 哈希门禁 + fail-fast push/deploy + 探针成功门禁；随发行包交付 |
+| `tools/gmail/cloud/rollback_bridge_v3.mjs` + `rollback_bridge_v3.gs` | 新增（本轮） | 云端回滚：哈希门禁的内置 v3 源（无 Git 依赖）+ scriptId 项目身份门禁 + 固定版本 clasp（300 s 超时）+ fail-fast（失败态 unknown，`--diagnose` 分诊）+ 探针成功门禁；随发行包交付 |
 | `docs/superpowers/plans/2026-08-15-…speedup.md` | 新增 | 方案本体（历史记录，不需逐字审） |
 | `docs/superpowers/plans/2026-08-15-…v4-handoff.md` | 新增（`603422a`） | 本文档：行为变更表、验证证据、回滚流程 |
 
@@ -76,14 +76,19 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 
 > ⚠️ 不可手敲链式命令：Windows PowerShell 5.1 的 `>` 重定向会把 `git show` 输出写成 UTF-16LE（实测首字节 `FF FE`、39,525 → 81,284 bytes），`&&` 在 PS 5.1 下不可解析，且 `HEAD^` 会随后续提交漂移。
 >
-> **语义是 fail-fast，不是原子事务**：`clasp push` 与 `clasp deploy` 是两个独立远端变更。各失败阶段的效应与恢复动作：提取/门禁失败=零远端变更，修复后重跑；push 失败=项目源仍为 v4，重跑脚本；**push 成功 + deploy 失败=中间态"项目源 v3、线上仍 v4"——部署钉在自己的版本号上，线上行为不变，重跑脚本即可收敛**；deploy 成功后以现网探针（`bridge_version === 3`）作为**成功门禁**而非提示。重复重跑安全：push 生成同一已验证 v3 内容的新版本，deploy 重新指向既有部署。
+> **语义是 fail-fast，不是原子事务，且失败后的远端状态是 unknown**：`clasp push` 与 `clasp deploy` 是两个独立远端变更，非零/超时退出可能发生在服务端已接受请求之后——**不能断言"push 失败 ⇒ 源仍为 v4"或"deploy 失败 ⇒ 线上仍为 v4"**。任何失败后先跑 `--diagnose`（隔离副本 `clasp pull` 比对 v3/v4 哈希 + `clasp deployments` + 现网探针）确定实际状态，再选择重跑或补偿。重复重跑安全：push 生成同一已验证 v3 内容的新版本，deploy 重新指向既有部署。deploy 成功后以现网探针（`bridge_version === 3`）作为**成功门禁**而非提示。
 
-回滚脚本**已入库并随发行包交付**：`tools/gmail/cloud/rollback_bridge_v3.mjs`（在 `release-manifest.txt` 中，与 .gs 相邻）。固定 v1.9.3 提交 `8fe39e47a9ae2149a22ede22bf69fcf566a1a872` 为 v3 源（`execFileSync` 直传 Buffer，无 shell 重定向），首行/SHA-256/字节数三重门禁（期望 `ceecde43…` / 39,525），部署 ID 参数化（`--deployment-id=` 或环境变量 `GMAIL_BRIDGE_DEPLOYMENT_ID`，取自 `tools/gmail/gmail_edge_common.py` 的 `APP_SCRIPT_URL`）。`--dry-run` 只做提取与哈希门禁、**不写任何文件**（2026-08-15 实测：门禁通过、工作目录保持 v4 未被触碰）。
+回滚脚本**已入库并随发行包交付**：`tools/gmail/cloud/rollback_bridge_v3.mjs` + 伴随的 v3 源 `tools/gmail/cloud/rollback_bridge_v3.gs`（均在 `release-manifest.txt`）。v3 源**内置于发行包、经哈希门禁**（首行 + SHA-256 `ceecde43…` + 39,525 字节三重校验），不依赖 Git 历史——在无 `.git` 的发行目录中源门禁照常通过（实测），后续在 clasp 工作目录前置条件处给出可执行的明确报错。
+
+**运行前置条件（缺一即在对应门禁处以非零退出并零写入）：** Node.js；固定版本 `@google/clasp@3.3.0`（npx 在线或本地缓存；push/deploy 均有 300 s 超时并区分超时与退出码）；已登录的 `~/.clasprc.json`；clasp 工作目录 `tmp/clasp-bridge/`（需自行准备，不在发行包内）且其 `.clasp.json` 的 `scriptId` 必须与 `--script-id`（或 `GMAIL_BRIDGE_SCRIPT_ID`，来自受控运维记录）**严格相等**——不匹配立即退出、零写入，防止错误项目被覆盖；`--deployment-id`（或 `GMAIL_BRIDGE_DEPLOYMENT_ID`）取自 `APP_SCRIPT_URL`。`--dry-run` 只做源门禁 + 项目身份门禁、**不写任何文件**；`--diagnose` 在隔离副本中拉取比对，不触碰工作目录。
 
 ```bash
-node tools/gmail/cloud/rollback_bridge_v3.mjs --dry-run                     # 1) 零副作用预检
+node tools/gmail/cloud/rollback_bridge_v3.mjs --dry-run \
+  --script-id=<受控运维记录> --deployment-id=<APP_SCRIPT_URL 中的部署 ID>   # 1) 零副作用预检
+node tools/gmail/cloud/rollback_bridge_v3.mjs --diagnose \
+  --script-id=…                                                             # 失败后的状态分诊
 node tools/gmail/cloud/rollback_bridge_v3.mjs \
-  --deployment-id=<APP_SCRIPT_URL 中的部署 ID>                              # 2) push + deploy + 探针门禁
+  --script-id=… --deployment-id=…                                           # 2) push + deploy + 探针门禁
 ```
 
 备选：通过 Apps Script API `deployments.update` 把部署直接指回不可变版本 @14（clasp CLI 不暴露该操作，需直接调 API），可完全避开 push/deploy 两段式中间态。
