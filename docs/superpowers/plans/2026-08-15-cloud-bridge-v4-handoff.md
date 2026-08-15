@@ -24,6 +24,7 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 | `tests/test_gmail_cloud_bridge_wire.py` | 新增 | 跨层契约：JS 预算模型 ↔ Python `encode_response` 膨胀公式 |
 | `docs/GMAIL_CLOUD_BRIDGE.md` | 修改 | 行为陈述重写 + runbook 的 `Invoke-WebRequest -UseBasicParsing` 改法与逐页字节断言 |
 | `tools/gmail/cloud/rollback_bridge_v3.mjs` + `rollback_bridge_v3.txt` / `…appsscript.txt` | 新增（本轮） | 云端回滚：哈希门禁的内置 v3 快照与清单（非 Apps Script 扩展名，无 Git 依赖）+ 五道身份门禁（含 scriptId 参照与 APP_SCRIPT_URL 绑定）+ 隔离 staging 推送 + 固定版本 clasp（300 s 超时）+ fail-fast（失败态 unknown，`--diagnose` 分诊，五类探针失败分类）；随发行包交付 |
+| `tests/js/rollback_bridge_v3.test.mjs` + `tests/test_rollback_bridge_v3.py` | 新增（本轮） | 回滚工具的 14 个故障注入用例（隔离沙箱 + clasp shim + probe 夹具），纳入常规测试发现 |
 | `docs/superpowers/plans/2026-08-15-…speedup.md` | 新增 | 方案本体（历史记录，不需逐字审） |
 | `docs/superpowers/plans/2026-08-15-…v4-handoff.md` | 新增（`603422a`） | 本文档：行为变更表、验证证据、回滚流程 |
 
@@ -80,11 +81,11 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 
 回滚脚本**已入库并随发行包交付**：`tools/gmail/cloud/rollback_bridge_v3.mjs` + 两个**非 Apps Script 扩展名**的伴随资源 `rollback_bridge_v3.txt`（v3 快照）与 `rollback_bridge_v3.appsscript.txt`（含 Gmail v1 高级服务的清单），均在 `release-manifest.txt`。两份资源各过 SHA-256 + 字节数门禁，不依赖 Git 历史——在无 `.git` 的发行目录中源门禁照常通过（实测）。
 
-**五道身份/完整性门禁（全部在任何写入或推送之前；缺一即零写入退出）：** ① v3 快照哈希门禁；② appsscript 清单哈希 + Gmail v1 服务存在性；③ `--script-id`（`GMAIL_BRIDGE_SCRIPT_ID`，受控运维记录）与 `tmp/clasp-bridge/.clasp.json` 的 scriptId 严格相等（该目录仅作**只读身份参照**，其内容永不上传）；④ `--deployment-id` 与 `tools/gmail/gmail_edge_common.py` 中 `APP_SCRIPT_URL` 拼接后的部署 ID **严格相等**（脚本自行拼接相邻字符串字面量提取，防止更新同项目其他合法 deployment）；⑤ 标识符字符集校验。
+**五道身份/完整性门禁 + 清单门禁（全部在任何写入或推送之前；缺一即零写入退出）：** ① v3 快照哈希门禁；② appsscript 清单哈希 + Gmail v1 服务存在性；③ `--script-id`（`GMAIL_BRIDGE_SCRIPT_ID`，受控运维记录）与 `tmp/clasp-bridge/.clasp.json` 的 scriptId 严格相等（该目录仅作**只读身份参照**，其内容永不上传）；④ `--deployment-id` 与 `tools/gmail/gmail_edge_common.py` 中 `APP_SCRIPT_URL` 拼接后的部署 ID **严格相等**（脚本自行拼接相邻字符串字面量提取，防止更新同项目其他合法 deployment）；⑤ 标识符字符集校验；⑥ **push 前在隔离 staging 内 `clasp pull` 校验远端文件清单恰为 `{Code.js, appsscript.json}`**——出现多余文件立即中止并要求人工判断，防止 `clasp push` 静默删除后来新增的远端文件。
 
-**隔离 staging 推送：** 实际 push/deploy 一律从脚本生成的 `tmp/clasp-staging-rollback/` 执行——其中只有已验证的 `Code.js`、已验证的 `appsscript.json`、脚本生成的 `.clasp.json`（`rootDir: "."`）。运维目录的 `rootDir`/`.claspignore` 配置**不可能**重定向或过滤上传内容（finally 保证清理）。
+**隔离 staging 推送与清理保证：** staging 由 `mkdtempSync` 创建**唯一**目录（绝不预删固定路径），其中只有已验证的 `Code.js`、已验证的 `appsscript.json`、脚本生成的 `.clasp.json`（`rootDir: "."`）。运维目录的 `rootDir`/`.claspignore` 配置**不可能**重定向或过滤上传内容。失败路径设置 `process.exitCode` 后**自然经过 `finally` 清理**（绝不 `process.exit` 直跳绕过清理——该缺陷曾由评审故障注入证实并修复，现有测试覆盖）。
 
-**运行前置条件：** Node.js；固定版本 `@google/clasp@3.3.0`（npx 在线或本地缓存；300 s 超时并区分超时与退出码）；已登录的 `~/.clasprc.json`；`tmp/clasp-bridge/.clasp.json` 身份参照（需自行准备，不在发行包内）。**失败后的远端状态是 unknown**：任何失败先跑 `--diagnose`（隔离副本 pull + v3/v4 哈希分类 + deployments 列表 + 现网探针；try/finally 清理；诊断步骤失败不递归提示 diagnose）。现网探针区分 工具缺失/超时/CLI 非零/云端错误/版本不匹配 五类（`--python=` 或 `PYTHON` 环境变量可覆盖解释器），`bridge_version === 3` 才算成功。`--dry-run` 只过五道门禁、零写入。
+**运行前置条件：** Node.js；固定版本 `@google/clasp@3.3.0`（npx 在线或本地缓存；300 s 超时并区分 启动失败（请求未达服务端，远端未变）/ 超时（unknown）/ 非零退出（unknown））；已登录的 `~/.clasprc.json`；`tmp/clasp-bridge/.clasp.json` 身份参照（需自行准备，不在发行包内）。**失败后的远端状态是 unknown**（启动失败除外）：任何失败先跑 `--diagnose`（隔离副本 pull + v3/v4 哈希分类 + deployments 列表 + 现网探针；try/finally 清理；诊断步骤失败不递归提示 diagnose）。现网探针区分 工具缺失/超时/CLI 非零/云端错误/版本不匹配 五类（`--python=` 或 `PYTHON` 环境变量可覆盖解释器；`ROLLBACK_PROBE_TIMEOUT_MS` 测试用超时覆盖），`bridge_version === 3` 才算成功。`--dry-run` 只过门禁、零写入。**自动化测试**：`tests/js/rollback_bridge_v3.test.mjs`（14 个故障注入用例：零写入、身份/清单门禁、启动失败清理、探针五类分类、成功路径）经 `tests/test_rollback_bridge_v3.py` 纳入常规发现。
 
 ```bash
 node tools/gmail/cloud/rollback_bridge_v3.mjs --dry-run \
@@ -126,7 +127,8 @@ node --test tests/js/gmail_cloud_bridge.test.mjs
 
 ```bash
 node --test tests/js/gmail_cloud_bridge.test.mjs
-python -m unittest tests.test_gmail_cloud_bridge tests.test_gmail_cloud_bridge_wire
+node --test tests/js/rollback_bridge_v3.test.mjs
+python -m unittest tests.test_gmail_cloud_bridge tests.test_gmail_cloud_bridge_wire tests.test_rollback_bridge_v3
 python -m unittest discover tests
 ```
 
