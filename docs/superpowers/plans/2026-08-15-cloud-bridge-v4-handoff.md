@@ -82,15 +82,16 @@ node tmp/rollback_bridge_v3.mjs             # 2) 门禁通过后执行推送与�
 
 备选：通过 Apps Script API `deployments.update` 把部署直接指回不可变版本 @14（clasp CLI 不暴露该操作，需直接调 API）。
 
-**仓库侧回滚——两个提交都要 revert（新到旧），并复跑完整回归：**
+**仓库侧回滚——revert 全部 v4 相关提交（新到旧），并复跑完整回归：**
 
 ```bash
-git revert --no-edit 603422a a91d6e1
+# 当前栈为 a91d6e1（实现）→ 603422a（评审修复）→ 7f672f8 及之后的纯文档提交
+git revert --no-edit <最新文档提交> 603422a a91d6e1
 python -m unittest discover tests
 node --test tests/js/gmail_cloud_bridge.test.mjs
 ```
 
-只 revert `a91d6e1` 会留下依赖 v4 的测试与本文档，且可能冲突；回归全绿才算回滚完成。
+规则：`603422a` 与 `a91d6e1` 必须按新到旧一并 revert——只 revert `a91d6e1` 会留下依赖 v4 的测试与本文档，且可能冲突；其后的纯 handoff 文档提交可一并 revert（保持文档与代码一致）或保留（无代码依赖）。回归全绿才算回滚完成。
 
 ## 7. 已知限制 / 残留风险（有意不在本次解决）
 
