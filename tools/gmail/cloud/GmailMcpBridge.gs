@@ -1,9 +1,12 @@
-var GMAIL_BRIDGE_VERSION = 3;
+var GMAIL_BRIDGE_VERSION = 4;
 var MAX_LIST_RESULTS = 100;
 var DEFAULT_LIST_RESULTS = 100;
 var DEFAULT_LEGACY_SEARCH_RESULTS = 10;
 var BODY_CHUNK_MAX_BYTES = 96 * 1024;
-var THREAD_PAGE_MAX_SEGMENTS = 4;
+var THREAD_PAGE_MAX_SEGMENTS = 32;
+var THREAD_PAGE_INNER_BUDGET_BYTES = 6 * 1024 * 1024;
+var THREAD_PAGE_WIRE_BUDGET_BYTES = 8 * 1024 * 1024;
+var PAGE_ENVELOPE_RESERVE_BYTES = 4 * 1024;
 var MAX_RESPONSE_BYTES = 6 * 1024 * 1024;
 var SUPPORTED_RECORD_ID_RE = /^(?:INC[0-9]{3,20}|SR#?(?:[0-9]{3,20}|1-[A-Z0-9][A-Z0-9_-]{2,79})|1-[A-Z0-9][A-Z0-9_-]{2,79}|(?:CTASK|SCTASK|TASK|ACT|ACTIVITY|CHG|PRJTASK|PEA|ESC|ESCALATION|PRB|RITM|REQ)[A-Z0-9_-]{2,79}|SWA-INC[0-9]{3,20})$/i;
 
@@ -218,54 +221,33 @@ function readThreadPage_(parameters) {
   // full. If Gmail rejects a large full-thread response, a minimal manifest is
   // re-fetched and only the messages needed for the current cursor page are
   // fetched in full. Avoiding CacheService prevents stale-manifest hazards.
+  // Ordering and the manifest come from id/internalDate only; payloads are
+  // decoded exclusively for the segments the current page emits.
   var thread = fetchThreadForRead_(threadId);
   validateThreadResponse_(thread);
   var sourceMessages = Array.isArray(thread.messages) ? thread.messages : [];
   if (thread.lazyMessageFetch === true) {
     return readLazyThreadPage_(parameters, threadId, snapshotBefore, snapshotMillis, sourceMessages);
   }
-  var messages = [];
-  try {
-    for (var index = 0; index < sourceMessages.length; index += 1) {
-      var source = sourceMessages[index];
-      validateMessage_(source);
-      if (Number(source.internalDate) <= snapshotMillis) {
-        messages.push(normalizeMessage_(source, threadId));
-      }
-    }
-  } catch (error) {
-    var collectionError = error && error.message ? String(error.message) : "";
-    if (isSanitizedErrorCode_(collectionError)) throw error;
-    throw new Error("MESSAGE_COLLECTION_FAILED");
-  }
-  try {
-    messages.sort(compareMessages_);
-  } catch (error) {
-    throw new Error("THREAD_SORT_FAILED");
-  }
-
-  var manifestIds = [];
-  for (var messageIndex = 0; messageIndex < messages.length; messageIndex += 1) {
-    manifestIds.push(messages[messageIndex].message_id);
-  }
+  var entries = collectSnapshotEntries_(sourceMessages, threadId, snapshotMillis, true);
   var manifest;
   try {
-    manifest = sha256Hex_(manifestIds.join("\n"));
+    manifest = manifestFromEntries_(entries);
   } catch (error) {
     throw new Error("MANIFEST_BUILD_FAILED");
   }
-  var position = parameters.cursor
-    ? decodeCursor_(parameters.cursor, threadId, snapshotBefore, manifest)
-    : { message_index: 0, chunk_index: 0 };
-  validateCursorPosition_(position, messages);
-
+  var position = decodePosition_(parameters.cursor, threadId, snapshotBefore, manifest, entries.length);
   var emitted;
   try {
-    emitted = emitSegments_(messages, position.message_index, position.chunk_index);
+    emitted = emitPageSegments_(entries.length, position, function (index) {
+      return normalizeMessage_(entries[index].raw, threadId);
+    });
   } catch (error) {
+    var emissionError = error && error.message ? String(error.message) : "";
+    if (isSanitizedErrorCode_(emissionError)) throw error;
     throw new Error("SEGMENT_EMISSION_FAILED");
   }
-  return buildThreadPageResult_(threadId, snapshotBefore, messages.length, manifest, emitted);
+  return buildThreadPageResult_(threadId, snapshotBefore, entries.length, manifest, emitted);
 }
 
 function fetchThreadForRead_(threadId) {
@@ -290,44 +272,32 @@ function fetchThreadForRead_(threadId) {
 }
 
 function readLazyThreadPage_(parameters, threadId, snapshotBefore, snapshotMillis, sourceMessages) {
-  var messageStubs = [];
-  for (var index = 0; index < sourceMessages.length; index += 1) {
-    var source = sourceMessages[index];
-    validateMessageStub_(source, threadId);
-    var internalMillis = Number(source.internalDate);
-    if (internalMillis <= snapshotMillis) {
-      messageStubs.push({
-        message_id: String(source.id),
-        internal_millis: internalMillis,
-      });
-    }
-  }
-  messageStubs.sort(compareMessageStubs_);
-
-  var manifestIds = [];
-  for (var stubIndex = 0; stubIndex < messageStubs.length; stubIndex += 1) {
-    manifestIds.push(messageStubs[stubIndex].message_id);
-  }
+  var entries = collectSnapshotEntries_(sourceMessages, threadId, snapshotMillis, false);
   var manifest;
   try {
-    manifest = sha256Hex_(manifestIds.join("\n"));
+    manifest = manifestFromEntries_(entries);
   } catch (error) {
     throw new Error("MANIFEST_BUILD_FAILED");
   }
-  var position = parameters.cursor
-    ? decodeCursor_(parameters.cursor, threadId, snapshotBefore, manifest)
-    : { message_index: 0, chunk_index: 0 };
-  validateLazyCursorPosition_(position, messageStubs.length);
-
+  var position = decodePosition_(parameters.cursor, threadId, snapshotBefore, manifest, entries.length);
   var emitted;
   try {
-    emitted = emitLazySegments_(messageStubs, threadId, position.message_index, position.chunk_index);
+    emitted = emitPageSegments_(entries.length, position, function (index) {
+      var stub = entries[index];
+      var source = fetchFullMessage_(stub.message_id);
+      validateMessage_(source);
+      if (source.id !== stub.message_id || source.threadId !== threadId ||
+          Number(source.internalDate) !== stub.internal_millis) {
+        throw new Error("THREAD_MANIFEST_CHANGED");
+      }
+      return normalizeMessage_(source, threadId);
+    });
   } catch (error) {
     var emissionError = error && error.message ? String(error.message) : "";
     if (isSanitizedErrorCode_(emissionError)) throw error;
     throw new Error("SEGMENT_EMISSION_FAILED");
   }
-  return buildThreadPageResult_(threadId, snapshotBefore, messageStubs.length, manifest, emitted);
+  return buildThreadPageResult_(threadId, snapshotBefore, entries.length, manifest, emitted);
 }
 
 function validateMessageStub_(message, threadId) {
@@ -348,11 +318,49 @@ function compareMessageStubs_(left, right) {
   return 0;
 }
 
-function validateLazyCursorPosition_(position, messageCount) {
+function collectSnapshotEntries_(sourceMessages, threadId, snapshotMillis, includeRaw) {
+  var entries = [];
+  try {
+    for (var index = 0; index < sourceMessages.length; index += 1) {
+      var source = sourceMessages[index];
+      validateMessageStub_(source, threadId);
+      var internalMillis = Number(source.internalDate);
+      if (internalMillis <= snapshotMillis) {
+        var entry = { message_id: String(source.id), internal_millis: internalMillis };
+        if (includeRaw) entry.raw = source;
+        entries.push(entry);
+      }
+    }
+  } catch (error) {
+    var collectionError = error && error.message ? String(error.message) : "";
+    if (isSanitizedErrorCode_(collectionError)) throw error;
+    throw new Error("MESSAGE_COLLECTION_FAILED");
+  }
+  try {
+    entries.sort(compareMessageStubs_);
+  } catch (error) {
+    throw new Error("THREAD_SORT_FAILED");
+  }
+  return entries;
+}
+
+function manifestFromEntries_(entries) {
+  var ids = [];
+  for (var index = 0; index < entries.length; index += 1) {
+    ids.push(entries[index].message_id);
+  }
+  return sha256Hex_(ids.join("\n"));
+}
+
+function decodePosition_(cursor, threadId, snapshotBefore, manifest, messageCount) {
+  var position = cursor
+    ? decodeCursor_(cursor, threadId, snapshotBefore, manifest)
+    : { message_index: 0, chunk_index: 0 };
   if (position.message_index > messageCount) throw new Error("INVALID_CURSOR");
   if (position.message_index === messageCount && position.chunk_index !== 0) {
     throw new Error("INVALID_CURSOR");
   }
+  return position;
 }
 
 function fetchFullMessage_(messageId) {
@@ -363,24 +371,38 @@ function fetchFullMessage_(messageId) {
   }
 }
 
-function emitLazySegments_(messageStubs, threadId, messageIndex, chunkIndex) {
+// A segment's serialized size drives two independent transport budgets: the
+// inner Apps Script JSON (MAX_RESPONSE_BYTES) and the broker frame after the
+// outer json.dumps re-escapes every quote and backslash (+1 byte each).
+function segmentWireBytes_(segment) {
+  var piece = JSON.stringify(segment);
+  var inner = utf8ByteLength_(piece);
+  return { inner: inner, wire: inner + (piece.match(/["\\]/g) || []).length };
+}
+
+function emitPageSegments_(entryCount, position, resolveMessage) {
   var segments = [];
-  var messagesCompleted = messageIndex;
-  var currentMessage = messageIndex;
-  var currentChunk = chunkIndex;
-  while (currentMessage < messageStubs.length && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
-    var stub = messageStubs[currentMessage];
-    var source = fetchFullMessage_(stub.message_id);
-    validateMessage_(source);
-    if (source.id !== stub.message_id || source.threadId !== threadId ||
-        Number(source.internalDate) !== stub.internal_millis) {
-      throw new Error("THREAD_MANIFEST_CHANGED");
-    }
-    var message = normalizeMessage_(source, threadId);
+  var messagesCompleted = position.message_index;
+  var currentMessage = position.message_index;
+  var currentChunk = position.chunk_index;
+  var innerUsed = 0;
+  var wireUsed = 0;
+  var innerBudget = THREAD_PAGE_INNER_BUDGET_BYTES - PAGE_ENVELOPE_RESERVE_BYTES;
+  var wireBudget = THREAD_PAGE_WIRE_BUDGET_BYTES - PAGE_ENVELOPE_RESERVE_BYTES;
+  while (currentMessage < entryCount && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
+    var message = resolveMessage(currentMessage);
     var chunkCount = message.body_chunks.length;
     if (currentChunk >= chunkCount) throw new Error("INVALID_CURSOR");
     while (currentChunk < chunkCount && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
-      segments.push(messageSegment_(message, currentChunk, chunkCount));
+      var segment = messageSegment_(message, currentChunk, chunkCount);
+      var sizes = segmentWireBytes_(segment);
+      if (innerUsed + sizes.inner > innerBudget || wireUsed + sizes.wire > wireBudget) {
+        if (segments.length === 0) throw new Error("RESPONSE_TOO_LARGE");
+        return finishPage_(segments, messagesCompleted, currentMessage, currentChunk, entryCount);
+      }
+      segments.push(segment);
+      innerUsed += sizes.inner;
+      wireUsed += sizes.wire;
       currentChunk += 1;
     }
     if (currentChunk === chunkCount) {
@@ -389,12 +411,16 @@ function emitLazySegments_(messageStubs, threadId, messageIndex, chunkIndex) {
       messagesCompleted += 1;
     }
   }
+  return finishPage_(segments, messagesCompleted, currentMessage, currentChunk, entryCount);
+}
+
+function finishPage_(segments, messagesCompleted, currentMessage, currentChunk, entryCount) {
   return {
     segments: segments,
     messages_completed: messagesCompleted,
     message_index: currentMessage,
     chunk_index: currentChunk,
-    complete: currentMessage === messageStubs.length,
+    complete: currentMessage === entryCount,
   };
 }
 
@@ -437,48 +463,6 @@ function validateThreadResponse_(thread) {
 function requireThreadId_(value) {
   if (typeof value !== "string" || !value) throw new Error("INVALID_THREAD_ID");
   return value;
-}
-
-function validateCursorPosition_(position, messages) {
-  if (position.message_index > messages.length) throw new Error("INVALID_CURSOR");
-  if (position.message_index === messages.length && position.chunk_index !== 0) throw new Error("INVALID_CURSOR");
-  if (position.message_index < messages.length &&
-      position.chunk_index >= messages[position.message_index].body_chunks.length) {
-    throw new Error("INVALID_CURSOR");
-  }
-}
-
-function compareMessages_(left, right) {
-  if (left.internal_date < right.internal_date) return -1;
-  if (left.internal_date > right.internal_date) return 1;
-  if (left.message_id < right.message_id) return -1;
-  if (left.message_id > right.message_id) return 1;
-  return 0;
-}
-
-function emitSegments_(messages, messageIndex, chunkIndex) {
-  var segments = [];
-  var messagesCompleted = messageIndex;
-  var currentMessage = messageIndex;
-  var currentChunk = chunkIndex;
-  while (currentMessage < messages.length && segments.length < THREAD_PAGE_MAX_SEGMENTS) {
-    var message = messages[currentMessage];
-    var chunkCount = message.body_chunks.length;
-    segments.push(messageSegment_(message, currentChunk, chunkCount));
-    currentChunk += 1;
-    if (currentChunk === chunkCount) {
-      currentMessage += 1;
-      currentChunk = 0;
-      messagesCompleted += 1;
-    }
-  }
-  return {
-    segments: segments,
-    messages_completed: messagesCompleted,
-    message_index: currentMessage,
-    chunk_index: currentChunk,
-    complete: currentMessage === messages.length,
-  };
 }
 
 function messageSegment_(message, chunkIndex, chunkCount) {
@@ -1103,12 +1087,14 @@ function sanitizedError_(error) {
 }
 
 var GmailBridgeTestExports = {
+  bridgeVersion: GMAIL_BRIDGE_VERSION,
   decodeCursor: decodeCursor_,
   encodeCursor: encodeCursor_,
   listThreads: listThreads_,
   normalizeMessage: normalizeMessage_,
   normalizeSnapshot: normalizeSnapshot_,
   readThreadPage: readThreadPage_,
+  segmentWireBytes: segmentWireBytes_,
   sha256Hex: sha256Hex_,
   splitUtf8: splitUtf8_,
   snapshotQuery: snapshotQuery_,

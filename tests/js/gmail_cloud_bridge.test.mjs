@@ -1,196 +1,77 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import test from "node:test";
-import vm from "node:vm";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const bridgePath = resolve(here, "../../tools/gmail/cloud/GmailMcpBridge.gs");
+import { loadBridge, rawMessage, legacyMessage, webSafe } from "./gmail_cloud_bridge_harness.mjs";
 
-function webSafe(value) {
-  return Buffer.from(value, "utf8").toString("base64url");
-}
-
-function rawMessage({
-  id,
-  threadId = "thread-1",
-  internalDate = "2026-08-04T10:00:00.000Z",
-  headers = {},
-  mimeType = "text/plain",
-  body = "",
-  parts,
-  filename = "",
-}) {
-  return {
-    id,
-    threadId,
-    internalDate: String(new Date(internalDate).getTime()),
-    payload: {
-      mimeType,
-      filename,
-      headers: Object.entries(headers).map(([name, value]) => ({ name, value })),
-      body: parts ? {} : { data: webSafe(body) },
-      parts,
-    },
-  };
-}
-
-function legacyMessage({
-  id = "legacy-message",
-  threadId = "legacy-thread",
-  subject = "Legacy subject",
-  from = "sender@example.com",
-  to = "recipient@example.com",
-  cc = "",
-  date = "2026-08-04T10:00:00.000Z",
-  html = "<p>Legacy body</p>",
-  plain = "Legacy body",
-}) {
-  return {
-    getId: () => id,
-    getThread: () => ({ getId: () => threadId }),
-    getSubject: () => subject,
-    getFrom: () => from,
-    getTo: () => to,
-    getCc: () => cc,
-    getDate: () => new Date(date),
-    getBody: () => html,
-    getPlainBody: () => plain,
-  };
-}
-
-function loadBridge({
-  listPages = {},
-  threads = {},
-  threadGetFailures = {},
-  apiMessages = {},
-  attachments = {},
-  legacyThreads = [],
-  legacyMessages = {},
-} = {}) {
-  const calls = { list: [], get: [], messageGet: [], attachments: [], search: [], sent: [], blob: 0 };
-  const Utilities = {
-    Charset: { UTF_8: "UTF-8" },
-    DigestAlgorithm: { SHA_256: "SHA_256" },
-    newBlob(value) {
-      calls.blob += 1;
-      if (Array.isArray(value) && value.some((byte) => byte > 127 || byte < -128)) {
-        throw new Error("Apps Script Byte[] must use signed octets");
-      }
-      const bytes = Array.isArray(value) || Buffer.isBuffer(value)
-        ? Buffer.from(value)
-        : Buffer.from(String(value), "utf8");
-      return {
-        getBytes: () => Array.from(bytes),
-        getDataAsString: (charset = "UTF-8") => {
-          const normalizedCharset = String(charset).toLowerCase().replace(/[-_]/g, "");
-          if (normalizedCharset === "shiftjis" || normalizedCharset === "sjis") {
-            return new TextDecoder("shift_jis").decode(bytes);
-          }
-          return bytes.toString("utf8");
-        },
-      };
-    },
-    base64EncodeWebSafe(bytes) {
-      return Buffer.from(bytes).toString("base64url");
-    },
-    base64DecodeWebSafe(value) {
-      if (!/^[A-Za-z0-9_-]*={0,2}$/.test(value)) throw new Error("invalid base64");
-      return Array.from(Buffer.from(value, "base64url"));
-    },
-    computeDigest(_algorithm, value) {
-      return Array.from(createHash("sha256").update(String(value), "utf8").digest());
-    },
-  };
-  const context = {
-    console,
-    JSON,
-    Date,
-    Math,
-    Number,
-    String,
-    Array,
-    Object,
-    RegExp,
-    Error,
-    Buffer,
-    Utilities,
-    Gmail: {
-      Users: {
-        Threads: {
-          list(userId, options) {
-            calls.list.push({ userId, options: { ...options } });
-            const pageKey = options.pageToken || "first";
-            const hasPage = Object.prototype.hasOwnProperty.call(listPages, pageKey);
-            return structuredClone(hasPage ? listPages[pageKey] : { threads: [] });
-          },
-          get(userId, threadId, options) {
-            calls.get.push({ userId, threadId, options: { ...options } });
-            const failureKey = `${threadId}:${options.format}`;
-            if (Object.prototype.hasOwnProperty.call(threadGetFailures, failureKey)) {
-              throw new Error(threadGetFailures[failureKey]);
-            }
-            const hasThread = Object.prototype.hasOwnProperty.call(threads, threadId);
-            return structuredClone(hasThread ? threads[threadId] : { id: threadId, messages: [] });
-          },
-        },
-        Messages: {
-          get(userId, messageId, options) {
-            calls.messageGet.push({ userId, messageId, options: { ...options } });
-            if (!Object.prototype.hasOwnProperty.call(apiMessages, messageId)) {
-              throw new Error("message not found");
-            }
-            return structuredClone(apiMessages[messageId]);
-          },
-          Attachments: {
-            get(userId, messageId, attachmentId) {
-              calls.attachments.push({ userId, messageId, attachmentId });
-              const key = `${messageId}:${attachmentId}`;
-              if (!Object.prototype.hasOwnProperty.call(attachments, key)) {
-                throw new Error("attachment not found");
-              }
-              return structuredClone(attachments[key]);
-            },
-          },
-        },
-      },
-    },
-    GmailApp: {
-      search(query, start, limit) {
-        calls.search.push({ query, start, limit });
-        return legacyThreads;
-      },
-      getMessageById(id) {
-        if (!legacyMessages[id]) throw new Error("Message not found");
-        return legacyMessages[id];
-      },
-      sendEmail(to, subject, body) {
-        calls.sent.push({ to, subject, body });
-      },
-    },
-    ContentService: {
-      MimeType: { JSON: "application/json" },
-      createTextOutput(data) {
-        return {
-          data,
-          mimeType: null,
-          setMimeType(mimeType) {
-            this.mimeType = mimeType;
-            return this;
-          },
-        };
-      },
-    },
-  };
-  vm.createContext(context);
-  vm.runInContext(readFileSync(bridgePath, "utf8"), context, { filename: bridgePath });
-  return { api: context.GmailBridgeTestExports, calls, context };
-}
+const MIB = 1024 * 1024;
+const INNER_BUDGET = 6 * MIB - 4 * 1024;
+const WIRE_BUDGET = 8 * MIB - 4 * 1024;
+const MAX_SEGMENTS = 32;
 
 function bodySegment(message) {
   return message.segments[0];
+}
+
+function collectAllPages(api, threadId, snapshot) {
+  const pages = [];
+  let cursor = "";
+  let guard = 0;
+  do {
+    guard += 1;
+    assert.ok(guard <= 100, "cursor chain must terminate");
+    const page = api.readThreadPage({
+      thread_id: threadId,
+      snapshot_before: snapshot,
+      ...(cursor ? { cursor } : {}),
+    });
+    pages.push(page);
+    cursor = page.next_cursor || "";
+  } while (cursor);
+  return pages;
+}
+
+function reassemble(pages) {
+  const chunksById = new Map();
+  const metaById = new Map();
+  for (const page of pages) {
+    for (const segment of page.segments) {
+      const chunks = chunksById.get(segment.message_id) || [];
+      chunks[segment.chunk_index] = segment.body_chunk;
+      chunksById.set(segment.message_id, chunks);
+      metaById.set(segment.message_id, segment);
+    }
+  }
+  const bodies = new Map();
+  for (const [id, chunks] of chunksById) {
+    for (let index = 0; index < chunks.length; index += 1) {
+      assert.ok(chunks[index] !== undefined, `chunk ${index} of ${id} must be present`);
+    }
+    bodies.set(id, chunks.join(""));
+  }
+  return { bodies, metaById };
+}
+
+function replayNextFit(orderedSegments) {
+  // Mirror of emitPageSegments_ packing: sequential next-fit under the segment
+  // count cap and both byte budgets.
+  const boundaries = [];
+  let count = 0;
+  let innerUsed = 0;
+  let wireUsed = 0;
+  for (const sizes of orderedSegments) {
+    if (count === MAX_SEGMENTS || innerUsed + sizes.inner > INNER_BUDGET || wireUsed + sizes.wire > WIRE_BUDGET) {
+      boundaries.push(count);
+      count = 0;
+      innerUsed = 0;
+      wireUsed = 0;
+    }
+    count += 1;
+    innerUsed += sizes.inner;
+    wireUsed += sizes.wire;
+  }
+  if (count > 0) boundaries.push(count);
+  return boundaries;
 }
 
 test("list_threads uses an exact snapshot query and preserves Gmail pagination", () => {
@@ -246,8 +127,9 @@ test("cursors round trip and are bound to their thread and snapshot", () => {
   const { api } = loadBridge();
   const snapshot = "2026-08-04T10:15:30.000Z";
   const manifest = "a".repeat(64);
+  assert.equal(typeof api.bridgeVersion, "number");
   const cursor = api.encodeCursor({
-    version: 3,
+    version: api.bridgeVersion,
     thread_id: "thread-a",
     snapshot_before: snapshot,
     manifest_sha256: manifest,
@@ -256,7 +138,7 @@ test("cursors round trip and are bound to their thread and snapshot", () => {
   });
 
   assert.deepEqual(api.decodeCursor(cursor, "thread-a", snapshot, manifest), {
-    version: 3,
+    version: api.bridgeVersion,
     thread_id: "thread-a",
     snapshot_before: snapshot,
     manifest_sha256: manifest,
@@ -273,6 +155,7 @@ test("read_thread_page uses the same inclusive second bucket as list_threads", (
   const snapshot = "2026-08-04T10:15:30.250Z";
   const boundaryMessage = rawMessage({
     id: "same-second",
+    threadId: "thread-boundary",
     internalDate: "2026-08-04T10:15:30.500Z",
     body: "within Gmail's second-resolution bucket",
   });
@@ -289,6 +172,7 @@ test("read_thread_page filters after-snapshot messages and orders retained messa
   const snapshot = "2026-08-04T10:15:30.000Z";
   const early = rawMessage({
     id: "early",
+    threadId: "thread-a",
     internalDate: "2026-08-04T10:14:00Z",
     body: "early",
     headers: {
@@ -298,9 +182,9 @@ test("read_thread_page filters after-snapshot messages and orders retained messa
       SUBJECT: "Case update",
     },
   });
-  const tied = rawMessage({ id: "a-tie", internalDate: "2026-08-04T10:15:00Z", body: "tie" });
-  const tiedLaterId = rawMessage({ id: "z-tie", internalDate: "2026-08-04T10:15:00Z", body: "tie" });
-  const late = rawMessage({ id: "late", internalDate: "2026-08-04T10:16:00Z", body: "late" });
+  const tied = rawMessage({ id: "a-tie", threadId: "thread-a", internalDate: "2026-08-04T10:15:00Z", body: "tie" });
+  const tiedLaterId = rawMessage({ id: "z-tie", threadId: "thread-a", internalDate: "2026-08-04T10:15:00Z", body: "tie" });
+  const late = rawMessage({ id: "late", threadId: "thread-a", internalDate: "2026-08-04T10:16:00Z", body: "late" });
   const { api, calls } = loadBridge({ threads: { "thread-a": { messages: [late, tiedLaterId, early, tied] } } });
 
   const response = api.readThreadPage({ thread_id: "thread-a", snapshot_before: snapshot });
@@ -487,11 +371,31 @@ test("long Unicode bodies are chunked by UTF-8 byte budget without corrupting co
   assert.equal(Buffer.byteLength(mixed, "utf8"), 7);
 });
 
+test("segment wire estimation counts serialized bytes plus quote and backslash surcharge", () => {
+  const { api } = loadBridge();
+  const adversarial = 'quote " and \\ backslash \n newline é 🙂 end';
+  const piece = JSON.stringify({ body_chunk: adversarial });
+  const manualInner = Buffer.byteLength(piece, "utf8");
+  const manualSurcharge = (piece.match(/["\\]/g) || []).length;
+
+  const sizes = api.segmentWireBytes({ body_chunk: adversarial });
+
+  assert.equal(sizes.inner, manualInner);
+  assert.equal(sizes.wire, manualInner + manualSurcharge);
+  assert.ok(sizes.wire > sizes.inner);
+  const allQuotes = '"'.repeat(1000);
+  const quoteSizes = api.segmentWireBytes({ body_chunk: allQuotes });
+  const quotePiece = JSON.stringify({ body_chunk: allQuotes });
+  assert.equal(quoteSizes.inner, Buffer.byteLength(quotePiece, "utf8"));
+  assert.equal(quoteSizes.wire, Buffer.byteLength(quotePiece, "utf8") + (quotePiece.match(/["\\]/g) || []).length);
+  assert.ok(quoteSizes.wire > quoteSizes.inner * 1.9, "all-quote content must approach the 2x bound");
+});
+
 test("thread pages advertise stable manifests and complete bodies with bytes and hashes", () => {
   const body = "café 🙂";
   const messages = [
-    rawMessage({ id: "one", internalDate: "2026-08-04T10:00:00Z", body }),
-    rawMessage({ id: "two", internalDate: "2026-08-04T10:01:00Z", body: "two" }),
+    rawMessage({ id: "one", threadId: "thread-a", internalDate: "2026-08-04T10:00:00Z", body }),
+    rawMessage({ id: "two", threadId: "thread-a", internalDate: "2026-08-04T10:01:00Z", body: "two" }),
   ];
   const { api } = loadBridge({ threads: { "thread-a": { messages } } });
   const snapshot = "2026-08-04T11:00:00Z";
@@ -505,26 +409,257 @@ test("thread pages advertise stable manifests and complete bodies with bytes and
   assert.equal(repeat.manifest_sha256, first.manifest_sha256);
 });
 
-test("read_thread_page returns at most four segments and advances a server-issued cursor", () => {
+test("read_thread_page emits every segment of a small thread on one page", () => {
   const messages = Array.from({ length: 5 }, (_, index) => rawMessage({
     id: `message-${index}`,
+    threadId: "thread-a",
     internalDate: `2026-08-04T10:0${index}:00Z`,
     body: `body-${index}`,
   }));
   const { api } = loadBridge({ threads: { "thread-a": { messages } } });
   const snapshot = "2026-08-04T11:00:00Z";
   const first = api.readThreadPage({ thread_id: "thread-a", snapshot_before: snapshot });
-  const second = api.readThreadPage({ thread_id: "thread-a", snapshot_before: snapshot, cursor: first.next_cursor });
 
-  assert.equal(first.segments.length, 4);
-  assert.equal(first.messages_completed, 4);
+  assert.equal(first.segments.length, 5);
+  assert.equal(first.messages_completed, 5);
+  assert.equal(first.complete, true);
+  assert.equal(first.next_cursor, null);
+  assert.deepEqual(Array.from(first.segments, (segment) => segment.message_id), [
+    "message-0", "message-1", "message-2", "message-3", "message-4",
+  ]);
+});
+
+test("read_thread_page stops at the 32-segment page capacity and resumes via cursor", () => {
+  const messages = Array.from({ length: 40 }, (_, index) => rawMessage({
+    id: `cap-${String(index).padStart(2, "0")}`,
+    threadId: "thread-cap",
+    internalDate: new Date(Date.parse("2026-08-04T10:00:00Z") + index * 1000).toISOString(),
+    body: `body-${index}`,
+  }));
+  const { api } = loadBridge({ threads: { "thread-cap": { messages } } });
+  const snapshot = "2026-08-04T11:00:00Z";
+
+  const first = api.readThreadPage({ thread_id: "thread-cap", snapshot_before: snapshot });
+  assert.equal(first.segments.length, 32);
+  assert.equal(first.messages_completed, 32);
   assert.equal(first.complete, false);
   assert.ok(first.next_cursor);
-  assert.equal(second.segments.length, 1);
-  assert.equal(second.segments[0].message_id, "message-4");
+
+  const second = api.readThreadPage({
+    thread_id: "thread-cap",
+    snapshot_before: snapshot,
+    cursor: first.next_cursor,
+  });
+  assert.equal(second.segments.length, 8);
+  assert.equal(second.messages_completed, 40);
   assert.equal(second.complete, true);
-  assert.equal(second.messages_completed, 5);
   assert.equal(second.next_cursor, null);
+  assert.equal(second.manifest_sha256, first.manifest_sha256);
+  assert.equal(second.message_count, first.message_count);
+  assert.equal(second.segments[0].message_id, "cap-32");
+});
+
+test("read_thread_page resumes inside a multi-chunk message cut at the page boundary", () => {
+  const hugeBody = "x".repeat(Math.floor(2.5 * 96 * 1024));
+  const messages = [
+    ...Array.from({ length: 30 }, (_, index) => rawMessage({
+      id: `small-${String(index).padStart(2, "0")}`,
+      threadId: "thread-resume",
+      internalDate: new Date(Date.parse("2026-08-04T10:00:00Z") + index * 1000).toISOString(),
+      body: `small-${index}`,
+    })),
+    rawMessage({
+      id: "huge",
+      threadId: "thread-resume",
+      internalDate: "2026-08-04T10:30:00Z",
+      body: hugeBody,
+    }),
+  ];
+  const { api } = loadBridge({ threads: { "thread-resume": { messages } } });
+  const snapshot = "2026-08-04T11:00:00Z";
+
+  const first = api.readThreadPage({ thread_id: "thread-resume", snapshot_before: snapshot });
+  assert.equal(first.segments.length, 32);
+  assert.equal(first.messages_completed, 30);
+  assert.equal(first.complete, false);
+  const hugeSegments = first.segments.filter((segment) => segment.message_id === "huge");
+  assert.equal(hugeSegments.length, 2);
+  assert.equal(hugeSegments[1].chunk_index, 1);
+  assert.equal(hugeSegments[0].chunk_count, 3);
+
+  const pages = collectAllPages(api, "thread-resume", snapshot);
+  assert.deepEqual(pages.map((page) => page.segments.length), [32, 1]);
+  const { bodies, metaById } = reassemble(pages);
+  assert.equal(bodies.size, 31);
+  assert.equal(bodies.get("huge"), hugeBody);
+  const hugeMeta = metaById.get("huge");
+  assert.equal(hugeMeta.body_bytes, Buffer.byteLength(hugeBody, "utf8"));
+  assert.equal(hugeMeta.body_sha256, createHash("sha256").update(hugeBody, "utf8").digest("hex"));
+});
+
+test("quote-dense threads paginate by the wire budget and reassemble byte-exact", () => {
+  const denseBody = '"'.repeat(96 * 1024);
+  const messages = Array.from({ length: 100 }, (_, index) => rawMessage({
+    id: `adv-${String(index).padStart(3, "0")}`,
+    threadId: "thread-adv",
+    internalDate: new Date(Date.parse("2026-08-04T10:00:00Z") + index * 1000).toISOString(),
+    body: denseBody,
+  }));
+  const { api } = loadBridge({ threads: { "thread-adv": { messages } } });
+  const snapshot = "2026-08-04T11:00:00Z";
+
+  const pages = collectAllPages(api, "thread-adv", snapshot);
+  assert.ok(pages.length >= 4, `wire-bound paging expected, got ${pages.length} pages`);
+  for (const page of pages) {
+    assert.ok(page.segments.length <= 32);
+    let innerUsed = 0;
+    let wireUsed = 0;
+    for (const segment of page.segments) {
+      const sizes = api.segmentWireBytes(segment);
+      innerUsed += sizes.inner;
+      wireUsed += sizes.wire;
+    }
+    assert.ok(innerUsed <= INNER_BUDGET, `inner ${innerUsed} exceeds budget`);
+    assert.ok(wireUsed <= WIRE_BUDGET, `wire ${wireUsed} exceeds budget`);
+  }
+  const firstPage = pages[0];
+  assert.ok(firstPage.segments.length < 32, "first page must be wire-bound, not count-bound");
+
+  const orderedSizes = pages.flatMap((page) => page.segments.map((segment) => api.segmentWireBytes(segment)));
+  assert.deepEqual(replayNextFit(orderedSizes), pages.map((page) => page.segments.length));
+
+  const { bodies } = reassemble(pages);
+  assert.equal(bodies.size, 100);
+  for (const body of bodies.values()) {
+    assert.equal(body, denseBody);
+  }
+});
+
+test("a segment between both budgets is emitted (v3 pass-domain regression)", () => {
+  // Unbounded metadata (payload.filename) of nearly-all quotes: raw length L
+  // serializes to inner ≈ 2L and wire ≈ 4L. L ≈ 1.6 MiB lands the segment at
+  // inner ≈ 3.2 MiB / wire ≈ 6.4 MiB: above the 6 MiB wire mark rev 3 would
+  // have rejected, yet below both actual limits, so v3 collected it and v4
+  // must keep collecting it.
+  const quoteName = '"'.repeat(Math.floor(1.6 * MIB));
+  const message = rawMessage({
+    id: "pass-domain",
+    threadId: "thread-pass",
+    internalDate: "2026-08-04T10:00:00Z",
+    filename: quoteName,
+    body: "small body",
+  });
+  const { api } = loadBridge({ threads: { "thread-pass": { messages: [message] } } });
+  const snapshot = "2026-08-04T11:00:00Z";
+
+  const page = api.readThreadPage({ thread_id: "thread-pass", snapshot_before: snapshot });
+
+  assert.equal(page.segments.length, 1);
+  assert.equal(page.complete, true);
+  const sizes = api.segmentWireBytes(page.segments[0]);
+  assert.ok(sizes.inner > 3.0 * MIB && sizes.inner < 3.5 * MIB, `inner ${sizes.inner} out of range`);
+  assert.ok(sizes.wire > 6.0 * MIB && sizes.wire < 7.0 * MIB, `wire ${sizes.wire} out of range`);
+});
+
+test("a first segment over either real budget fails with RESPONSE_TOO_LARGE", () => {
+  // Same construction scaled so the serialized segment sits at inner ≈ 4.8 MiB
+  // (within the inner track) but wire ≈ 9.6 MiB (over the wire track).
+  const quoteName = '"'.repeat(Math.floor(2.4 * MIB));
+  const message = rawMessage({
+    id: "over-budget",
+    threadId: "thread-over",
+    internalDate: "2026-08-04T10:00:00Z",
+    filename: quoteName,
+    body: "small body",
+  });
+  const { api, context } = loadBridge({ threads: { "thread-over": { messages: [message] } } });
+  const snapshot = "2026-08-04T11:00:00Z";
+
+  const normalized = api.normalizeMessage(message, "thread-over");
+  const projected = api.segmentWireBytes({
+    message_id: normalized.message_id,
+    thread_id: normalized.thread_id,
+    internal_date: normalized.internal_date,
+    from: normalized.from,
+    to: normalized.to,
+    cc: normalized.cc,
+    subject: normalized.subject,
+    body_chunk: normalized.body_chunks[0],
+    chunk_index: 0,
+    chunk_count: normalized.body_chunks.length,
+    body_bytes: normalized.body_bytes,
+    body_sha256: normalized.body_sha256,
+    attachment_names: normalized.attachment_names,
+  });
+  assert.ok(projected.inner <= INNER_BUDGET, "rejection must come from the wire track, not inner");
+  assert.ok(projected.wire > WIRE_BUDGET, "wire must exceed the effective budget");
+
+  assert.throws(
+    () => api.readThreadPage({ thread_id: "thread-over", snapshot_before: snapshot }),
+    /RESPONSE_TOO_LARGE/,
+  );
+  const errorResponse = JSON.parse(context.doGet({
+    parameter: { action: "read_thread_page", thread_id: "thread-over", snapshot_before: snapshot },
+  }).data);
+  assert.deepEqual(errorResponse, { success: false, error: "RESPONSE_TOO_LARGE" });
+});
+
+test("unknown helper failures keep their sanitized wrapper codes, never APP_ERROR", () => {
+  const snapshot = "2026-08-04T11:00:00Z";
+  const messages = [
+    rawMessage({ id: "m1", threadId: "thread-a", internalDate: "2026-08-04T10:00:00Z", body: "one" }),
+    rawMessage({ id: "m2", threadId: "thread-a", internalDate: "2026-08-04T10:01:00Z", body: "two" }),
+  ];
+
+  const manifestFailure = loadBridge({ threads: { "thread-a": { messages } } });
+  manifestFailure.context.sha256Hex_ = () => {
+    throw new Error("digest exploded");
+  };
+  assert.throws(
+    () => manifestFailure.api.readThreadPage({ thread_id: "thread-a", snapshot_before: snapshot }),
+    /MANIFEST_BUILD_FAILED/,
+  );
+
+  const emissionFailure = loadBridge({ threads: { "thread-a": { messages } } });
+  emissionFailure.context.segmentWireBytes_ = () => {
+    throw new Error("sizing exploded");
+  };
+  assert.throws(
+    () => emissionFailure.api.readThreadPage({ thread_id: "thread-a", snapshot_before: snapshot }),
+    /SEGMENT_EMISSION_FAILED/,
+  );
+
+  const sortFailure = loadBridge({ threads: { "thread-a": { messages } } });
+  sortFailure.context.compareMessageStubs_ = () => {
+    throw new Error("sort exploded");
+  };
+  assert.throws(
+    () => sortFailure.api.readThreadPage({ thread_id: "thread-a", snapshot_before: snapshot }),
+    /THREAD_SORT_FAILED/,
+  );
+
+  const lazySortFailure = loadBridge({
+    threads: {
+      "thread-lazy": {
+        messages: messages.map((message) => ({
+          id: message.id,
+          threadId: "thread-lazy",
+          internalDate: message.internalDate,
+        })),
+      },
+    },
+    threadGetFailures: { "thread-lazy:full": "response too large" },
+    apiMessages: Object.fromEntries(
+      messages.map((message) => [message.id, { ...message, threadId: "thread-lazy" }]),
+    ),
+  });
+  lazySortFailure.context.compareMessageStubs_ = () => {
+    throw new Error("sort exploded");
+  };
+  assert.throws(
+    () => lazySortFailure.api.readThreadPage({ thread_id: "thread-lazy", snapshot_before: snapshot }),
+    /THREAD_SORT_FAILED/,
+  );
 });
 
 test("read_thread_page falls back to per-message full fetch when a full thread fetch fails", () => {
@@ -565,10 +700,10 @@ test("read_thread_page falls back to per-message full fetch when a full thread f
 
 test("large-thread fallback fetches only messages required by each cursor page", () => {
   const snapshot = "2026-08-04T11:00:00Z";
-  const messages = Array.from({ length: 7 }, (_, index) => rawMessage({
-    id: `lazy-${index}`,
+  const messages = Array.from({ length: 34 }, (_, index) => rawMessage({
+    id: `lazy-${String(index).padStart(2, "0")}`,
     threadId: "thread-lazy",
-    internalDate: index === 6 ? "2026-08-04T12:00:00.000Z" : `2026-08-04T10:00:0${index}.000Z`,
+    internalDate: index === 33 ? "2026-08-04T12:00:00.000Z" : new Date(Date.parse("2026-08-04T10:00:00Z") + index * 1000).toISOString(),
     body: `lazy body ${index}`,
   }));
   const apiMessages = Object.fromEntries(messages.map((message) => [message.id, message]));
@@ -588,11 +723,14 @@ test("large-thread fallback fetches only messages required by each cursor page",
   });
 
   const first = api.readThreadPage({ thread_id: "thread-lazy", snapshot_before: snapshot });
-  assert.equal(first.message_count, 6);
-  assert.equal(first.segments.length, 4);
-  assert.equal(first.messages_completed, 4);
+  assert.equal(first.message_count, 33);
+  assert.equal(first.segments.length, 32);
+  assert.equal(first.messages_completed, 32);
   assert.equal(first.complete, false);
-  assert.deepEqual(calls.messageGet.map((call) => call.messageId), ["lazy-0", "lazy-1", "lazy-2", "lazy-3"]);
+  assert.deepEqual(
+    calls.messageGet.map((call) => call.messageId),
+    Array.from({ length: 32 }, (_, index) => `lazy-${String(index).padStart(2, "0")}`),
+  );
 
   const second = api.readThreadPage({
     thread_id: "thread-lazy",
@@ -600,12 +738,13 @@ test("large-thread fallback fetches only messages required by each cursor page",
     cursor: first.next_cursor,
   });
   assert.equal(second.manifest_sha256, first.manifest_sha256);
-  assert.equal(second.message_count, 6);
-  assert.equal(second.segments.length, 2);
-  assert.equal(second.messages_completed, 6);
+  assert.equal(second.message_count, 33);
+  assert.equal(second.segments.length, 1);
+  assert.equal(second.messages_completed, 33);
   assert.equal(second.complete, true);
   assert.deepEqual(calls.messageGet.map((call) => call.messageId), [
-    "lazy-0", "lazy-1", "lazy-2", "lazy-3", "lazy-4", "lazy-5",
+    ...Array.from({ length: 32 }, (_, index) => `lazy-${String(index).padStart(2, "0")}`),
+    "lazy-32",
   ]);
 });
 

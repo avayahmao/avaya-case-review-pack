@@ -88,12 +88,19 @@ function Invoke-Bridge([hashtable]$Parameters) {
     $uri = $WebAppUrl.TrimEnd([char[]]"?&") + "?" + ($pairs -join "&")
     try {
         # Never pipe this response to Format-* or ConvertTo-Json: segments contain body text.
-        $response = Invoke-RestMethod -Method Get -Uri $uri -TimeoutSec 60 -ErrorAction Stop
-        if ($null -eq $response -or $response.success -ne $true) {
+        # Use Invoke-WebRequest -UseBasicParsing (required on Windows PowerShell 5.1) so the
+        # raw JSON text survives alongside the parsed object: the cursor loop consumes parsed
+        # fields, and the per-page byte-budget assertions below need the exact transport bytes
+        # that Invoke-RestMethod would parse away.
+        $response = Invoke-WebRequest -UseBasicParsing -Method Get -Uri $uri -TimeoutSec 60 -ErrorAction Stop
+        Assert-VerificationDeadline "cloud response"
+        $raw = [string]$response.Content
+        $parsed = $raw | ConvertFrom-Json
+        if ($null -eq $parsed -or $parsed.success -ne $true) {
             throw "cloud response failed"
         }
-        Assert-VerificationDeadline "cloud response"
-        return $response
+        $parsed | Add-Member -NotePropertyName raw_text -NotePropertyValue $raw
+        return $parsed
     } catch {
         throw "FAIL: cloud request timeout/quota/error; do not activate local Agent SKILL"
     }
@@ -174,6 +181,19 @@ foreach ($threadId in $threadIds) {
         Assert-Equal "thread snapshot reused" ([string]$threadPage.snapshot_before) $snapshot
         Assert-True "thread response includes complete" ($null -ne $threadPage.complete)
         Assert-True "thread response includes next cursor" ($null -ne $threadPage.next_cursor)
+        # Page-size safety, measured on the exact transport bytes. inner is the raw
+        # Apps Script JSON; wire models the broker frame, where the outer JSON
+        # encoding re-escapes every quote and backslash (+1 byte each), plus a
+        # 1 KiB conservative envelope for the frame wrapper fields:
+        #   wire = utf8Len(raw) + count('"') + count('\') + 1 KiB
+        # Get-Utf8ByteCount is required: string .Length counts UTF-16 code units,
+        # which is not the UTF-8 byte length for non-ASCII content.
+        $rawText = [string]$threadPage.raw_text
+        $innerBytes = Get-Utf8ByteCount $rawText
+        $escapedSurcharge = ([regex]::Matches($rawText, '["\\]')).Count
+        $wireBytes = $innerBytes + $escapedSurcharge + 1024
+        Assert-True "page inner bytes within cloud budget" ($innerBytes -le 6291456)
+        Assert-True "page wire bytes within broker frame budget" ($wireBytes -le 8388608)
         $messageCount = [int]$threadPage.message_count
         if ($firstThreadPage) {
             $expectedMessageCount = $messageCount
@@ -277,13 +297,24 @@ to logs.
 - Legacy search remains bounded to 10 results by default and accepts an
   optional bounded `max_results`; exhaustive callers must use the paginated
   context tools instead.
-- Thread pages are intentionally stateless. The normal path re-fetches and
-  normalizes the full thread. If Gmail rejects an oversized full-thread
-  response, the bridge re-fetches a minimal manifest and full-fetches only the
-  messages needed to emit the current page's four-segment maximum. Every page
-  still derives the same snapshot-filtered message count and manifest hash.
-  CacheService is not used because stale manifests, cache-size limits, and
-  cross-run invalidation would weaken the completeness contract.
+- Thread pages are intentionally stateless. The normal path re-fetches the
+  full thread on every page, but the ordered message list and manifest hash
+  are derived from message IDs and internal dates only; payload bodies are
+  decoded and normalized exclusively for the segments the current page emits.
+  If Gmail rejects an oversized full-thread response, the bridge re-fetches a
+  minimal manifest and full-fetches only the messages needed by the current
+  page. Every page still derives the same snapshot-filtered message count and
+  manifest hash. CacheService is not used because stale manifests, cache-size
+  limits, and cross-run invalidation would weaken the completeness contract.
+- Page capacity is bounded three ways: at most 32 body segments per page, and
+  the serialized page must stay within both transport budgets — the Apps
+  Script response itself (`inner`, 6 MiB, enforced by `MAX_RESPONSE_BYTES`)
+  and the broker frame, because the broker's outer JSON encoding re-escapes
+  every quote and backslash (`wire` = inner + one byte per `"` or `\`, 8 MiB,
+  matching the broker's `MAX_FRAME_BYTES`). A first segment that alone
+  exceeds either real limit fails with the sanitized `RESPONSE_TOO_LARGE` —
+  the same failure mode earlier bridge versions produced after full-page
+  serialization — so the set of collectible threads is unchanged.
 - Expected fetch, validation, normalization, manifest, cursor, and response
   failures return stable sanitized codes. `APP_ERROR` is reserved for
   unexpected failures so a collection blocker remains actionable without
