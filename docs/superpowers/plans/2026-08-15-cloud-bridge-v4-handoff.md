@@ -50,7 +50,8 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 
 **本地（提交前）：**
 - `node --test tests/js/gmail_cloud_bridge.test.mjs`：**25/25**（含 32 段分页、消息内跨页恢复、引号密集 wire 装箱 + next-fit 精确重放、v3 通过域回归、错误映射三连、快照外畸形 payload 跳过、threadId 缺失/不匹配双路径、inner 轨锁定断言、懒加载 34 封选择性抓取）
-- `python -m unittest discover tests`：**269/269**（含 5 个跨层帧回归：真实 `doGet` 输出 → 真实 `encode_response`，帧 ≤ 8 MiB、膨胀公式两侧吻合、v3 失败集证明）
+- `node --test tests/js/rollback_bridge_v3.test.mjs`：**14/14**（回滚工具故障注入：零写入、六道门禁、启动失败清理、探针六类分类、成功路径）
+- `python -m unittest discover tests`：**270/270**（含 5 个跨层帧回归：真实 `doGet` 输出 → 真实 `encode_response`，帧 ≤ 8 MiB、膨胀公式两侧吻合、v3 失败集证明；含 1 个回滚工具 Node 包装）
 
 **线上（部署后，同一 `snapshot_before`，案例 1-23744793322，39 封真实消息）：**
 
@@ -81,11 +82,11 @@ Gmail 云桥（Apps Script）读线程接口从"每页 4 段、每页全量规�
 
 回滚脚本**已入库并随发行包交付**：`tools/gmail/cloud/rollback_bridge_v3.mjs` + 两个**非 Apps Script 扩展名**的伴随资源 `rollback_bridge_v3.txt`（v3 快照）与 `rollback_bridge_v3.appsscript.txt`（含 Gmail v1 高级服务的清单），均在 `release-manifest.txt`。两份资源各过 SHA-256 + 字节数门禁，不依赖 Git 历史——在无 `.git` 的发行目录中源门禁照常通过（实测）。
 
-**五道身份/完整性门禁 + 清单门禁（全部在任何写入或推送之前；缺一即零写入退出）：** ① v3 快照哈希门禁；② appsscript 清单哈希 + Gmail v1 服务存在性；③ `--script-id`（`GMAIL_BRIDGE_SCRIPT_ID`，受控运维记录）与 `tmp/clasp-bridge/.clasp.json` 的 scriptId 严格相等（该目录仅作**只读身份参照**，其内容永不上传）；④ `--deployment-id` 与 `tools/gmail/gmail_edge_common.py` 中 `APP_SCRIPT_URL` 拼接后的部署 ID **严格相等**（脚本自行拼接相邻字符串字面量提取，防止更新同项目其他合法 deployment）；⑤ 标识符字符集校验；⑥ **push 前在隔离 staging 内 `clasp pull` 校验远端文件清单恰为 `{Code.js, appsscript.json}`**——出现多余文件立即中止并要求人工判断，防止 `clasp push` 静默删除后来新增的远端文件。
+**六道门禁（全部在任何写入或推送之前；缺一即零写入退出）：** ① v3 快照哈希门禁；② appsscript 清单哈希 + Gmail v1 服务存在性；③ `--script-id`（`GMAIL_BRIDGE_SCRIPT_ID`，受控运维记录）与 `tmp/clasp-bridge/.clasp.json` 的 scriptId 严格相等（该目录仅作**只读身份参照**，其内容永不上传）；④ `--deployment-id` 与 `tools/gmail/gmail_edge_common.py` 中 `APP_SCRIPT_URL` 拼接后的部署 ID **严格相等**（脚本自行拼接相邻字符串字面量提取，防止更新同项目其他合法 deployment）；⑤ 标识符字符集校验；⑥ **push 前在隔离 staging 内 `clasp pull` 校验远端文件清单恰为 `{Code.js, appsscript.json}`**——出现多余文件立即中止并要求人工判断，防止 `clasp push` 静默删除后来新增的远端文件。
 
 **隔离 staging 推送与清理保证：** staging 由 `mkdtempSync` 创建**唯一**目录（绝不预删固定路径），其中只有已验证的 `Code.js`、已验证的 `appsscript.json`、脚本生成的 `.clasp.json`（`rootDir: "."`）。运维目录的 `rootDir`/`.claspignore` 配置**不可能**重定向或过滤上传内容。失败路径设置 `process.exitCode` 后**自然经过 `finally` 清理**（绝不 `process.exit` 直跳绕过清理——该缺陷曾由评审故障注入证实并修复，现有测试覆盖）。
 
-**运行前置条件：** Node.js；固定版本 `@google/clasp@3.3.0`（npx 在线或本地缓存；300 s 超时并区分 启动失败（请求未达服务端，远端未变）/ 超时（unknown）/ 非零退出（unknown））；已登录的 `~/.clasprc.json`；`tmp/clasp-bridge/.clasp.json` 身份参照（需自行准备，不在发行包内）。**失败后的远端状态是 unknown**（启动失败除外）：任何失败先跑 `--diagnose`（隔离副本 pull + v3/v4 哈希分类 + deployments 列表 + 现网探针；try/finally 清理；诊断步骤失败不递归提示 diagnose）。现网探针区分 工具缺失/超时/CLI 非零/云端错误/版本不匹配 五类（`--python=` 或 `PYTHON` 环境变量可覆盖解释器；`ROLLBACK_PROBE_TIMEOUT_MS` 测试用超时覆盖），`bridge_version === 3` 才算成功。`--dry-run` 只过门禁、零写入。**自动化测试**：`tests/js/rollback_bridge_v3.test.mjs`（14 个故障注入用例：零写入、身份/清单门禁、启动失败清理、探针五类分类、成功路径）经 `tests/test_rollback_bridge_v3.py` 纳入常规发现。
+**运行前置条件：** Node.js；固定版本 `@google/clasp@3.3.0`（npx 在线或本地缓存；300 s 超时并区分 启动失败（请求未达服务端，远端未变）/ 超时（unknown）/ 非零退出（unknown））；已登录的 `~/.clasprc.json`；`tmp/clasp-bridge/.clasp.json` 身份参照（需自行准备，不在发行包内）。**失败后的远端状态是 unknown**（启动失败除外）：任何失败先跑 `--diagnose`（隔离副本 pull + v3/v4 哈希分类 + deployments 列表 + 现网探针；try/finally 清理；诊断步骤失败不递归提示 diagnose）。现网探针区分六类结果（工具缺失/超时/CLI 非零/云端错误/版本不匹配/输出不可解析；`--python=` 或 `PYTHON` 环境变量可覆盖解释器；`ROLLBACK_PROBE_TIMEOUT_MS` 测试用超时覆盖），`bridge_version === 3` 才算成功。`--dry-run` 只过门禁、零写入。**自动化测试**：`tests/js/rollback_bridge_v3.test.mjs`（14 个故障注入用例：零写入、身份/清单门禁、启动失败清理、探针五类分类、成功路径）经 `tests/test_rollback_bridge_v3.py` 纳入常规发现。
 
 ```bash
 node tools/gmail/cloud/rollback_bridge_v3.mjs --dry-run \

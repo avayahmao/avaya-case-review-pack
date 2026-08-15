@@ -85,18 +85,22 @@ exit 0
 }
 
 function snapshotTree(root) {
+  // Digest file contents, not sizes: same-length rewrites must be detected.
+  const { createHash } = require("node:crypto");
   const files = new Map();
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
       const info = statSync(path);
       if (info.isDirectory()) walk(path);
-      else files.set(path.slice(root.length), info.size);
+      else files.set(path.slice(root.length), createHash("sha256").update(readFileSync(path)).digest("hex"));
     }
   };
   walk(root);
   return files;
 }
+const { createRequire } = await import("node:module");
+const require = createRequire(import.meta.url);
 
 function stagingLeftovers(sandbox) {
   const tmp = join(sandbox, "tmp");
@@ -182,11 +186,13 @@ test("a tampered v3 snapshot fails the hash gate", () => {
 
 test("clasp launch failure still cleans the staging directory", () => {
   const sandbox = buildSandbox();
-  const result = run(sandbox, GOOD_ARGS, noNpxEnv());
+  const emptyPath = mkdtempSync(join(tmpdir(), "rollback-empty-path-"));
+  const result = run(sandbox, GOOD_ARGS, { PATH: emptyPath });
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /ROLLBACK_ABORTED/);
   assert.deepEqual(stagingLeftovers(sandbox), [], "staging must be removed on failure");
   rmSync(sandbox, { recursive: true, force: true });
+  rmSync(emptyPath, { recursive: true, force: true });
 });
 
 test("remote inventory with an extra file aborts before push and cleans staging", () => {
