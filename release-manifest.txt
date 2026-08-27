@@ -25,6 +25,7 @@ docs/TECHNICAL_DESIGN_DOCUMENT.html
 docs/TECHNICAL_DESIGN_DOCUMENT.md
 plugins/avaya-case-review/plugin.json
 plugins/avaya-case-review/skills/case-review/SKILL.md
+plugins/avaya-case-review/skills/qa/SKILL.md
 plugins/avaya-case-review/skills/case-review/references/aes-cti-jtapi.md
 plugins/avaya-case-review/skills/case-review/references/analytics-kubernetes.md
 plugins/avaya-case-review/skills/case-review/references/certificates-login-outage.md
@@ -35,8 +36,10 @@ plugins/avaya-case-review/skills/case-review/references/log-collection.md
 plugins/avaya-case-review/skills/case-review/references/recording-wfo.md
 plugins/avaya-case-review/skills/case-review/references/security-vulnerability.md
 plugins/avaya-case-review/skills/case-review/references/sip-voice-quality.md
+plugins/avaya-case-review/skills/case-review/scripts/qa.py
 plugins/avaya-case-review/skills/gmail-capability/SKILL.md
 skills/case-review/SKILL.md
+skills/qa/SKILL.md
 skills/gmail-capability/SKILL.md
 tools/casetomd/casetomd_mcp_bridge.py
 tools/gmail/cloud/GmailMcpBridge.gs
