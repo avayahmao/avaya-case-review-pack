@@ -309,23 +309,19 @@
         <li><strong>Log Evidence Sufficiency</strong>: Distinguish logs that were requested, collected, attached, and analyzed, then identify evidence gaps without assuming silence means absence. <code>getlogs</code>, <code>csta_trace</code>, and <code>g3trace</code> are conditional examples, not universal requirements.</li>
     </ol>
 
-    <h4>Output Brief Schema</h4>
-    <p>Before rendering, the analysis builds a <strong>whole-case storyline and problem lineage</strong>: original customer objective, intended action, blocker or decision point, intermediate working hypotheses, corrected finding, implemented action and primary outcome, and secondary problems with their relationship to the primary problem. Source recency and message length do not determine narrative weight; later evidence receives precedence only for current state or an explicit, better-supported correction.</p>
+    <h4>Structured ReviewSnapshot v2 and Presentation Modes</h4>
+    <p>Before rendering, the analysis builds a <strong>structured ReviewSnapshot v2</strong>: current Case Card fields, whole-case storyline and problem lineage from the primary problem through blockers, corrections, outcome, and secondary problems, fixed proof-state Technical Specification, milestones, timeline, Evidence Register, and evidence-only visual context. Source recency and message length do not determine narrative weight.</p>
+    <p>The deterministic <code>review_presenter.py</code> router exposes six modes:</p>
     <ol>
-        <li><strong>Executive Summary &amp; Status</strong>: One citation-free 6-8 sentence paragraph proportioned across the complete case lifecycle. It starts with the primary problem before secondary problems and contains conclusion-level timing/location, affected scope, impact, response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidenced checkpoint. Future prevention is excluded from Executive Summary.</li>
-        <li><strong>Freshness Model</strong>:
-            <ul>
-                <li><strong>Case record freshness</strong> measures the age of the official record update.</li>
-                <li><strong>Last substantive progress age</strong> measures the age of the latest concrete technical or operational change.</li>
-                <li>Closed/Resolved records are excluded from age-only staleness flags.</li>
-            </ul>
-        </li>
-        <li><strong>Conditional Technical Assessment</strong>: Starts with the primary problem and adds technical reasoning while following its lineage through blockers, working hypotheses, corrected findings, causal mechanism, solution and validation, and unresolved gaps. Blocking and secondary problems remain classified and ordered by their relationship to the primary problem. It uses exactly one multi-problem <code>Problem Statement</code> or single-issue <code>Incident &amp; RCA Summary</code>. Existing prevention controls appear only when evidence confirms they are implemented. Planned or committed preventive work remains an evidence-stated next checkpoint and is never labeled an Existing prevention control or an agent recommendation.</li>
-        <li><strong>Mitigation Maturity</strong>: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.</li>
-        <li><strong>Progress Summary and Timeline</strong>: Progress Summary renders up to five substantive state transitions in the primary problem lifecycle and renders one when only one exists; it never pads or repeats evidence. When supported, transitions include the original objective, pause, corrected understanding, implemented action, and outcome. Status pings remain available for stall analysis but are omitted from display when non-substantive. Rendered dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.</li>
-        <li><strong>Ownership &amp; Next Step</strong>: Assignee, last concrete action, stated next action, owner, and due date. It only restates evidence-backed commitments.</li>
-        <li><strong>Appendix A — Evidence Register</strong>: The final section, using <code>Ref | Date | Source | Verbatim evidence / data | Supports</code>.</li>
+        <li><strong>standard</strong>: Default investigation-complete first or unchanged review with Case Card, mandatory Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and an optional secondary diagnostic visual.</li>
+        <li><strong>compact</strong>: Explicit compact request only; renders the Case Card without the investigation-complete sections.</li>
+        <li><strong>follow-up</strong>: Automatic delta-first view when a prior successful review has material state, ownership, or evidence changes; it then renders the same investigation-complete core as standard.</li>
+        <li><strong>technical</strong>: Fixed <code>Field | Proof state | Value | Evidence basis</code> Technical Specification.</li>
+        <li><strong>flow</strong>: Explicit investigation visual with chronology-not-causality wording and a seven-node Mermaid limit.</li>
+        <li><strong>full</strong>: Explicit structured report; the only mode that renders Appendix A — Evidence Register, with that section last.</li>
     </ol>
+    <p>The standard/follow-up renderer always includes a bounded Investigation Progress flow. The secondary diagnostic router may add at most one event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint. Visual context never invents recurrence, hypotheses, component handoffs, or causal edges. Mitigation maturity remains Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.</p>
+    <p>All dated milestones, timeline rows, and evidence rows are ordered oldest to newest; undated entries follow dated entries.</p>
 
     <h4>Evidence Processing Contract</h4>
     <ol>
@@ -336,14 +332,19 @@
         <li>Source conflicts remain visible and disputed conclusions remain <code>unknown</code> until resolved.</li>
         <li>Evidence entries are never split, duplicated, or invented to reach a target count.</li>
         <li>A reference guide may explain case evidence but cannot replace it.</li>
-        <li>The body contains no Evidence IDs; <code>Supports</code> reverse-maps each appendix row to exact body conclusions.</li>
+        <li><code>standard</code> and <code>follow-up</code> render the complete dynamic Evidence Register; <code>compact</code>, <code>technical</code>, and <code>flow</code> contain no Evidence IDs. <code>Supports</code> reverse-maps each evidence row to exact structured conclusions.</li>
         <li>The agent does not generate risk lists, scores, or directives. The agent does not generate recommendations. Evidence-backed commitments may be restated only as planned work or evidence-stated next checkpoints.</li>
         <li>Any rendered list or table containing dates or timestamps is sorted ascending by normalized date/time; the freshness calculation still uses the newest dated evidence internally.</li>
-        <li>Generate Technical &amp; Incident Assessment before extracting Executive Summary so the headline conclusion has one reasoning source.</li>
-        <li>Remove technical paragraphs that only paraphrase the summary without new findings, mechanism, validation, or unresolved gaps.</li>
-        <li>Future prevention is excluded from Executive Summary. Existing prevention controls appear only under the relevant technical problem when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.</li>
-        <li>Progress Summary has no minimum count; its displayed milestone count follows the available substantive evidence and never pads or repeats evidence.</li>
+        <li>Build structured analysis before presentation; do not draft narrative prose and then attempt to compress it.</li>
+        <li>Distinguish <code>NOT OBSERVED</code>, <code>NOT COLLECTED</code>, <code>UNKNOWN</code>, and <code>NOT APPLICABLE</code>; never use numeric confidence percentages.</li>
+        <li>Existing prevention controls appear only when evidence confirms implementation. Planned work remains planned and is never an agent recommendation.</li>
+        <li>Milestones have no minimum count, remain chronological, and never pad or repeat evidence.</li>
     </ol>
+
+    <h4>Durable Follow-up Record and Closed-Case Learning</h4>
+    <p>After a successful evidence-gated review, <code>plugins/avaya-case-review/skills/case-review/scripts/case_record.py</code> atomically creates or updates one record under <code>%LOCALAPPDATA%\AvayaCaseReview\case-records\&lt;CASE-ID&gt;\</code>. <code>record.json</code> stores ReviewSnapshot v2 and deterministic state/history; <code>record.md</code> is the compact human view. <code>present --markdown-only</code> writes canonical <code>chat-output.md</code> and <code>chat-output.sha256</code>, and <code>verify-final</code> rejects a proposed final response that differs beyond line-ending or final-newline normalization. Detailed technical, visual, and full views are generated on demand. Duplicate completed snapshots are idempotent, and v1 records migrate without losing history or their legacy report.</p>
+    <p>The prior record is loaded only by the post-analysis comparison step. It is not evidence, does not alter source scope, and cannot satisfy the current coverage gate. The helper rejects incomplete coverage, mismatched counters, missing hashes/manifests, unsupported RCA or mitigation states, and empty evidence digests before any write.</p>
+    <p>Administrative state is derived separately from RCA, mitigation, and production outcome. Closed, Resolved, or Completed makes learning available but never changes an <code>unknown</code> technical outcome. On explicit request, the workflow drafts a customer-sanitized candidate with its evidence strength, activation conditions, diagnostic steps, disconfirming signals, and limitations. <code>apply-learning --approved-by-user</code> is required before the candidate is placed in <code>%LOCALAPPDATA%\AvayaCaseReview\domain-knowledge\&lt;domain&gt;.md</code>. Local overlays are loaded after packaged references and remain diagnostic guidance rather than case proof. A later reopened state automatically suspends the originating case's applied overlay entry until reclosure and reapproval.</p>
 
     <h4>Vendor Handoff Reference Matrix</h4>
     <p>This reference applies only after case evidence establishes the failing component. It does not assign vendor ownership; the Manager retains ownership and risk judgment.</p>
@@ -414,7 +415,7 @@ function sendDailyManagerDigest() { ... }</pre>
         <li><strong>SSO Session Token Isolation</strong>: The broker-owned Edge SSO context is isolated in <code>%USERPROFILE%\.gemini\tools\gmail\edge_broker_profile</code>; state and lock files are ACL-protected under <code>%LOCALAPPDATA%\AvayaCaseReview\gmail-broker</code>.</li>
         <li><strong>Single Browser Owner</strong>: MCP processes never launch Edge in broker mode. A lifetime owner lock and loopback token prevent a second broker from opening the profile.</li>
         <li><strong>Transport Security</strong>: Internal TLS endpoints (CaseToMD server) use HTTPS with explicit SSL context handling; broker traffic is loopback-only and token-authenticated.</li>
-        <li><strong>Data Minimization</strong>: Case data is fetched on-demand in memory; no persistent raw ticket database copies are stored locally and broker logs contain only sanitized counters.</li>
+        <li><strong>Data Minimization</strong>: Raw Gmail corpora and attachment bodies are not persisted. The user-controlled follow-up record stores ReviewSnapshot v2, a decisive evidence digest, and compact longitudinal state under <code>%LOCALAPPDATA%\AvayaCaseReview</code>; approved learning must remove customer-specific data. Broker logs contain only sanitized counters.</li>
     </ol>
 
     <h2>5. Deployment & Installation Architecture</h2>
@@ -449,6 +450,7 @@ playwright install chromium
         <li><strong>Optional Apps Script Validation</strong>: Only when the governance extension is separately deployed, execute its <code>doGet()</code> health check, a controlled <code>doPost()</code> test payload, and the configured trigger. This is not part of the standard release validation.</li>
         <li><strong>Presentation &amp; Doc Generation</strong>: Validate the PowerPoint and interactive HTML artifacts when those files change.</li>
         <li><strong>Codex Packaging</strong>: Run the plugin validator, <code>tests/test_codex_plugin_packaging.py</code>, the PowerShell parser, and a reversible local marketplace/plugin installation smoke test.</li>
+        <li><strong>Case Record Lifecycle</strong>: <code>python -m unittest tests.test_case_record -v</code> verifies atomic creation/update, append-only history, delta computation, duplicate idempotency, incomplete-collection immutability, closure separation, and approval-gated learning overlays.</li>
     </ol>
 
 </div>

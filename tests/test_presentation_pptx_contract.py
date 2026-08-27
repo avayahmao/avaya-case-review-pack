@@ -195,12 +195,18 @@ class PresentationPptxContractTests(unittest.TestCase):
 
     def test_required_current_contract_and_architecture_language(self):
         required = (
-            "6-8 Sentence Executive Summary",
-            "Technical & Incident Assessment",
-            "Progress Summary",
-            "Ownership & Next Step",
-            "Timeline",
-            "Appendix A",
+            "Proof-State Technical Specification",
+            "Technical Specification Example",
+            "NOT OBSERVED",
+            "NOT COLLECTED",
+            "Deterministic Case Review Presentation Modes",
+            "Structured ReviewSnapshot v2",
+            "1. standard",
+            "2. compact",
+            "3. follow-up",
+            "4. technical",
+            "5. flow + Adaptive Visual",
+            "6. full",
             "Evidence Register",
             "Single Managed Edge Broker",
             "edge_broker_profile",
@@ -233,6 +239,11 @@ class PresentationPptxContractTests(unittest.TestCase):
             "Automatically verifies whether",
             "Enforces official Javadoc path",
             "blaming JTAPI SDK null returns instead of CM",
+            "6-8 Sentence Executive Summary",
+            "Standardized Executive Review Report Structure",
+            "Technical & Incident Assessment",
+            "Progress Summary",
+            "Ownership & Next Step",
         )
         for phrase in prohibited:
             with self.subTest(phrase=phrase):
@@ -262,7 +273,7 @@ class PresentationPptxContractTests(unittest.TestCase):
         )
         self.assertIsNone(limited_collection.search(self.visible_deck_text))
 
-    def test_slide_10_has_six_separate_sections_in_visual_reading_order(self):
+    def test_slide_10_has_six_presentation_modes_in_visual_reading_order(self):
         self.assertGreaterEqual(len(self.shape_slides), 10)
         report_shapes = [
             shape
@@ -270,12 +281,12 @@ class PresentationPptxContractTests(unittest.TestCase):
             if shape_intersects_canvas(shape, self.canvas)
         ]
         headings = (
-            "1. 6-8 Sentence Executive Summary",
-            "2. Technical & Incident Assessment",
-            "3. Progress Summary",
-            "4. Ownership & Next Step",
-            "5. Timeline",
-            "6. Appendix A — Evidence Register",
+            "1. standard",
+            "2. compact",
+            "3. follow-up",
+            "4. technical",
+            "5. flow + Adaptive Visual",
+            "6. full",
         )
         heading_shapes = []
         for heading in headings:

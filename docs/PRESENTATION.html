@@ -426,12 +426,12 @@ get_case_markdown(report_id: "1-23659220672")
     <div class="slide">
         <div class="slide-header">
             <div class="kicker">AVAYA CASE REVIEW SUITE</div>
-            <h2>Evidence-Grounded Technical Assessment (The Engine Brain)</h2>
+            <h2>Proof-State Technical Specification (The Engine Brain)</h2>
         </div>
         <div class="slide-body">
             <div class="grid-2">
                 <div class="card">
-                    <h3>How Technical Auditing Works</h3>
+                    <h3>How Evidence-Grounded Technical Review Works</h3>
                     <p><strong>🧠 Layer-by-Layer Verification</strong><br>
                     Compares supplied application and platform evidence across layers. A matching pattern guides interpretation but does not establish a proven cause.</p>
                     <p><strong>🧠 Platform Configuration Evidence Check</strong><br>
@@ -442,30 +442,26 @@ get_case_markdown(report_id: "1-23659220672")
                     Identifies whether expected logs were requested, attached, or analyzed and records evidence gaps; it does not ensure collection or attachment.</p>
                 </div>
                 <div class="card dark">
-                    <h3>Technical Assessment Example</h3>
-                    <div class="code-box">## Technical &amp; Incident Assessment
+                    <h3>Technical Specification Example</h3>
+                    <div class="code-box">## Technical Specification
 
-Problem clarification:
-  The example record describes missing trunk CLI
-  on a second unpark, but affected scope and
-  reproducibility are not established.
+Scope | UNKNOWN
+  Affected scope is not established.
 
-Findings:
-  A JTAPI null return is recorded. Synchronized
-  csta_trace / g3trace and the relevant CM feature
-  values are absent, so the application/CM event
-  boundary cannot be verified.
+Symptom | OBSERVED
+  A JTAPI null return is recorded.
 
-Cause state — Under Investigation:
-  A CM feature-configuration issue is a working
-  hypothesis and has not been established as
-  causal. Other paths remain open pending evidence.
+Confirmed mechanism | NOT OBSERVED
+  Same-event application/CM evidence is absent.
 
-Solution / validation state:
-  No implemented change or production outcome is
-  confirmed. Validation remains pending because
-  CM attribute output and synchronized JTAPI/CM
-  traces are missing.</div>
+Suspected or unproven | SUSPECTED
+  CM feature configuration remains a hypothesis.
+
+Verification | NOT COLLECTED
+  Synchronized csta_trace / g3trace is missing.
+
+Production outcome | UNKNOWN
+  No post-change production evidence is present.</div>
                 </div>
             </div>
         </div>
@@ -498,33 +494,33 @@ Solution / validation state:
     <div class="slide">
         <div class="slide-header">
             <div class="kicker">AVAYA CASE REVIEW SUITE</div>
-            <h2>Standardized Executive Review Report Structure</h2>
+            <h2>Deterministic Case Review Presentation Modes</h2>
         </div>
         <div class="slide-body">
             <div class="grid-2" style="gap: 12px;">
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>1. 6-8 Sentence Executive Summary</h3>
-                    <p style="margin: 0;">One paragraph anchored in the primary problem and whole-case storyline, then conclusion-level impact, response, RCA state, mitigation, status, and next checkpoint.</p>
+                    <h3>1. standard</h3>
+                    <p style="margin: 0;">Investigation-complete default preserves the whole-case storyline: progress flow, Causal Assessment, Timeline, Evidence Register, plus a secondary diagnostic visual when useful.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>2. Technical &amp; Incident Assessment</h3>
-                    <p style="margin: 0;">Problem clarification, findings, cause reasoning, solution validation, and unresolved technical gaps without repeating the summary.</p>
+                    <h3>2. compact</h3>
+                    <p style="margin: 0;">Explicit short view only; the Case Card retains the primary problem, conflict, blocker, owner, and ETA.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>3. Progress Summary</h3>
-                    <p style="margin: 0;">Primary-problem state transitions: original objective, pause, corrected understanding, implemented action, and outcome when evidenced.</p>
+                    <h3>3. follow-up</h3>
+                    <p style="margin: 0;">Material delta first, followed by the complete standard investigation; the prior record remains comparison only.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>4. Ownership &amp; Next Step</h3>
-                    <p style="margin: 0;">Evidence-stated assignee, last concrete action, next action, owner, and due date.</p>
+                    <h3>4. technical</h3>
+                    <p style="margin: 0;">Fixed proof-state Technical Specification distinguishes observed, uncollected, unobserved, unknown, and inapplicable fields.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>5. Timeline</h3>
-                    <p style="margin: 0;">Dated substantive events ordered oldest to newest, followed by any undated events.</p>
+                    <h3>5. flow + Adaptive Visual</h3>
+                    <p style="margin: 0;">Explicit progress flow of evidence-backed state transitions with chronology-only arrows; it is never replaced by another diagnostic visual.</p>
                 </div>
                 <div class="card" style="padding: 12px 20px;">
-                    <h3>6. Appendix A — Evidence Register</h3>
-                    <p style="margin: 0;">Final reverse-mapped evidence table preserving the audit chain without inline citations.</p>
+                    <h3>6. full</h3>
+                    <p style="margin: 0;">Explicit on-demand structured view; Appendix A — Evidence Register remains last and preserves the reverse-mapped audit chain.</p>
                 </div>
             </div>
         </div>

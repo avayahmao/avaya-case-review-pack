@@ -13,7 +13,9 @@ param(
     [string]$ConfigMigrationCaseToMdScript
 )
 
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+if (-not $ConfigMigrationOnly) {
+    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -131,11 +133,15 @@ function Get-ProfileBaseline {
     }
     $ResolvedRoot = (Resolve-Path -LiteralPath $Path).Path.TrimEnd("\", "/")
     $Records = @(
-        Get-ChildItem -LiteralPath $ResolvedRoot -Recurse -Force -File |
+        Get-ChildItem -LiteralPath $ResolvedRoot -Recurse -Force -File -ErrorAction SilentlyContinue |
             Sort-Object -Property FullName |
             ForEach-Object {
                 $RelativePath = $_.FullName.Substring($ResolvedRoot.Length).TrimStart("\", "/")
-                $Hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                $Hash = try {
+                    (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+                } catch {
+                    "LOCKED"
+                }
                 "{0}|{1}|{2}" -f $RelativePath, $_.Length, $Hash
             }
     )

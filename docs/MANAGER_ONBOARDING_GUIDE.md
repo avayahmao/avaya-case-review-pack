@@ -121,24 +121,40 @@ To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigra
 - **Focusing on Specific Risks & Technical Directions**:
   > *"Review SR 1-2401829311 and check if the technical investigation is on track or misdirected."*
 
+- **Continue a Follow-up**:
+  > *"Review SR 1-23659220672 again and show what changed."*
+
+- **Learn from a Closed Case**:
+  > *"Learn from closed SR 1-23659220672."*
+
 ### What the Generated Case Review Contains
 
-The case review produces a structured, evidence-grounded executive report:
+Every successful review first creates a **structured ReviewSnapshot v2** from the complete evidence corpus. It preserves the whole-case storyline and problem lineage from the primary problem through blockers, corrections, outcome, and secondary problems, plus the fixed proof-state Technical Specification, milestones, timeline, Evidence Register, and evidence-only visual context before any chat presentation is rendered.
 
-Before rendering, it reconstructs the **whole-case storyline and problem lineage** from all Case notes and primary-ID-matched Gmail messages. The original customer objective anchors the review; blockers, intermediate working hypotheses, later corrections, implemented actions, primary outcome, and secondary problems retain their chronological and causal relationship. A latest or longer email does not receive extra weight merely because it is recent or detailed.
+The deterministic router then selects one mode:
 
-1. **Executive Summary**: One citation-free 6-8 sentence paragraph for management and technical readers. It is proportioned across the complete case lifecycle and starts with the primary problem before materially relevant secondary issues. It provides conclusion-level information on the evidenced timing/location, affected scope, impact, key response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are `unknown`.
-2. **Two Freshness Clocks**:
-   - **Case record freshness**: age of the official record's latest update.
-   - **Last substantive progress age**: age of the latest concrete technical, mitigation, decision, or impact change.
-   - Closed/Resolved records are not marked stale solely because they are old.
-3. **Conditional Technical & Incident Assessment**: Starts with the primary problem and adds technical reasoning while preserving its lineage through blockers, working hypotheses, corrected findings, solution and validation, and unresolved gaps; secondary problems follow according to their relationship to the primary problem. It does not restate the complete incident or business impact. Exactly one of a multi-problem `Problem Statement` or a single-issue `Incident & RCA Summary` is used. Future prevention is excluded from Executive Summary. Existing prevention controls appear only here when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.
-4. **Mitigation Maturity**: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.
-5. **Progress Summary and Timeline**: Substantive state transitions in the primary problem lifecycle from CaseToMD, Gmail, supplied documents, and logs, including an evidenced pause, corrected understanding, implemented action, and outcome. Routine status pings are retained for stall analysis but omitted from display. All dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.
-6. **Ownership & Next Step**: Assignee, last concrete action, stated next action, next-action owner, and due date. This section only restates evidence-backed commitments and does not generate advice.
-7. **Appendix A — Evidence Register**: The final report section. Its table contains Ref, Date, Source, **Verbatim evidence / data**, and **Supports**; Supports reverse-maps each row to the exact body conclusion.
+1. **standard**: Default investigation-complete first or unchanged review. It includes the Case Card, Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and an optional secondary diagnostic visual.
+2. **compact**: Explicit compact request only. It returns the Case Card without replaying the complete investigation.
+3. **follow-up**: Automatic when a prior successful review exists and material state, ownership, or evidence changed. Computed changes appear first, followed by the same investigation-complete core as standard.
+4. **technical**: A fixed **Technical Specification** table using Field / Proof state / Value / Evidence basis. `NOT OBSERVED`, `NOT COLLECTED`, `UNKNOWN`, and `NOT APPLICABLE` remain distinct.
+5. **flow**: An investigation visual requested by the user. Chronology arrows do not claim causality and Mermaid flows are limited to seven nodes.
+6. **full**: Explicit on-demand structured report. This is the only mode that renders the complete Timeline and **Appendix A — Evidence Register**, with the Evidence Register last.
 
-The main body contains no Evidence IDs. Risk and action judgments remain with the Manager. If no verifiable case-specific evidence exists, the answer is exactly `unknown`.
+The Investigation Progress flow is always present in standard/follow-up and uses chronology arrows, never causal arrows. The router may add one secondary evidence-backed event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint. It never invents a causal edge or component handoff, and a Claim-Evidence Matrix always retains all four columns.
+
+The presenter writes canonical `chat-output.md` plus `chat-output.sha256`. The final-output verifier must pass before the rendered Markdown is returned unchanged; a mismatch blocks completion.
+
+All dated milestones, timeline rows, and evidence rows are ordered oldest to newest; undated entries follow dated entries.
+
+Mitigation maturity remains Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Risk and action judgments remain with the Manager. With no verifiable case-specific evidence, the answer is exactly `unknown` and the record is unchanged.
+
+### Durable Follow-up Record
+
+Every successful review creates or updates one persistent record for the normalized primary Case ID under `%LOCALAPPDATA%\AvayaCaseReview\case-records\<CASE-ID>\`. The record contains ReviewSnapshot v2, the current Case Card, computed delta, append-only compact history, and decisive evidence digest. Detailed technical, visual, and full views are generated on demand from the stored structured snapshot.
+
+A repeated review always recollects CaseToMD and Gmail under a fresh complete snapshot. The prior record is not evidence and cannot satisfy the collection gate. If collection fails, the stored record is not changed.
+
+Official Closed, Resolved, or Completed status marks administrative closure only. It does not prove validated RCA or confirmed production recovery. A closed record shows `Learning option: available`. Asking to learn creates a sanitized, evidence-strength-labeled candidate; the candidate is applied to the persistent local domain overlay only after explicit approval. Future matching reviews may use that overlay as diagnostic guidance, never as case proof. If the case later reopens, its applied learning entry is suspended until a new closure and approval.
 
 
 ---
@@ -173,4 +189,6 @@ The main body contains no Evidence IDs. Risk and action judgments remain with th
 | **Edge broker session** | `C:\Users\<username>\.gemini\tools\gmail\edge_broker_profile` | Dedicated persistent SSO context |
 | **Legacy rollback session** | `C:\Users\<username>\.gemini\tools\gmail\chrome_profile` | Explicit `legacy_playwright` fallback only |
 | **Broker state** | `%LOCALAPPDATA%\AvayaCaseReview\gmail-broker` | State, lock, and sanitized rotating log |
+| **Case follow-up records** | `%LOCALAPPDATA%\AvayaCaseReview\case-records` | Per-Case-ID ReviewSnapshot v2, current card, deltas, and compact history |
+| **Approved local knowledge** | `%LOCALAPPDATA%\AvayaCaseReview\domain-knowledge` | User-approved sanitized learning overlays loaded after packaged references |
 | **MCP Config File** | `C:\Users\<username>\.gemini\config\mcp_config.json` | JSON configuration for Gmail and CaseToMD MCP servers |

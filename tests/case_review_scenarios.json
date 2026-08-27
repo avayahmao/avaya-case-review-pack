@@ -8,14 +8,14 @@
   {
     "id": "single_issue_with_evidence",
     "input": "One incident supported by one case activity entry.",
-    "expected": "Use the single-issue structure, render one supported Progress Summary milestone without padding or repeated evidence, keep the body citation-free, and reverse-map the supporting row in the final appendix.",
-    "contract_markers": ["single-issue assessment", "E1..EN", "Answer only the portion supported by evidence", "render one when only one exists", "Do not pad or repeat evidence"]
+    "expected": "Return a balanced standard view without padding, while retaining dynamic evidence and reverse mapping in the structured snapshot.",
+    "contract_markers": ["single-issue assessment", "E1..EN", "Answer only the portion supported by evidence", "default `standard` view"]
   },
   {
     "id": "multi_problem_case",
     "input": "One review contains two independently evidenced problems or related records.",
-    "expected": "Use the multi-problem structure, make no recommendations, and reverse-map all supporting evidence in the final appendix.",
-    "contract_markers": ["multi-problem assessment", "Appendix A — Evidence Register", "must never generate a new recommendation"]
+    "expected": "Preserve primary-first problem lineage, make no recommendations, and retain evidence reverse mapping for explicit full mode.",
+    "contract_markers": ["multi-problem assessment", "problem_lineage", "Outputs must not generate risk scores"]
   },
   {
     "id": "gmail_no_results",
@@ -33,19 +33,19 @@
     "id": "chronological_output_order",
     "input": "The review contains dated milestones, timeline events, evidence rows, and ADM diagnostic chronology.",
     "expected": "Render every dated or timestamped list and table from oldest to newest, placing undated entries last.",
-    "contract_markers": ["Chronological output order", "ascending date/time order", "oldest to newest"]
+    "contract_markers": ["Chronological output order", "ascending order (oldest first)", "milestones and timeline chronological"]
   },
   {
-    "id": "executive_summary_layering",
-    "input": "A mixed VP and technical audience needs one concise incident summary before the detailed assessment.",
-    "expected": "Use one natural-language 6-8 sentence conclusion-only paragraph and exclude future prevention and detailed diagnostics.",
-    "contract_markers": ["one natural-language paragraph of 6-8 sentences", "conclusion-level information", "Future prevention"]
+    "id": "standard_default_output",
+    "input": "A manager asks only to review one SR.",
+    "expected": "Automatically return an investigation-complete standard view with the Case Card, progress flow, causal assessment, technical fields, substantive Timeline, and complete dynamic Evidence Register.",
+    "contract_markers": ["default `standard` view", "Investigation Progress flow", "Causal Assessment", "complete dynamic Evidence Register", "case_record.py present"]
   },
   {
-    "id": "executive_technical_deduplication",
-    "input": "The same evidence and findings are available to both the Executive Summary and Technical & Incident Assessment.",
-    "expected": "State the headline once in the summary, then use the technical assessment for mechanism, evidence, validation, and unresolved gaps.",
-    "contract_markers": ["only paraphrases an Executive Summary sentence", "environment or affected-component detail", "solution, workaround, implementation, or verification detail"]
+    "id": "technical_spec_proof_states",
+    "input": "The user requests a dry technical review.",
+    "expected": "Render the fixed Technical Specification and distinguish unsupported, uncollected, unobserved, and inapplicable fields.",
+    "contract_markers": ["Technical Specification", "NOT OBSERVED", "NOT COLLECTED", "NOT APPLICABLE"]
   },
   {
     "id": "whole_case_storyline_and_problem_lineage",
@@ -56,20 +56,20 @@
   {
     "id": "adm_technical_depth_without_duplicate_sections",
     "input": "The user explicitly requests ADM or Avaya Diagnostic Methodology analysis.",
-    "expected": "Deepen the technical assessment across Details/Findings, Problem Clarification, Cause, and Solution without creating a second four-heading report or expanding the Executive Summary.",
-    "contract_markers": ["ADM mode activates", "increases the depth of `Technical & Incident Assessment` only", "not required to display four mechanical ADM headings"]
+    "expected": "Deepen structured problem lineage and Technical Specification without creating a second four-heading report.",
+    "contract_markers": ["ADM activates only when explicitly requested", "structured problem lineage and Technical Specification", "do not generate a second ADM outline"]
   },
   {
     "id": "adm_sparse_evidence",
     "input": "The user explicitly requests ADM, but the record supports findings while cause and solution evidence are unavailable.",
-    "expected": "Report the supported findings and explicit missing-evidence or investigation gaps for relevant unsupported dimensions without inventing a cause, solution, or rigid filler.",
-    "contract_markers": ["For each of the four ADM dimensions", "explicit unresolved evidence or investigation gap", "rigid filler or invention"]
+    "expected": "Populate supported structured fields and explicit evidence gaps without inventing cause, solution, or filler prose.",
+    "contract_markers": ["explicit evidence gaps", "unsupported dimensions", "filler prose"]
   },
   {
     "id": "preventive_next_checkpoint",
     "input": "Evidence states a future preventive validation or change with an owner and ETA, but it has not been implemented.",
-    "expected": "The Executive Summary may state it only as the next committed checkpoint, Ownership restates the commitment, and the technical assessment distinguishes planned work from implemented controls without recommendation language.",
-    "contract_markers": ["evidence-stated next action or checkpoint", "existing commitment or current planned work", "must not be labeled an Existing prevention control"]
+    "expected": "The Case Card may restate the checkpoint only as an existing commitment; planned work must remain distinct from implemented controls.",
+    "contract_markers": ["Evidence-stated actions and checkpoints remain existing commitments", "never agent recommendations or implemented controls", "planned work is not an existing control"]
   },
   {
     "id": "lab_success_not_production_confirmed",
@@ -93,13 +93,43 @@
     "id": "zero_case_evidence",
     "input": "No verifiable case-specific evidence was retrieved.",
     "expected": "Output exactly: unknown",
-    "contract_markers": ["output exactly `unknown`", "Do not emit the report template"]
+    "contract_markers": ["output exactly `unknown`", "Do not persist or render a review"]
   },
   {
     "id": "appendix_reverse_mapping",
     "input": "Several body conclusions are supported by overlapping case and Gmail evidence.",
-    "expected": "Keep the body citation-free and map each appendix row back through the Supports column.",
-    "contract_markers": ["body must contain no Evidence IDs", "Supports", "final section"]
+    "expected": "Render the complete reverse-mapped Evidence Register in standard and follow-up, and keep the same register as Appendix A in explicit full mode.",
+    "contract_markers": ["complete dynamic Evidence Register", "Supports", "final section of explicit `full` mode only"]
+  },
+  {
+    "id": "delta_first_follow_up",
+    "input": "The same SR is reviewed again after a new complete snapshot.",
+    "expected": "Update the durable record once and place computed changes and unchanged blockers before current state.",
+    "contract_markers": ["use the helper-computed delta", "post-analysis delta comparison", "case_record.py present"]
+  },
+  {
+    "id": "unchanged_follow_up_standard",
+    "input": "A fresh follow-up snapshot has no material state, ownership, or evidence change.",
+    "expected": "Return investigation-complete standard mode without a delta block; compact remains explicit-only.",
+    "contract_markers": ["follow-up with no material state, ownership, or evidence change", "investigation-complete `standard`", "`compact` is explicit-only"]
+  },
+  {
+    "id": "final_output_integrity",
+    "input": "The deterministic presenter produced a complete four-column Claim-Evidence Matrix, but a proposed final answer removes columns or shortens conflict, validation, owner, or ETA details.",
+    "expected": "Write the canonical Markdown artifact and SHA-256, reject the mismatched candidate, and block completion.",
+    "contract_markers": ["chat-output.md", "chat-output.sha256", "verify-final", "mismatch blocks completion"]
+  },
+  {
+    "id": "adaptive_visual_selection",
+    "input": "A case contains recurrence, competing hypotheses, multiple components, or three investigation transitions.",
+    "expected": "Always render a bounded progress flow, then select at most one additional evidence-backed diagnostic visual without inventing causal edges.",
+    "contract_markers": ["mandatory progress flow", "secondary diagnostic visual", "seven-node Mermaid limit", "Never add a visual-context item"]
+  },
+  {
+    "id": "explicit_full_mode",
+    "input": "The user explicitly requests the full report and evidence register.",
+    "expected": "Render the complete structured view and place Appendix A last.",
+    "contract_markers": ["explicit `full` mode", "Appendix A — Evidence Register", "final section of explicit `full` mode only"]
   },
   {
     "id": "all_case_notes_before_gmail",

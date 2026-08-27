@@ -127,26 +127,34 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <p><em>"Review SR 1-2401829311 and check if the technical investigation is on track or misdirected."</em></p>
 </blockquote>
 </li>
+<li>
+<p><strong>Continue a Follow-up</strong>:</p>
+<blockquote><p><em>"Review SR 1-23659220672 again and show what changed."</em></p></blockquote>
+</li>
+<li>
+<p><strong>Learn from a Closed Case</strong>:</p>
+<blockquote><p><em>"Learn from closed SR 1-23659220672."</em></p></blockquote>
+</li>
 </ul>
 <h3>What the Generated Case Review Contains</h3>
-<p>The case review produces a structured, evidence-grounded executive report:</p>
-<p>Before rendering, it reconstructs the <strong>whole-case storyline and problem lineage</strong> from all Case notes and primary-ID-matched Gmail messages. The original customer objective anchors the review; blockers, intermediate working hypotheses, later corrections, implemented actions, primary outcome, and secondary problems retain their chronological and causal relationship. A latest or longer email does not receive extra weight merely because it is recent or detailed.</p>
+<p>Every successful review first creates a <strong>structured ReviewSnapshot v2</strong> from the complete evidence corpus. It preserves the whole-case storyline and problem lineage from the primary problem through blockers, corrections, outcome, and secondary problems, plus the fixed proof-state Technical Specification, milestones, timeline, Evidence Register, and evidence-only visual context before any chat presentation is rendered.</p>
+<p>The deterministic router then selects one mode:</p>
 <ol>
-<li><strong>Executive Summary</strong>: One citation-free 6-8 sentence paragraph for management and technical readers. It is proportioned across the complete case lifecycle and starts with the primary problem before materially relevant secondary issues. It provides conclusion-level information on the evidenced timing/location, affected scope, impact, key response, a one-sentence RCA state or supported conclusion, mitigation maturity and production outcome, current status, and the next evidence-backed checkpoint. Unsupported required facts are <code>unknown</code>.</li>
-<li><strong>Two Freshness Clocks</strong>:
-<ul>
-<li><strong>Case record freshness</strong>: age of the official record's latest update.</li>
-<li><strong>Last substantive progress age</strong>: age of the latest concrete technical, mitigation, decision, or impact change.</li>
-<li>Closed/Resolved records are not marked stale solely because they are old.</li>
-</ul>
-</li>
-<li><strong>Conditional Technical &amp; Incident Assessment</strong>: Starts with the primary problem and adds technical reasoning while preserving its lineage through blockers, working hypotheses, corrected findings, solution and validation, and unresolved gaps; secondary problems follow according to their relationship to the primary problem. It does not restate the complete incident or business impact. Exactly one of a multi-problem <code>Problem Statement</code> or a single-issue <code>Incident &amp; RCA Summary</code> is used. Future prevention is excluded from Executive Summary. Existing prevention controls appear only here when evidence confirms they are implemented. Planned or committed preventive work remains planned work or an evidence-stated next checkpoint; it is never labeled an Existing prevention control or an agent recommendation.</li>
-<li><strong>Mitigation Maturity</strong>: Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Lab success is not presented as production resolution.</li>
-<li><strong>Progress Summary and Timeline</strong>: Substantive state transitions in the primary problem lifecycle from CaseToMD, Gmail, supplied documents, and logs, including an evidenced pause, corrected understanding, implemented action, and outcome. Routine status pings are retained for stall analysis but omitted from display. All dated or timestamped entries are ordered oldest to newest; undated entries follow dated entries.</li>
-<li><strong>Ownership &amp; Next Step</strong>: Assignee, last concrete action, stated next action, next-action owner, and due date. This section only restates evidence-backed commitments and does not generate advice.</li>
-<li><strong>Appendix A — Evidence Register</strong>: The final report section. Its table contains Ref, Date, Source, <strong>Verbatim evidence / data</strong>, and <strong>Supports</strong>; Supports reverse-maps each row to the exact body conclusion.</li>
+<li><strong>standard</strong>: Default investigation-complete first or unchanged review. It includes the Case Card, Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and an optional secondary diagnostic visual.</li>
+<li><strong>compact</strong>: Explicit compact request only. It returns the Case Card without replaying the complete investigation.</li>
+<li><strong>follow-up</strong>: Automatic when a prior successful review exists and material state, ownership, or evidence changed. Computed changes appear first, followed by the same investigation-complete core as standard.</li>
+<li><strong>technical</strong>: A fixed <strong>Technical Specification</strong> table using Field / Proof state / Value / Evidence basis. <code>NOT OBSERVED</code>, <code>NOT COLLECTED</code>, <code>UNKNOWN</code>, and <code>NOT APPLICABLE</code> remain distinct.</li>
+<li><strong>flow</strong>: An investigation visual requested by the user. Chronology arrows do not claim causality and Mermaid flows are limited to seven nodes.</li>
+<li><strong>full</strong>: Explicit on-demand structured report. This is the only mode that renders the complete Timeline and <strong>Appendix A — Evidence Register</strong>, with the Evidence Register last.</li>
 </ol>
-<p>The main body contains no Evidence IDs. Risk and action judgments remain with the Manager. If no verifiable case-specific evidence exists, the answer is exactly <code>unknown</code>.</p>
+<p>The Investigation Progress flow is always present in standard/follow-up and uses chronology arrows, never causal arrows. The router may add one secondary evidence-backed event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint. It never invents a causal edge or component handoff, and a Claim-Evidence Matrix always retains all four columns.</p>
+<p>The presenter writes canonical <code>chat-output.md</code> plus <code>chat-output.sha256</code>. The final-output verifier must pass before the rendered Markdown is returned unchanged; a mismatch blocks completion.</p>
+<p>All dated milestones, timeline rows, and evidence rows are ordered oldest to newest; undated entries follow dated entries.</p>
+<p>Mitigation maturity remains Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Risk and action judgments remain with the Manager. With no verifiable case-specific evidence, the answer is exactly <code>unknown</code> and the record is unchanged.</p>
+<h3>Durable Follow-up Record</h3>
+<p>Every successful review creates or updates one persistent record for the normalized primary Case ID under <code>%LOCALAPPDATA%\AvayaCaseReview\case-records\&lt;CASE-ID&gt;\</code>. The record contains ReviewSnapshot v2, the current Case Card, computed delta, append-only compact history, and decisive evidence digest. Detailed technical, visual, and full views are generated on demand from the stored structured snapshot.</p>
+<p>A repeated review always recollects CaseToMD and Gmail under a fresh complete snapshot. The prior record is not evidence and cannot satisfy the collection gate. If collection fails, the stored record is not changed.</p>
+<p>Official Closed, Resolved, or Completed status marks administrative closure only. It does not prove validated RCA or confirmed production recovery. A closed record shows <code>Learning option: available</code>. Asking to learn creates a sanitized, evidence-strength-labeled candidate; the candidate is applied to the persistent local domain overlay only after explicit approval. Future matching reviews may use that overlay as diagnostic guidance, never as case proof. If the case later reopens, its applied learning entry is suspended until a new closure and approval.</p>
 
 <hr />
 <h2>6. Troubleshooting &amp; FAQs</h2>
@@ -204,6 +212,16 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <td><strong>Broker state</strong></td>
 <td><code>%LOCALAPPDATA%\AvayaCaseReview\gmail-broker</code></td>
 <td>State, lock, and sanitized rotating log</td>
+</tr>
+<tr>
+<td><strong>Case follow-up records</strong></td>
+<td><code>%LOCALAPPDATA%\AvayaCaseReview\case-records</code></td>
+<td>Per-Case-ID ReviewSnapshot v2, current card, deltas, and compact history</td>
+</tr>
+<tr>
+<td><strong>Approved local knowledge</strong></td>
+<td><code>%LOCALAPPDATA%\AvayaCaseReview\domain-knowledge</code></td>
+<td>User-approved sanitized learning overlays loaded after packaged references</td>
 </tr>
 <tr>
 <td><strong>MCP Config File</strong></td>

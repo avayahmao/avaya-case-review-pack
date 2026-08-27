@@ -1,6 +1,6 @@
 ---
 name: "case-review"
-description: "Generate an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records using CaseToMD, exhaustive Gmail context, and product-specific technical guidance."
+description: "Generate and continue an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records using CaseToMD, exhaustive Gmail context, deterministic standard/compact/follow-up/technical/flow/full presentation, final-output integrity verification, durable per-case follow-up records, and optional user-approved closed-case learning."
 ---
 
 # Avaya Case Review

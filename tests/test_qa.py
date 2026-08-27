@@ -112,8 +112,8 @@ class QATests(unittest.TestCase):
                 comments="Analysis was incomplete.",
             )
 
-    def test_each_plus_point_requires_a_plus_one_reason(self):
-        with self.assertRaisesRegex(qa.QAError, "once per Plus point"):
+    def test_technical_plus_allocations_must_sum_to_score(self):
+        with self.assertRaisesRegex(qa.QAError, "must sum to the Plus score"):
             qa.score_entry(
                 name="agent",
                 manager="manager",
@@ -122,6 +122,30 @@ class QATests(unittest.TestCase):
                 service_communication=3,
                 plus=2,
                 comments="Plus +1: Cross-team coordination.",
+            )
+
+    def test_outstanding_item_can_receive_two_points(self):
+        entry = qa.score_entry(
+            name="agent",
+            manager="manager",
+            case_id="INC1234567",
+            diagnostic_solution=5,
+            service_communication=3,
+            plus=2,
+            comments="Plus +2: Customer Pressure & Ownership — exceptional end-to-end P1 recovery.",
+        )
+        self.assertEqual(2, entry["plus"])
+
+    def test_single_item_cannot_allocate_more_than_three_points(self):
+        with self.assertRaisesRegex(qa.QAError, r"must use \+1, \+2, or \+3"):
+            qa.score_entry(
+                name="agent",
+                manager="manager",
+                case_id="INC1234567",
+                diagnostic_solution=5,
+                service_communication=3,
+                plus=4,
+                comments="Plus +4: Customer Pressure & Ownership — exceptional recovery.",
             )
 
     def test_summary_groups_engineers_and_managers(self):

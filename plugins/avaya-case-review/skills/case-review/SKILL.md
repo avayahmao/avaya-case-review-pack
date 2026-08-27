@@ -1,6 +1,6 @@
 ---
 name: "case-review"
-description: "Generate an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records. Accept raw IDs such as INC7386572, 1-23659220672, Activity IDs, CTASK..., CHG..., or PRJTASK... and use CaseToMD plus Gmail to assess progress, staleness, ownership, technical direction, and mitigation maturity."
+description: "Generate and continue an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records. Accept raw IDs such as INC7386572, 1-23659220672, Activity IDs, CTASK..., CHG..., or PRJTASK...; use CaseToMD plus Gmail; route deterministic standard, compact, follow-up, technical, flow, or full output; enforce final-output integrity; maintain one durable follow-up record per Case ID through closure; and, only on explicit request and approval, draft or apply sanitized closed-case learning to local domain knowledge."
 ---
 
 # Case Review (Operation Manager)
@@ -30,9 +30,17 @@ After retrieving the case, identify the products and symptoms actually present a
 
 Reference guides support interpretation only. They are not proof that a condition exists in the reviewed case.
 
+For a matching domain, also locate an approved local learning overlay with `python <case-review-skill-directory>/scripts/case_record.py knowledge-path --domain <reference-stem>`. Read it after the packaged reference when it exists. Local learning remains diagnostic guidance and never counts as case-specific proof.
+
 ---
 
 ## Workflow
+
+### Explicit QA Requests
+
+When the user explicitly asks for QA scoring, case-quality assessment, QA statistics, or supplies the QA rubric columns, route to the bundled `qa` skill and `scripts/qa.py`. QA is a separate management assessment layer: its scores must not be used as evidence for RCA, mitigation maturity, production outcome, customer impact, or risk classification. Do not perform CaseToMD/Gmail collection for a QA-only request unless the user also asks for a case review. Use the QA skill's validation and rendering contract for Markdown, CSV, and JSON inputs.
+
+When the user explicitly asks for alarm QA, an alarm-ticket audit, or supplies the `Check / Cause / Chronic / PLUS` alarm columns, route to the separate `alarm-audit` skill and `scripts/alarm_audit.py`. Never mix alarm-audit scores with the ordinary non-alarm QA rubric.
 
 ### Step 1 - Plan the Retrieval
 
@@ -41,6 +49,7 @@ Reference guides support interpretation only. They are not proof that a conditio
 3. Do not analyze evidence, draft conclusions, or generate any review content until the complete-context gate passes.
 4. Select domain references only after case symptoms and components are known.
 5. Reserve a final context-coverage, evidence-coverage, and format review before producing the answer.
+6. Do not read conclusions from an existing durable case record before completing the fresh current-run analysis. The prior record is a post-analysis comparison baseline, not evidence.
 
 ### Step 2 - Retrieve Required Sources
 
@@ -253,59 +262,36 @@ Use the vendor handoff matrix only after the failing component is evidenced:
   - **None Active**
 - A lab test, one repaired record, a scheduled rollout, or an engineer's success report without post-change production evidence **must not be described as production resolution**.
 
-### Layered Executive and Technical Content
+### Structured Analysis Before Presentation
 
-The **Executive Summary** owns conclusion-level information, while **Technical & Incident Assessment** owns the explanation. The summary states the conclusion; the technical assessment explains why that conclusion is justified by the evidence.
+Do not draft a report while analyzing. Build one structured, evidence-backed case state first:
 
-#### Executive Summary contract
+1. Complete the evidence ledger and whole-case problem lineage.
+2. Classify the primary problem, blockers, working hypotheses, corrected findings, actions, outcome, and secondary problems.
+3. Set RCA, mitigation maturity, production outcome, ownership, and checkpoint fields.
+4. Build the fixed Technical Specification fields and assign an allowed proof state to each.
+5. Build milestones, timeline, evidence register, and visual context from evidence only.
+6. Route and render the presentation only after persistence succeeds.
 
-- Write one natural-language paragraph of 6-8 sentences with no subheadings, bullets, field labels, or citation markers.
-- Anchor the paragraph in the whole-case storyline: state the primary problem or original customer objective before the blocker, intermediate investigation, or secondary problems.
-- Allocate narrative weight across the complete lifecycle. Explain why the original activity paused, what evidence changed the technical understanding, what action addressed the primary problem, and its outcome; a latest or longest message must not dominate solely because it is recent or detailed.
-- Mention secondary problems only after the primary problem and only to the extent needed to explain their relationship, disposition, or remaining impact.
-- Cover the following conclusion-level information in this order, combining adjacent points when needed to stay within 6-8 sentences: the incident with its evidenced time and location; affected scope; business or customer impact; key response; a one-sentence technical conclusion stating the RCA state or supported cause; mitigation maturity and production outcome; current status; and the next evidenced checkpoint with owner and ETA.
-- Use lowercase `unknown` for an unsupported detail. Do not substitute a plausible assumption or silently omit a required conclusion-level point.
-- No dedicated `Future prevention` field, recommendation, or prevention narrative belongs in the Executive Summary. Exclude raw logs, detailed troubleshooting, configuration detail, and extended cause analysis.
-- An evidence-stated next action or checkpoint may appear in the Executive Summary and `Ownership & Next Step`, even when preventive in purpose, but describe it only as an existing commitment or current planned work with its evidenced owner and ETA—never as an agent recommendation or implemented control.
+Read [output-modes.md](references/output-modes.md) before building the presentation payload. It defines `standard`, `compact`, `follow-up`, `technical`, `flow`, and `full` modes, proof states, adaptive visual rules, and length limits.
 
-#### Technical & Incident Assessment contract
-
-- Start with problem clarification, then explain the evidence and reasoning needed to support or qualify the summary conclusion.
-- Follow the whole-case storyline and problem hierarchy: explain the primary problem first, preserve the blocker and intermediate working hypotheses, identify any corrected finding, and treat secondary problems according to their relationship to the primary problem.
-- Every paragraph must add at least one of the following: environment or affected-component detail; a finding or interpreted log excerpt; causal reasoning or an RCA-state explanation; a ruled-out alternative, unresolved gap, or missing validation; solution, workaround, implementation, or verification detail; or **Existing prevention controls** already implemented and evidenced.
-- Remove any paragraph that only paraphrases an Executive Summary sentence. Do not repeat the full incident, impact, response, status, owner, or ETA unless the technical explanation requires a specific distinction.
-- Existing prevention controls appear only in the technical assessment under the relevant problem and only when evidence shows they are implemented. Planned or committed preventive work that is not implemented must not be labeled an Existing prevention control; describe it only as planned or committed work or as the next committed checkpoint. Omit controls when absent and never generate a prevention recommendation.
-
-#### Adaptive ADM depth
-
-- ADM mode activates only when the user explicitly requests `ADM` or `Avaya Diagnostic Methodology`, matched case-insensitively.
-- ADM mode increases the depth of `Technical & Incident Assessment` only; it must not lengthen the Executive Summary or create a second ADM block.
-- When evidence permits, cover **Details/Findings**, **Problem Clarification**, **Cause**, and **Solution** as analytical dimensions inside the chosen technical structure. Adapt the prose to the case; it is not required to display four mechanical ADM headings.
-- For each of the four ADM dimensions, provide evidence-supported content when available; when a dimension is relevant but the evidence cannot support a conclusion, state an explicit unresolved evidence or investigation gap. Omit genuinely inapplicable dimensions and never add rigid filler or invention.
-
-#### Generation order
-
-1. Complete the evidence ledger.
-2. Reconstruct the whole-case storyline and problem lineage, including the primary problem, blocker, working hypotheses, corrected finding, implemented action, primary outcome, and secondary problems.
-3. Complete the RCA state, mitigation maturity, production-outcome assessment, and case classification for the appropriately classified problems.
-4. Draft the Technical & Incident Assessment from the primary problem through evidence, reasoning, solution or validation, secondary-problem disposition, and unresolved gaps.
-5. Extract only the conclusion-level information needed for the Executive Summary, preserving the full-case proportions.
-6. Deduplicate in both directions: remove technical detail from the summary and remove technical paragraphs that add no explanation beyond the summary.
+ADM activates only when explicitly requested. Represent Details/Findings, Problem Clarification, Cause, and Solution through the structured problem lineage and Technical Specification. Use explicit evidence gaps for unsupported dimensions; do not generate a second ADM outline or filler prose.
 
 ### Step 5 - Enforce the Evidence Gate
 
 Every factual answer must pass the internal evidence gate before rendering:
 
-- Build dynamic appendix rows **E1..EN**, where N is the number of verifiable case-specific evidence items. There is no minimum of three.
+- Build dynamic evidence rows **E1..EN**, where N is the number of verifiable case-specific evidence items. There is no minimum of three.
 - Each row must contain `Source`, `Date`, `Verbatim evidence / data`, and `Supports`.
-- Every factual body claim must map internally to at least one appendix row.
-- The `Supports` column performs reverse mapping from evidence to the exact body section and conclusion or field.
-- The rendered body must contain no Evidence IDs, footnotes, source suffixes, or citation brackets.
+- Every factual value in the Case Card, Technical Specification, visual context, timeline, and full view must map internally to at least one evidence row.
+- The `Supports` field reverse-maps evidence to the exact structured field or conclusion.
+- `compact`, `technical`, and `flow` outputs contain no Evidence IDs or citation suffixes. Investigation-complete `standard` and `follow-up` render the complete dynamic Evidence Register; explicit `full` renders the same evidence as final Appendix A.
 - Answer only the portion supported by evidence. For an unsupported field or disputed conclusion, write `unknown`.
-- If no verifiable case-specific evidence exists, **output exactly `unknown`** and stop. Do not emit the report template.
+- Distinguish `NOT OBSERVED`, `NOT COLLECTED`, `UNKNOWN`, and `NOT APPLICABLE`; never substitute one for another.
+- If no verifiable case-specific evidence exists, **output exactly `unknown`** and stop. Do not persist or render a review.
 - **Do not split, duplicate, or invent evidence** to increase the evidence count.
 - Domain references may explain evidence but do not count as case-specific evidence by themselves.
-- `Appendix A — Evidence Register` is the final section of every rendered review.
+- `Appendix A — Evidence Register` is the final section of explicit `full` mode only.
 
 ### Step 6 - Reflection and Coverage Review
 
@@ -314,74 +300,50 @@ Before rendering:
 1. Revalidate `case_notes_discovered == case_notes_processed` and `record_ids_planned == record_id_queries_completed == 1`, with the primary-ID query pagination chain ending in `complete=true`.
 2. Revalidate the canonical equalities `unique_threads_discovered == threads_read_complete`, `messages_expected == messages_completed`, and `message_chunks_expected == message_chunks_completed`.
 3. Revalidate `body_hashes_verified == messages_completed`, confirm all thread manifest hashes were stable, verify every Gmail/thread/message/chunk alias still equals its canonical counter, and confirm the bootstrap request may be empty, the bootstrap response establishes a non-empty `snapshot_before`, and subsequent list/read calls reuse that exact value.
-4. If any coverage check fails during reflection, discard the draft and emit only the prescribed context-collection blocking output.
-5. Map every factual body claim to at least one appendix row.
+4. If any coverage check fails, emit only the prescribed context-collection blocking output and do not update the durable record.
+5. Map every factual structured value to evidence and confirm `Supports` reverse mapping.
 6. Confirm dates, IDs, names, quotes, calculations, owners, and ETA values against the ledger.
-7. Confirm unresolved conflicts remain visible and are not silently resolved.
-8. Confirm mitigation maturity does not overstate lab or planned work as production success.
+7. Keep unresolved conflicts visible; preserve unsupported values as `unknown` or the precise absence state.
+8. Confirm mitigation maturity and production outcome are separate and evidence-backed.
 9. Confirm owners are evidence-backed or explicitly `unassigned`.
-10. Confirm `Ownership & Next Step` only restates actions, owners, and dates already present in evidence, including preventive commitments; it must never generate a new recommendation or label planned work as an implemented control.
-11. Confirm the rendered body contains no Evidence ID or citation suffix.
-12. Confirm the appendix is last and reverse-maps every evidence row through `Supports`.
-13. Confirm the zero-evidence response is exactly `unknown`.
-14. Confirm every rendered list or table containing dates or timestamps is in ascending date/time order, with undated entries last.
-15. Confirm the Executive Summary is one 6-8 sentence paragraph with no subheadings, dedicated prevention field, recommendation, or prevention narrative; an evidence-stated preventive checkpoint may appear only as an existing commitment or current planned work.
-16. Confirm its root-cause statement uses at most one sentence as the one-sentence technical conclusion; keep detailed cause analysis only in Technical & Incident Assessment.
-17. Remove any technical paragraph that merely paraphrases the summary without adding a finding, mechanism, validation result, or unresolved gap.
-18. When explicit ADM mode applies, verify: For each of the four ADM dimensions, include evidence-supported content or, when relevant evidence is unavailable, an explicit unresolved evidence or investigation gap; omit inapplicable dimensions, never add rigid filler or invention, and do not create a second outline or ADM block.
-19. Confirm the displayed Progress Summary count follows the available substantive evidence: include up to five milestones, render one when only one exists, and do not pad or repeat evidence.
-20. Confirm the whole-case storyline begins with the evidenced primary problem or original customer objective and is not re-anchored by the latest or longest message without explicit superseding evidence.
-21. Confirm blockers, intermediate working hypotheses, corrected findings, and secondary problems remain distinct, and that secondary problems are not promoted above the primary problem.
-22. Confirm Progress Summary milestones represent meaningful state transitions in the primary problem lifecycle, including the pause, corrected understanding, implemented action, and outcome when evidenced.
+10. Keep milestones and timeline chronological; do not pad either list.
+11. Keep the original objective primary; do not promote a blocker or secondary issue because it is newer or longer.
+12. Include only evidenced visual transitions, recurrences, hypotheses, component handoffs, and ownership checkpoints.
+13. Confirm the mode router matches the original user request and record review count.
+14. Confirm the investigation-complete standard/follow-up contract, explicit-only compact limits, mandatory progress flow, causal assessment, complete visual columns, seven-node Mermaid limit, fixed Technical Specification schema, Timeline, and dynamic Evidence Register.
+15. Confirm a failed or incomplete collection will not create or modify a durable case record.
+16. Confirm official administrative closure remains separate from RCA state, mitigation maturity, and customer-confirmed production outcome.
 
-### Step 7 - Produce the Review
+### Step 7 - Build the Structured Review Snapshot
 
-After both the complete-context gate and the evidence gate pass, use this common structure:
+After both gates pass, build the v2 payload defined in [output-modes.md](references/output-modes.md). Do not write an Executive Summary or other rendered report first.
 
-```markdown
-# Case Review - <Case ID>
-**Title:** <evidence-backed title or unknown>
-**Status:** <status or unknown> | **Priority:** <priority or unknown> | **Assignee:** <assignee or unknown>
-**Source:** <actual source system and record type>
-**Case record freshness:** <N days / date unavailable>
-**Last substantive progress age:** <N days / no substantive progress evidenced>
-**Customer:** <account/site/contact or unknown>
+The payload must retain the complete coverage counters, current Case Card fields, dynamic evidence digest, and add:
 
-## Executive Summary
-<Write one natural-language paragraph of 6-8 sentences anchored in the whole-case storyline: primary problem or original objective, why progress paused, the material change in understanding, the action and primary outcome, and only then materially relevant secondary problems; also cover time/location, scope, impact, one-sentence technical conclusion, mitigation and production outcome, current status, and the next evidenced checkpoint with owner and ETA; use lowercase unknown for unsupported details; do not let the latest message dominate by recency or length; exclude raw logs, detailed diagnostics, configuration detail, extended cause analysis, and any dedicated prevention field, recommendation, or narrative; an evidence-stated preventive next checkpoint is allowed only as an existing commitment or current planned work, never as an agent recommendation or implemented control.>
+- `technical_spec` with all twelve fixed fields and proof states.
+- `problem_lineage` from original objective through outcome and secondary problems.
+- chronological `milestones` and `timeline`.
+- dynamic `evidence_register` with reverse mapping.
+- evidence-only `visual_context` for deterministic selection.
 
-## Technical & Incident Assessment
-<Start with problem clarification by identifying the primary problem and reconstructing its lineage through blockers, working hypotheses, corrected findings, implemented action, and outcome; then explain secondary problems in relationship to the primary problem; add environment or affected-component detail, findings or interpreted log evidence, causal or RCA-state reasoning, solution or workaround implementation and verification, and unresolved gaps or missing validation; distinguish planned preventive work from implemented controls; do not fully restate the event, impact, response, or status from the Executive Summary.>
+Use `UNKNOWN`, `NOT OBSERVED`, `NOT COLLECTED`, and `NOT APPLICABLE` precisely. Never add a visual-context item that was not established by the case corpus.
 
-## Progress Summary
-<Up to five substantive milestones supported by evidence, oldest first, without citation markers; render one when only one exists. Do not pad or repeat evidence.>
+### Step 8 - Persist and Present Deterministically
 
-## Ownership & Next Step
-- **Current assignee:** <name / unassigned / unknown>
-- **Last concrete action:** <actor, action, date / unknown>
-- **Stated next action:** <evidence-stated action / not stated / unknown>
-- **Next-action owner:** <name/role / unassigned / unknown>
-- **Next SLA/update due:** <date / not stated / unknown>
+Read [case-record-lifecycle.md](references/case-record-lifecycle.md), write the UTF-8 payload, and run:
 
-## Timeline
-| Date | By | Source | What changed |
-|---|---|---|---|
-<Substantive entries only, in ascending date/time order. Status pings remain part of the activity-trend analysis.>
-
-## Appendix A — Evidence Register
-| Ref | Date | Source | Verbatim evidence / data | Supports |
-|---|---|---|---|---|
-<Evidence rows E1..EN in ascending date/time order; undated rows last>
+```text
+python <skill-directory>/scripts/case_record.py update --input <payload.json>
+python <skill-directory>/scripts/case_record.py present --case-id <Case ID> --request "<original user request>" --markdown-only
+python <skill-directory>/scripts/case_record.py verify-final --case-id <Case ID> --input <candidate-final.md>
 ```
 
-For the conditional technical section:
+`present --markdown-only` writes `chat-output.md` plus `chat-output.sha256` and emits the canonical Markdown directly. Put the exact proposed final Markdown in a UTF-8 candidate file, run `verify-final`, and return the verified candidate unchanged. Do not manually shorten, expand, rewrite, or append a second report. A missing artifact, invalid artifact hash, or mismatch blocks completion. JSON-mode `present` retains `mode` and `visual` as the auditable presentation decision.
+For follow-ups, use the helper-computed delta returned from the stored record; never reconstruct changes from conversational memory.
 
-- Choose exactly one structure for the section; the multi-problem and single-issue structures are mutually exclusive.
-- **Multi-problem:** use `Problem Statement`, then present `Problem 1 - <Record ID>` as the primary problem, followed by blocking or secondary problems in causal or chronological relationship to it. For each problem, cover problem clarification, evidence-backed findings, cause or RCA-state reasoning when applicable, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
-- **Single issue:** use `Incident & RCA Summary` and cover the same semantic sequence: problem clarification, evidence-backed findings, cause or RCA-state reasoning, solution and validation, mitigation maturity and production outcome, and unresolved gaps.
-- Put **Existing prevention controls** only under the relevant problem and only when evidence confirms they are implemented. Describe evidence-stated but not-yet-implemented preventive work as planned or committed work, not as an existing control.
+Do not persist when context collection is incomplete, the evidence gate fails, or the result is exactly `unknown`. If persistence fails, state `Case record update failed` with the sanitized error and do not claim continuity succeeded.
 
-Do not render both conditional structures. Do not create a standalone telemetry section or a second ADM block.
+On administrative closure, show the learning option but do not draft learning unless explicitly requested. Apply sanitized learning only after explicit approval. If the case later reopens, continue the journal and suspend its applied overlay entry pending reclosure and reapproval.
 
 ---
 
@@ -393,16 +355,23 @@ Do not render both conditional structures. Do not create a standalone telemetry 
 - Evidence over opinion; unknown over invention.
 - Case-specific evidence is required for case-specific conclusions.
 - Evidence numbering is dynamic, not a three-item quota.
-- Progress Summary has no minimum count: render up to five evidence-supported substantive milestones, including one when only one exists, without padding or repeated evidence.
+- Milestones have no minimum count: retain up to five evidence-supported substantive transitions without padding or repetition.
 - Evidentiary authority and Management display priority are separate.
 - Status pings inform stall detection even when omitted from the displayed timeline.
 - Closed/Resolved records are not stale merely because they are old.
 - Domain rules are conditionally activated and never substitute for case evidence.
 - Production success requires post-change production evidence.
-- The report must not generate risk lists, risk scores, manager directives, prevention priorities, or recommendations.
-- Evidence-stated preventive next actions or checkpoints may appear in the Executive Summary and `Ownership & Next Step` only as existing commitments or current planned work, never as agent recommendations or implemented controls.
-- Existing prevention controls belong only in Technical & Incident Assessment under the relevant problem and only when evidence confirms implementation; planned or committed work is not an existing control.
-- The Executive Summary states the conclusion; Technical & Incident Assessment explains the evidence, mechanism, reasoning, validation, and unresolved gaps that justify or qualify it.
-- The main body stays citation-free; the final appendix preserves the audit chain.
+- Outputs must not generate risk scores, manager directives, prevention priorities, or recommendations.
+- Evidence-stated actions and checkpoints remain existing commitments, never agent recommendations or implemented controls.
+- QA scores are management assessment data, not case-specific technical evidence; never use them to upgrade RCA, mitigation, or production-outcome proof states.
+- Existing prevention controls may appear in the Technical Specification only when evidence confirms implementation; planned work is not an existing control.
+- `compact`, `technical`, and `flow` stay citation-free. `standard` and `follow-up` include the dynamic Evidence Register; explicit `full` ends with the same register as Appendix A.
+- The deterministic presenter owns output mode, visual choice, field limits, and rendering. Do not reproduce its output manually.
 - Rendered date/time lists and tables are ordered oldest to newest; undated items follow dated items.
-- The manager should understand the Executive Summary, evidence basis, owner, ETA state, RCA state, mitigation maturity, production outcome, and next checkpoint without rereading the raw case.
+- Every successful review creates or updates one durable per-Case-ID follow-up record; every later review still recollects fresh sources and uses the prior record only for post-analysis delta comparison.
+- Incomplete collection never mutates the durable record. Administrative closure never proves RCA or production recovery.
+- Closed-case learning is opt-in, sanitized, evidence-strength labeled, user-approved before application, and stored in a persistent local overlay that remains interpretation guidance rather than case proof.
+- The default `standard` view must expose the Case Card, Investigation Progress flow, optional secondary diagnostic visual, Causal Assessment, six key Technical Specification fields, available substantive milestones, substantive Timeline, complete dynamic Evidence Register, and durable-record link.
+- A follow-up with no material state, ownership, or evidence change routes to investigation-complete `standard`; a materially changed follow-up routes to investigation-complete `follow-up` unless the user explicitly requests another mode. `compact` is explicit-only.
+- Explicit `flow` always renders the progress flow and never substitutes a Claim-Evidence Matrix, recurrence comparison, swimlane, or ownership table for it.
+- Never shorten away an impact conflict, recovery or post-change validation gap, next-action owner, or due date / ETA. A Claim-Evidence Matrix always retains Claim, Proof state, Evidence, and Validation needed.

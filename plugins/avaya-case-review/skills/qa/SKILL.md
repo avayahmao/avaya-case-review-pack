@@ -1,6 +1,6 @@
 ---
 name: "qa"
-description: "Select, score, validate, and summarize monthly Avaya case-quality assessments using evidence-backed Diagnostic & Solution, Service & Communication, and Plus standards."
+description: "Select, score, validate, and summarize monthly Avaya case-quality assessments using evidence-backed Diagnostic & Solution, Service & Communication, and item-based Technical Plus standards."
 ---
 
 # Case Review QA
@@ -8,6 +8,8 @@ description: "Select, score, validate, and summarize monthly Avaya case-quality 
 Use this skill when the user explicitly asks to perform monthly QA, score case quality, validate QA data, calculate QA statistics, or provides a table with the QA rubric columns.
 
 QA is a management assessment layer. It does not replace the evidence-gated case review and its scores do not prove RCA, mitigation, production recovery, or customer outcome.
+
+Alarm tickets are out of scope for this skill. Route explicit alarm QA or alarm-ticket audit requests to the separate `alarm-audit` skill.
 
 ## Operating modes
 
@@ -33,7 +35,7 @@ Each entry contains:
 - `Product`: source-supported product, otherwise blank or `not stated` according to the output format
 - `Diagnostic & Solution`: integer from 0 through 5
 - `Service & Communication`: integer from 0 through 3
-- `Plus`: integer from 0 through 5
+- `Plus` / `Technical Plus`: integer from 0 through 5, calculated from demonstrated item allocations
 - `score`: calculated as the sum of the three dimensions; maximum 13
 - `Problem`: concise statement of the primary customer problem
 - `efforts`: evidence-backed technical and service actions performed by the engineer
@@ -67,19 +69,33 @@ Do not award diagnostic credit merely for assignment, escalation, case closure, 
 - **1:** Minimal customer-facing communication or ownership is visible.
 - **0:** No meaningful service or communication contribution is supported.
 
-### Plus (0-5)
+### Technical Plus / Extra Mile (0-5) — Item-Based Additive Scoring
 
-Award one point for each distinct, evidenced contribution beyond what is already expected for a `5/3` case. Examples include:
+Calculate Technical Plus by identifying specific, evidenced technical value-add items demonstrated during the case.
 
-- resolving a complex issue under material time or customer pressure;
-- exceptional ownership that moves a stalled case forward;
-- substantive cross-product or cross-team cooperation;
-- resolving an additional customer concern beyond the original problem;
-- reproducing the issue in a lab or identifying a product/code defect;
-- comprehensive end-to-end analysis proving a non-Avaya boundary;
-- restoring a critical service or resolving an issue prior shifts/teams could not resolve.
+- **Default per item:** `+1` for each demonstrated item.
+- **Outstanding item:** `+2` or `+3` for one item only when execution of that specific item was exceptionally outstanding. State what made it outstanding; do not award multiple points merely because the case was severe or urgent.
+- **Baseline core work:** `0` for standard resolution, fast turnaround, routine data/configuration correction, or ordinary single-shift troubleshooting.
+- **Cumulative maximum:** add all item allocations, capped at `5`.
 
-Do not double-count the same action under multiple Plus reasons. Speed, severity, escalation, White Glove status, or customer pressure alone does not earn a point. State every awarded reason in `comments`.
+Technical Plus item menu:
+
+1. **Code Defect Discovery:** identified or isolated a software bug or code defect.
+2. **Infrastructure & Hypervisor Isolation:** isolated a complex outage to customer infrastructure, hypervisor, network, storage, or sizing rather than product software.
+3. **Cross-Product Integration:** performed substantive troubleshooting across product/system boundaries such as CM, AES, Session Manager, AEP, or third-party components.
+4. **Customer Pressure & Ownership:** handled high executive/customer pressure with strong end-to-end technical ownership. Default `+1`; reserve `+2` or `+3` for exceptionally outstanding execution of this item.
+5. **Scope Extension:** solved a secondary unlogged customer concern or produced a solution under a tight SLA/time constraint beyond the original scope.
+6. **Trace Package Hygiene:** produced an exceptionally well-organized and documented trace/log package for handoff or escalation.
+
+Scoring examples:
+
+- **0:** no extra item; examples include `solved quickly`, `fix a corruption`, or routine NAR/single-shift troubleshooting.
+- **1:** one standard item, such as identifying a code defect or resolving an issue under a meaningful time constraint.
+- **2:** two standard items (`+1 +1`) or one exceptionally outstanding item (`+2`).
+- **3:** a multi-item/outstanding combination, such as Cross-Product Integration `+1` plus exceptionally strong Customer Pressure & Ownership `+2`.
+- **4-5:** cumulative achievement across several independently evidenced items.
+
+Do not double-count the same action under different menu items. Severity, escalation, White Glove status, speed, or customer pressure alone earns `0`. State the item, allocation, and concise evidence in `comments`.
 
 ## Evidence and writing rules
 
@@ -99,13 +115,13 @@ Write comments in the short, practical style used by the manager examples. Prefe
 - Use consistent signed notation at the start of each scoring explanation:
   - `Diagnostic & Solution -N: <reason>`, where `N = 5 - Diagnostic & Solution`.
   - `Service & Communication -N: <reason>`, where `N = 3 - Service & Communication`.
-  - `Plus +1: <reason>` once for each awarded Plus point. For Plus 2, write two distinct `Plus +1:` reasons rather than one combined `+2` reason.
+  - `Plus +N: <item> — <reason>` for each demonstrated item, where `N` is `1`, `2`, or `3`. The allocations must sum exactly to the Plus score.
 - Do not write `reduced by one`, `minus one`, `(+1)`, or another notation variant. Use the signed forms above consistently.
 - Use the same direct tone as the examples: `solved quickly`, `solid TS`, `solution confirmed`, `working as designed`, or `BP did not confirm`. Add only the short signed reason needed to audit a deduction or Plus point.
 - Avoid polished report prose, long chronology, repeated evidence, or detailed causal explanation in `comments`; those belong in `efforts`.
 - Lead with the most important judgment: confirmed result, evidence strength, customer outcome, or principal gap.
 - Explain why the row differs from the normal `5 / 3 / 0 = 8`. For a lower score, identify the specific diagnostic or communication limitation. For a higher score, identify each exceptional contribution.
-- Map Plus points explicitly and audibly using one `Plus +1:` segment per evidenced contribution.
+- Map Technical Plus explicitly by item. Use separate signed segments for separate items; one outstanding item may use `Plus +2:` or `Plus +3:` with a short explanation of why that item was exceptional.
 - State validation limits directly: `BP did not confirm the outcome`, `customer declined the requested evidence`, or `recovery was observed but RCA remains unproven`.
 - Mention speed only when it is meaningful in context. `Solved quickly` alone is not a sufficient comment or Plus rationale.
 - Keep criticism factual and non-accusatory. Describe the observable delay or gap rather than judging the person.
@@ -115,9 +131,10 @@ Useful comment patterns include:
 
 - `Diagnostic & Solution -1: root cause not confirmed`
 - `Diagnostic & Solution -1: BP did not confirm the trace-based solution`
-- `Service & Communication -1: took one month to close; Plus +1: addressed an additional concern`
-- `Plus +1: reproduced in lab and identified product defect`
-- `Plus +1: comprehensive analysis proved issue was outside Avaya`
+- `Service & Communication -1: took one month to close; Plus +1: Scope Extension — addressed an additional concern`
+- `Plus +1: Code Defect Discovery — reproduced in lab and identified product defect`
+- `Plus +1: Infrastructure & Hypervisor Isolation — proved issue was outside Avaya`
+- `Plus +2: Customer Pressure & Ownership — led exceptional end-to-end recovery under executive pressure`
 - `Service & Communication -1: email-only communication delayed progress`
 
 For supplied historical QA, preserve the original comment unless the user asks for rewriting. A blank comment is invalid when any mandatory-comment condition applies. Flag unclear, contradictory, or unsupported comments as data-quality issues.
@@ -127,7 +144,7 @@ For supplied historical QA, preserve the original comment unless the user asks f
 - Always calculate `score = Diagnostic & Solution + Service & Communication + Plus`.
 - Reject out-of-range dimensions and conflicting supplied totals; do not silently preserve invalid examples.
 - Reject a row with a blank comment when `Diagnostic & Solution < 5`, `Service & Communication < 3`, or `Plus > 0`. A non-empty comment must explicitly justify each applicable minus or Plus score.
-- Reject comments that do not use the exact signed notation or whose signed values do not reconcile to the score dimensions. Each Plus point requires its own `Plus +1:` reason.
+- Reject comments that do not use the exact signed notation or whose signed values do not reconcile to the score dimensions. Technical Plus allocations may be `+1`, `+2`, or `+3` per item and must sum exactly to the Plus score.
 - Blank dimension cells mean the row is unscored, not zero. A row with blank dimensions and score `0` is incomplete and must be flagged rather than included in averages.
 - If `comments` awards `+1` but `Plus` is `0`, flag the row for correction even when the numeric total is otherwise arithmetically valid.
 - A row showing `5 / 5 / 2` with score `10` is invalid because Service & Communication cannot exceed 3. It becomes `5 / 3 / 2 = 10` only after the value is explicitly corrected.
