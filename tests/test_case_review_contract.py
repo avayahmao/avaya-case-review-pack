@@ -8,6 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "plugins/avaya-case-review/skills/case-review/SKILL.md"
+OUTPUT_MODES = ROOT / "plugins/avaya-case-review/skills/case-review/references/output-modes.md"
+PRESENTER = ROOT / "plugins/avaya-case-review/skills/case-review/scripts/review_presenter.py"
 GMAIL_CAPABILITY_SKILL = ROOT / "plugins/avaya-case-review/skills/gmail-capability/SKILL.md"
 MANAGER_MD = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.md"
 MANAGER_HTML = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.html"
@@ -396,7 +398,7 @@ class CaseReviewContractTests(unittest.TestCase):
         reflection = extract_between(
             self.skill,
             "### Step 6 - Reflection and Coverage Review",
-            "### Step 7 - Produce the Review",
+            "### Step 7 - Build the Structured Review Snapshot",
         )
         for marker in [
             "bootstrap request may be empty",
@@ -902,30 +904,20 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, storyline)
 
-        executive_contract = extract_template_section(
+        structured = extract_template_section(
             self.skill,
-            "#### Executive Summary contract",
-            "#### Technical & Incident Assessment contract",
-        )
-        technical_contract = extract_template_section(
-            self.skill,
-            "#### Technical & Incident Assessment contract",
-            "#### Adaptive ADM depth",
+            "### Structured Analysis Before Presentation",
+            "### Step 5 - Enforce the Evidence Gate",
         )
         reflection = extract_template_section(
             self.skill,
             "### Step 6 - Reflection and Coverage Review",
-            "### Step 7 - Produce the Review",
+            "### Step 7 - Build the Structured Review Snapshot",
         )
-        for marker in [
-            "whole-case storyline",
-            "primary problem",
-            "secondary problems",
-        ]:
-            self.assertIn(marker, executive_contract)
-            self.assertIn(marker, technical_contract)
+        for marker in ["problem lineage", "blockers", "working hypotheses", "secondary problems"]:
+            self.assertIn(marker, structured)
+        for marker in ["original objective", "blocker", "secondary issue"]:
             self.assertIn(marker, reflection)
-        self.assertIn("state transitions", reflection)
 
     def test_rendered_date_time_content_is_ascending(self):
         for marker in [
@@ -934,7 +926,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "undated entries after all dated entries",
             "Assign rendered `E1..EN` identifiers after this chronological sort",
             "oldest first",
-            "ascending date/time order",
+            "milestones and timeline chronological",
         ]:
             self.assertIn(marker, self.skill)
         self.assertNotIn("newest first", self.skill)
@@ -958,240 +950,139 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertIn(marker, self.skill)
 
     def test_conditional_schema_and_manager_judgment_boundary(self):
-        conditional = extract_template_section(
-            self.skill,
-            "For the conditional technical section:",
-            "\n---\n\n## Non-Negotiable Rules",
-        )
-        self.assertEqual(1, conditional.count("**Multi-problem:**"))
-        self.assertEqual(1, conditional.count("**Single issue:**"))
-        self.assertIn("Choose exactly one structure", conditional)
-        self.assertIn("mutually exclusive", conditional)
-        self.assertIn("Do not render both conditional structures", conditional)
-        self.assertIn("second ADM block", conditional)
-        self.assertIn("must never generate a new recommendation", self.skill)
+        output_modes = read(OUTPUT_MODES)
+        for marker in [
+            "`standard`",
+            "`compact`",
+            "`follow-up`",
+            "`technical`",
+            "`flow`",
+            "`full`",
+            "Do not ask the user to choose a format",
+            "Never use numeric confidence percentages",
+        ]:
+            self.assertIn(marker, output_modes)
+        self.assertIn("Outputs must not generate risk scores", self.skill)
         self.assertNotIn("All action items must live exclusively", self.skill)
-        self.assertNotIn("### [Structure A:", self.skill)
-        self.assertNotIn("### [Structure B:", self.skill)
 
-    def test_executive_summary_is_one_layered_paragraph(self):
-        template = extract_report_template(self.skill)
-        self.assertEqual(1, template.count("## Executive Summary"))
-        self.assertEqual(1, template.count("## Technical & Incident Assessment"))
-        summary = extract_template_section(
-            template,
-            "## Executive Summary",
-            "## Technical & Incident Assessment",
-        )
-        content_lines = [line.strip() for line in summary.splitlines() if line.strip()]
-        self.assertEqual(1, len(content_lines))
-        self.assertNotIn("Verdict", template)
-        self.assertNotRegex(summary, r"(?m)^\s*#{1,6}\s+")
-        self.assertNotRegex(summary, r"(?m)^\s*[-*+]\s+")
-        self.assertNotRegex(
-            summary,
-            r"(?m)^\s*(?:[-*+]\s+)?(?:\*\*)?[A-Za-z][A-Za-z &/()-]{0,40}:(?:\*\*)?\s*",
-        )
+    def test_default_output_is_investigation_complete_not_an_executive_paragraph(self):
+        output_modes = read(OUTPUT_MODES)
+        standard = extract_between(output_modes, "### `standard`", "### `compact`")
         for marker in [
-            "Core Incident Details",
-            "Impact and Response",
-            "Next Steps",
-            "Future prevention",
-            "Existing prevention controls",
+            "Case Card",
+            "Investigation Progress flow",
+            "Causal Assessment",
+            "six key Technical Specification fields",
+            "Timeline",
+            "complete dynamic Evidence Register",
         ]:
-            self.assertNotIn(marker, summary)
-        executive_contract = extract_template_section(
-            self.skill,
-            "#### Executive Summary contract",
-            "#### Technical & Incident Assessment contract",
-        )
-        for marker in [
-            "one natural-language paragraph of 6-8 sentences",
-            "one-sentence technical conclusion",
-            "`unknown`",
-            "conclusion-level information",
-        ]:
-            self.assertIn(marker, executive_contract)
+            self.assertIn(marker, standard)
+        self.assertNotIn("Write one natural-language paragraph of 6-8 sentences", self.skill)
+        for marker in ("case_record.py present", "--markdown-only", "verify-final"):
+            self.assertIn(marker, self.skill)
 
-    def test_technical_assessment_adds_reasoning_without_restatement(self):
-        template = extract_report_template(self.skill)
-        technical = extract_template_section(
-            template,
-            "## Technical & Incident Assessment",
-            "## Progress Summary",
-        )
-        self.assertIn("Start with problem clarification", technical)
-        technical_contract = extract_template_section(
-            self.skill,
-            "#### Technical & Incident Assessment contract",
-            "#### Adaptive ADM depth",
-        )
+    def test_technical_mode_uses_fixed_proof_state_schema(self):
+        output_modes = read(OUTPUT_MODES)
+        technical = extract_between(output_modes, "### `technical`", "### `flow`")
         for marker in [
-            "environment or affected-component detail",
-            "causal reasoning or an RCA-state explanation",
-            "solution, workaround, implementation, or verification detail",
-            "only paraphrases an Executive Summary sentence",
-            "Existing prevention controls",
+            "Field | Proof state | Value | Evidence basis",
+            "Confirmed mechanism",
+            "Suspected or unproven",
+            "Verification",
+            "Evidence gaps",
+            "NOT COLLECTED",
+            "NOT OBSERVED",
+            "UNKNOWN",
+            "NOT APPLICABLE",
         ]:
-            self.assertIn(marker, technical_contract)
+            self.assertIn(marker, technical)
 
-    def test_progress_summary_count_follows_available_evidence(self):
-        template = extract_report_template(self.skill)
-        progress = extract_template_section(
-            template,
-            "## Progress Summary",
-            "## Ownership & Next Step",
-        )
+    def test_milestone_count_follows_available_evidence(self):
         for marker in [
-            "Up to five substantive milestones supported by evidence",
-            "render one when only one exists",
-            "Do not pad or repeat evidence",
+            "Milestones have no minimum count",
+            "up to five evidence-supported substantive transitions",
+            "without padding or repetition",
         ]:
-            self.assertIn(marker, progress)
-        self.assertNotIn("Three to five", progress)
+            self.assertIn(marker, self.skill)
+        self.assertNotIn("Three to five", self.skill)
 
-    def test_adm_expands_technical_depth_without_duplicate_sections(self):
-        template = extract_report_template(self.skill)
+    def test_adm_expands_structured_depth_without_duplicate_sections(self):
         adaptive_adm = extract_template_section(
             self.skill,
-            "#### Adaptive ADM depth",
-            "#### Generation order",
+            "### Structured Analysis Before Presentation",
+            "### Step 5 - Enforce the Evidence Gate",
         )
         for marker in [
-            "ADM mode activates only when the user explicitly requests `ADM` or `Avaya Diagnostic Methodology`, matched case-insensitively.",
+            "ADM activates only when explicitly requested",
             "Details/Findings",
             "Problem Clarification",
             "Cause",
             "Solution",
-            "increases the depth of `Technical & Incident Assessment` only",
+            "structured problem lineage and Technical Specification",
+            "do not generate a second ADM outline",
         ]:
             self.assertIn(marker, adaptive_adm)
-        self.assertNotRegex(
-            template,
-            r"(?m)^## (?:ADM\b|Avaya Diagnostic Methodology\b)",
-        )
-        for heading in [
-            "## Details/Findings",
-            "## Problem Clarification",
-            "## Cause",
-            "## Solution",
-        ]:
-            self.assertNotIn(heading, template)
 
     def test_adm_sparse_evidence_uses_gaps_without_invention(self):
         adaptive_adm = extract_template_section(
             self.skill,
-            "#### Adaptive ADM depth",
-            "#### Generation order",
+            "### Structured Analysis Before Presentation",
+            "### Step 5 - Enforce the Evidence Gate",
         )
         reflection = extract_template_section(
             self.skill,
             "### Step 6 - Reflection and Coverage Review",
-            "### Step 7 - Produce the Review",
+            "### Step 7 - Build the Structured Review Snapshot",
         )
-        self.assertIn("When evidence permits, cover", adaptive_adm)
         for marker in [
-            "For each of the four ADM dimensions",
-            "evidence-supported content",
-            "explicit unresolved evidence or investigation gap",
-            "rigid filler or invention",
+            "explicit evidence gaps",
+            "unsupported dimensions",
+            "filler prose",
         ]:
             self.assertIn(marker, adaptive_adm)
-            self.assertIn(marker, reflection)
-        self.assertNotIn(
-            "confirm all four analytical dimensions are covered",
-            reflection.lower(),
-        )
+        self.assertIn("preserve unsupported values", reflection)
 
     def test_preventive_next_checkpoint_is_commitment_not_control(self):
-        template = extract_report_template(self.skill)
-        summary = extract_template_section(
-            template,
-            "## Executive Summary",
-            "## Technical & Incident Assessment",
-        )
-        ownership = extract_template_section(
-            template,
-            "## Ownership & Next Step",
-            "## Timeline",
-        )
-        executive_contract = extract_template_section(
-            self.skill,
-            "#### Executive Summary contract",
-            "#### Technical & Incident Assessment contract",
-        )
-        technical_contract = extract_template_section(
-            self.skill,
-            "#### Technical & Incident Assessment contract",
-            "#### Adaptive ADM depth",
-        )
-        conditional = extract_template_section(
-            self.skill,
-            "For the conditional technical section:",
-            "\n---\n\n## Non-Negotiable Rules",
-        )
-
-        self.assertIn("Stated next action", ownership)
-        self.assertIn("evidence-stated preventive next checkpoint", summary)
-        self.assertNotIn("Future prevention", summary)
-        self.assertNotIn("Existing prevention controls", summary)
         for marker in [
-            "No dedicated `Future prevention` field, recommendation, or prevention narrative",
-            "evidence-stated next action or checkpoint",
-            "existing commitment or current planned work",
-            "never as an agent recommendation or implemented control",
+            "Outputs must not generate risk scores",
+            "Evidence-stated actions and checkpoints remain existing commitments",
+            "never agent recommendations or implemented controls",
+            "planned work is not an existing control",
         ]:
-            self.assertIn(marker, executive_contract)
-        for marker in [
-            "only when evidence shows they are implemented",
-            "Planned or committed preventive work that is not implemented must not be labeled an Existing prevention control",
-        ]:
-            self.assertIn(marker, technical_contract)
-        self.assertIn("only under the relevant problem", conditional)
-        self.assertIn("only when evidence confirms they are implemented", conditional)
+            self.assertIn(marker, self.skill)
 
-    def test_appendix_is_last_and_body_has_no_evidence_markers(self):
-        template = extract_report_template(self.skill)
-        self.assertIn("## Appendix A — Evidence Register", template)
-        appendix = template.index("## Appendix A — Evidence Register")
-        order = [
-            template.index("## Executive Summary"),
-            template.index("## Technical & Incident Assessment"),
-            template.index("## Progress Summary"),
-            template.index("## Ownership & Next Step"),
-            template.index("## Timeline"),
-            appendix,
-        ]
-        self.assertEqual(order, sorted(order))
-        body = template[:appendix]
-        self.assertNotRegex(
-            body,
-            r"\[(?:Evidence\s+\d+|E\d+)\]|Evidence IDs?|Evidence N",
-        )
-        self.assertIn(
-            "| Ref | Date | Source | Verbatim evidence / data | Supports |",
-            template,
-        )
-        self.assertTrue(
-            template.rstrip().endswith(
-                "<Evidence rows E1..EN in ascending date/time order; undated rows last>"
-            )
-        )
+    def test_standard_follow_up_render_evidence_and_full_keeps_appendix_last(self):
+        output_modes = read(OUTPUT_MODES)
+        for mode in ("compact", "technical", "flow"):
+            section_start = output_modes.index(f"### `{mode}`")
+            next_start = output_modes.find("### `", section_start + 5)
+            section = output_modes[section_start : next_start if next_start >= 0 else None]
+            self.assertNotIn("Appendix A — Evidence Register", section)
+        for mode in ("standard", "follow-up"):
+            section_start = output_modes.index(f"### `{mode}`")
+            next_start = output_modes.find("### `", section_start + 5)
+            section = output_modes[section_start : next_start if next_start >= 0 else None]
+            self.assertIn("Evidence Register", section)
+        full = extract_between(output_modes, "### `full`", "## Secondary Diagnostic Visual Selection")
+        self.assertIn("Appendix A — Evidence Register", full)
+        self.assertIn("final section of this mode only", full)
 
     def test_manager_judgment_sections_are_absent(self):
-        template = extract_report_template(self.skill)
-        self.assertNotIn("## Risk Flags", template)
-        self.assertNotIn("## Targeted Recommendations", template)
-        self.assertIn("must never generate a new recommendation", self.skill)
+        output_modes = read(OUTPUT_MODES)
+        self.assertNotIn("## Risk Flags", output_modes)
+        self.assertNotIn("## Targeted Recommendations", output_modes)
+        self.assertIn("must not generate risk scores", self.skill)
 
     def test_current_contract_docs_match_skill(self):
         required = [
-            "Executive Summary",
-            "Appendix A",
-            "Verbatim evidence / data",
-            "Supports",
-            "Case record freshness",
-            "Last substantive progress age",
+            "Case Card",
+            "Technical Specification",
+            "Causal Assessment",
+            "Timeline",
+            "standard",
+            "follow-up",
+            "full",
+            "Evidence Register",
             "Production Outcome Confirmed",
         ]
         prohibited = [
@@ -1199,6 +1090,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "Targeted Recommendations",
             "linked numbered `Action 1`",
             "Additional Datapoints & Customer Experience Metrics",
+            "6-8 sentence Executive Summary",
         ]
         for name, content in self.contract_docs.items():
             with self.subTest(document=name):
@@ -1207,34 +1099,28 @@ class CaseReviewContractTests(unittest.TestCase):
                 for marker in prohibited:
                     self.assertNotIn(marker, content)
 
-    def test_contract_docs_describe_layered_disclosure(self):
+    def test_contract_docs_describe_deterministic_output_modes(self):
         required = [
-            "6-8 sentence",
-            "conclusion-level",
-            "technical reasoning",
-            "Future prevention is excluded from Executive Summary",
-            "Existing prevention controls",
-            "evidence confirms they are implemented",
-            "Planned or committed preventive work",
-            "evidence-stated next checkpoint",
-            "never labeled an Existing prevention control or an agent recommendation",
+            "standard",
+            "compact",
+            "follow-up",
+            "technical",
+            "flow",
+            "full",
+            "structured",
+            "secondary diagnostic visual",
         ]
-        old_summary = (
-            "Executive Summary covering the incident, timing and location, affected "
-            "scope, business effect, response, root cause, prevention priorities"
-        )
         for name, content in self.contract_docs.items():
             with self.subTest(document=name):
-                contract = extract_contract_window(content)
+                contract = normalize_contract_item(content).lower()
                 for marker in required:
-                    self.assertIn(marker, contract)
-                self.assertRegex(contract, r"timing(?:/| and )location")
-                self.assertNotIn(old_summary, contract)
+                    self.assertIn(marker.lower(), contract)
+                self.assertNotIn("6-8 sentence executive summary", contract)
 
     def test_contract_docs_describe_whole_case_storyline(self):
         for name, content in self.contract_docs.items():
             with self.subTest(document=name):
-                normalized = normalize_contract_item(content)
+                normalized = normalize_contract_item(content).lower()
                 for marker in [
                     "whole-case storyline",
                     "primary problem",
@@ -1242,7 +1128,7 @@ class CaseReviewContractTests(unittest.TestCase):
                 ]:
                     self.assertIn(marker, normalized)
 
-        presentation = normalize_contract_item(read(PRESENTATION_HTML))
+        presentation = normalize_contract_item(read(PRESENTATION_HTML)).lower()
         for marker in [
             "whole-case storyline",
             "primary problem",
@@ -1256,21 +1142,23 @@ class CaseReviewContractTests(unittest.TestCase):
                 self.assertIn("Whole-Case Storyline and Problem Lineage", content)
                 self.assertIn("recency or verbosity", content)
 
-    def test_adm_spec_and_presentation_follow_layered_contract(self):
-        adm_spec = read(ADM_SPEC)
+    def test_presentation_follows_deterministic_output_contract(self):
+        output_modes = read(OUTPUT_MODES)
         presentation = read(PRESENTATION_HTML)
         validate_html_structure(presentation)
         presentation_lower = presentation.lower()
 
         for marker in [
-            "Executive Summary remains one 6-8 sentence paragraph",
-            "Future prevention is excluded from Executive Summary",
-            "Existing prevention controls",
-            "does not append another set of ADM sections",
-            "Existing prevention controls require evidence confirming implementation",
-            "Planned or committed preventive work remains an evidence-stated checkpoint or planned work, not a recommendation or an implemented control",
+            "`standard`",
+            "`compact`",
+            "`follow-up`",
+            "`technical`",
+            "`flow`",
+            "`full`",
+            "Secondary Diagnostic Visual Selection",
+            "Structured Review Snapshot v2",
         ]:
-            self.assertIn(marker, adm_spec)
+            self.assertIn(marker, output_modes)
 
         for marker in [
             "Evidence-Grounded Technical Review",
@@ -1306,17 +1194,17 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertNotIn(marker, presentation)
 
         structure_start = presentation.index(
-            "<h2>Standardized Executive Review Report Structure</h2>"
+            "<h2>Deterministic Case Review Presentation Modes</h2>"
         )
         structure_end = presentation.index("<!-- SLIDE 11 -->", structure_start)
         structure = presentation[structure_start:structure_end]
         section_headings = [
-            "1. 6-8 Sentence Executive Summary",
-            "2. Technical &amp; Incident Assessment",
-            "3. Progress Summary",
-            "4. Ownership &amp; Next Step",
-            "5. Timeline",
-            "6. Appendix A — Evidence Register",
+            "1. standard",
+            "2. compact",
+            "3. follow-up",
+            "4. technical",
+            "5. flow + Adaptive Visual",
+            "6. full",
         ]
         positions = []
         for heading in section_headings:
@@ -1324,8 +1212,8 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertEqual(1, structure.count(marker))
             positions.append(structure.index(marker))
         self.assertEqual(positions, sorted(positions))
-        self.assertNotIn("Progress Summary &amp; Timeline", structure)
-        self.assertNotIn("<h3>5. Evidence Appendix</h3>", structure)
+        self.assertNotIn("6-8 Sentence Executive Summary", structure)
+        self.assertNotIn("Technical &amp; Incident Assessment", structure)
 
         for marker in [
             "risk flag",
@@ -1350,8 +1238,7 @@ class CaseReviewContractTests(unittest.TestCase):
         for path in [RELEASE_MD, RELEASE_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("layered disclosure", content.lower())
-                self.assertIn("6-8 sentence Executive Summary", content)
+                self.assertIn("Durable Case Follow-up and Approved Learning", content)
 
     def test_presentation_visibly_explains_exhaustive_context_gate(self):
         presentation = read(PRESENTATION_HTML)
@@ -1429,12 +1316,12 @@ class CaseReviewContractTests(unittest.TestCase):
             "tdd_md": extract_template_section(
                 tdd_md,
                 md_heading,
-                "#### Output Brief Schema",
+                "#### Structured ReviewSnapshot v2 and Presentation Modes",
             ),
             "tdd_html": extract_template_section(
                 tdd_html,
                 html_heading,
-                "<h4>Output Brief Schema</h4>",
+                "<h4>Structured ReviewSnapshot v2 and Presentation Modes</h4>",
             ),
         }
         required = [
@@ -1658,7 +1545,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
-    def test_release_metadata_targets_v1_9_4(self):
+    def test_release_metadata_targets_v1_10_0(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
         self.assertIn("[v1.8.0]", release_md)
@@ -1698,13 +1585,17 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.4", release_html)
         self.assertIn("Cloud Bridge Pagination Speedup", release_md)
         self.assertIn("Cloud Bridge Pagination Speedup", release_html)
+        self.assertIn("[v1.10.0]", release_md)
+        self.assertIn("v1.10.0", release_html)
+        self.assertIn("Investigation-Complete Reviews and Quality Audits", release_md)
+        self.assertIn("Investigation-Complete Reviews and Quality Audits", release_html)
         plugin = json.loads(read(PLUGIN_JSON))
-        self.assertEqual("1.9.4", plugin["version"])
+        self.assertEqual("1.10.0", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.9.4 - latest release", content)
+                self.assertIn("v1.10.0 - latest release", content)
                 self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
@@ -1718,6 +1609,7 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.2", agents)
         self.assertIn("v1.9.3", agents)
         self.assertIn("v1.9.4", agents)
+        self.assertIn("v1.10.0", agents)
         self.assertNotIn("Target release (not yet published)", agents)
 
     def test_distributable_docs_have_no_machine_specific_file_urls(self):
@@ -1782,12 +1674,17 @@ class CaseReviewContractTests(unittest.TestCase):
             "gmail_no_results",
             "status_pings_only",
             "chronological_output_order",
-            "executive_summary_layering",
-            "executive_technical_deduplication",
+            "standard_default_output",
+            "technical_spec_proof_states",
             "whole_case_storyline_and_problem_lineage",
             "adm_technical_depth_without_duplicate_sections",
             "adm_sparse_evidence",
             "preventive_next_checkpoint",
+            "delta_first_follow_up",
+            "unchanged_follow_up_standard",
+            "final_output_integrity",
+            "adaptive_visual_selection",
+            "explicit_full_mode",
             "lab_success_not_production_confirmed",
             "required_tool_missing",
             "conflicting_sources",

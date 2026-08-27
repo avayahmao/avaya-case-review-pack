@@ -114,8 +114,42 @@
     <!-- UNRELEASED -->
     <div>
         <span class="version-tag">Unreleased</span>
+        <p>No unreleased changes.</p>
+    </div>
+
+    <!-- VERSION 1.10.0 -->
+    <div>
+        <span class="version-tag">v1.10.0</span>
+        <span class="version-date">2026-08-27 - Investigation-Complete Reviews and Quality Audits</span>
+        <h3>Investigation-Complete Reviews and Quality Audits</h3>
+        <h3>Durable Case Follow-up and Approved Learning</h3>
         <ul>
-            <li>No unreleased changes.</li>
+            <li>Creates or updates one persistent per-Case-ID ReviewSnapshot v2 after every successful complete-context review, with a current Case Card, computed delta, decisive evidence digest, and compact append-only history.</li>
+            <li>Requires every follow-up to recollect a fresh CaseToMD/Gmail snapshot; prior records are comparison baselines only, and incomplete collection cannot modify stored state.</li>
+            <li>Adds a deterministic six-mode presenter: investigation-complete standard, explicit-only compact, delta-first investigation-complete follow-up, fixed proof-state Technical Specification, explicit investigation flow, and full output.</li>
+            <li>Always renders a bounded Investigation Progress flow in standard/follow-up and may add one secondary evidence-backed event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint.</li>
+            <li>Writes canonical <code>chat-output.md</code> and <code>chat-output.sha256</code> artifacts and blocks completion through <code>verify-final</code> when a proposed final response drifts from the renderer output.</li>
+            <li>Restores the causal assessment, substantive Timeline, and complete dynamic Evidence Register to standard/follow-up while keeping Appendix A last in explicit full mode.</li>
+            <li>Migrates v1 records without losing review history or their legacy full report.</li>
+            <li>Keeps administrative closure separate from RCA, mitigation maturity, and production outcome, then exposes an optional sanitized learning candidate on closure.</li>
+            <li>Applies learning only after explicit user approval to a persistent local domain overlay, preserving evidence strength, activation conditions, disconfirming signals, and limitations.</li>
+            <li>Adds deterministic lifecycle, presentation-mode, visual-routing, final-output-integrity, length-budget, migration, and approval-gate regression coverage.</li>
+        </ul>
+        <h3>QA Scoring and Alarm Audit</h3>
+        <ul>
+            <li>Adds an evidence-backed monthly QA workflow with separate Diagnostic &amp; Solution, Service &amp; Communication, and item-based Technical Plus scoring.</li>
+            <li>Allows Technical Plus allocations of <code>+1</code>, <code>+2</code>, or <code>+3</code> per demonstrated item while requiring all allocations to reconcile exactly to the Plus score.</li>
+            <li>Adds a separate Alarm Audit skill and deterministic helper using Check, Cause, Chronic, and Alarm Plus scoring; ordinary case QA and alarm scoring remain intentionally separate.</li>
+            <li>Adds canonical Codex entry points, release-manifest coverage, validation/report CLIs, and regression tests for both management quality workflows.</li>
+        </ul>
+        <h3>Installer Hardening</h3>
+        <ul>
+            <li>Keeps process execution-policy changes out of config-migration-only runs.</li>
+            <li>Makes profile-baseline hashing tolerate transient locked files by recording <code>LOCKED</code> while preserving deterministic change detection.</li>
+        </ul>
+        <h3>Validation</h3>
+        <ul>
+            <li>Passes 327 Python tests plus 627 subtests, 39 Node/Apps Script tests, all three skill validators, plugin validation, Python compilation, PowerShell parsing, presentation checks, and diff validation.</li>
         </ul>
     </div>
 

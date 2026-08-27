@@ -1,7 +1,7 @@
 {
   "name": "avaya-case-review",
-  "version": "1.9.4",
-  "description": "Evidence-grounded Avaya Siebel SR and ServiceNow incident reviews with exhaustive Gmail correlation and explicit QA scoring.",
+  "version": "1.10.0",
+  "description": "Evidence-grounded Avaya Siebel SR and ServiceNow incident reviews with exhaustive Gmail correlation, explicit QA scoring, and alarm auditing.",
   "author": {
     "name": "Avaya Support Management",
     "url": "https://github.com/avayahmao"
@@ -19,14 +19,19 @@
   "interface": {
     "displayName": "Avaya Case Review",
     "shortDescription": "Evidence-grounded Avaya case reviews",
-    "longDescription": "Review Avaya Siebel and ServiceNow cases using complete case records, exhaustive Gmail context, and product-specific technical guidance.",
+    "longDescription": "Review Avaya Siebel and ServiceNow cases using complete case records, exhaustive Gmail context, investigation-complete deterministic output with flow, causal assessment, timeline, detailed evidence, integrity verification, and durable follow-up.",
     "developerName": "Avaya Support Management",
     "category": "Productivity",
     "capabilities": [
       "Case Review",
+      "Case Follow-up",
       "Gmail Context",
       "Technical Assessment",
-      "QA Scoring"
+      "Adaptive Presentation",
+      "Final Output Integrity",
+      "Approved Domain Learning",
+      "QA Scoring",
+      "Alarm Audit"
     ],
     "websiteURL": "https://github.com/avayahmao/avaya-case-review-pack",
     "defaultPrompt": [

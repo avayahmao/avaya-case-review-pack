@@ -69,6 +69,8 @@ For every case review, **Complete Context Before Analysis** is mandatory: proces
 
 The exhaustive cloud endpoint is the existing Gmail MCP Apps Script Web App with the **Advanced Gmail Service** named Gmail, API version v1. Its tracked source is `tools/gmail/cloud/GmailMcpBridge.gs`; it is operational MCP code, not the optional governance example at `examples/optional-appsscript/Code.gs`. Deploy and verify the cloud version first using `docs/GMAIL_CLOUD_BRIDGE.md`, then deploy the local MCP modules and Agent SKILL. `setup_env.ps1` intentionally does not deploy the cloud source. Keep the Agent gate inactive if cloud authorization, stable snapshot/page coverage, cursor exhaustion, or hash/count verification fails.
 
+After a successful evidence-gated review, create or update the durable per-Case-ID follow-up record with `plugins/avaya-case-review/skills/case-review/scripts/case_record.py`. The prior record is only a post-analysis comparison baseline: every follow-up must recollect a fresh CaseToMD/Gmail snapshot, and incomplete collection must leave the record unchanged. Default and material follow-up chat output is investigation-complete: Case Card/delta, progress flow, causal assessment, technical proof states, substantive Timeline, complete dynamic Evidence Register, and durable-record link. `compact` is explicit-only. Administrative closure remains separate from RCA and production outcome. Offer closed-case learning, but draft it only on explicit request and apply sanitized learning to the persistent local domain overlay only after explicit user approval.
+
 ---
 
 ## 3. Runtime layout vs repo layout
@@ -114,7 +116,8 @@ avaya-case-review-pack/
 │   └── skills/
 │       ├── case-review/
 │       │   ├── SKILL.md                  ← the workflow
-│       │   └── references/               ← 10 domain guides
+│       │   ├── references/               ← 10 domain guides + output/record contracts
+│       │   └── scripts/                  ← durable record + deterministic presenter
 │       └── gmail-capability/SKILL.md     ← tells the agent Gmail MCP is available
 ├── skills/                          ← thin Codex entry points to canonical plugin skills
 ├── tools/
@@ -149,7 +152,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 | Task | Where |
 |---|---|
 | Change Codex packaging or URL installation | `.codex-plugin/plugin.json`, `.mcp.json`, `.agents/plugins/marketplace.json`, `install-codex.ps1`, and `INSTALL.md` |
-| Change the case-review workflow | `plugins/avaya-case-review/skills/case-review/SKILL.md` |
+| Change the case-review workflow or output modes | `plugins/avaya-case-review/skills/case-review/SKILL.md`, `references/output-modes.md`, `scripts/review_presenter.py`, and `scripts/case_record.py` |
 | Add a new Avaya-domain reference | new `.md` in `plugins/avaya-case-review/skills/case-review/references/`, plus a row in the SKILL.md routing table |
 | Change the installer | `setup_env.ps1` (invoked by `install.bat`) — verify with `powershell -NoProfile -Command "[PSParser]::Tokenize((Get-Content -Raw './setup_env.ps1'),[ref]$null)|Out-Null"` |
 | Change Gmail behavior | `tools/gmail/gmail_mcp_server.py`, `gmail_edge_broker.py`, `gmail_broker_client.py`, `gmail_brokerctl.py`, and `gmail_legacy_backend.py`; keep `edge_broker` as the default and the explicit `legacy_playwright` rollback path tested |
@@ -180,6 +183,7 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
+- **v1.10.0** — Investigation-complete reviews, QA scoring, and alarm audit
 - **v1.9.4** — Cloud bridge pagination speedup
 - **v1.9.3** — Whole-case storyline and problem lineage
 - **v1.9.2** — Primary Case ID-only Gmail collection

@@ -6,7 +6,40 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [Unreleased]
 
-* No unreleased changes.
+No unreleased changes.
+
+---
+
+## [v1.10.0] - 2026-08-27: Investigation-Complete Reviews and Quality Audits
+
+### Durable Case Follow-up and Approved Learning
+
+* Creates or updates one persistent per-Case-ID ReviewSnapshot v2 after every successful complete-context review, with a current Case Card, computed delta, decisive evidence digest, and compact append-only history.
+* Requires every follow-up to recollect a fresh CaseToMD/Gmail snapshot; prior records are comparison baselines only, and incomplete collection cannot modify stored state.
+* Adds a deterministic six-mode presenter: investigation-complete standard, explicit-only compact, delta-first investigation-complete follow-up, fixed proof-state Technical Specification, explicit investigation flow, and full output.
+* Always renders a bounded Investigation Progress flow in standard/follow-up and may add one secondary evidence-backed event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint.
+* Writes canonical `chat-output.md` and `chat-output.sha256` artifacts and blocks completion through `verify-final` when a proposed final response drifts from the renderer output.
+* Restores the causal assessment, substantive Timeline, and complete dynamic Evidence Register to standard/follow-up while keeping Appendix A last in explicit full mode.
+* Migrates v1 records without losing review history or their legacy full report.
+* Keeps administrative closure separate from RCA, mitigation maturity, and production outcome, then exposes an optional sanitized learning candidate on closure.
+* Applies learning only after explicit user approval to a persistent local domain overlay, preserving evidence strength, activation conditions, disconfirming signals, and limitations.
+* Adds deterministic lifecycle, presentation-mode, visual-routing, final-output-integrity, length-budget, migration, and approval-gate regression coverage.
+
+### QA Scoring and Alarm Audit
+
+* Adds an evidence-backed monthly QA workflow with separate Diagnostic & Solution, Service & Communication, and item-based Technical Plus scoring.
+* Allows Technical Plus allocations of `+1`, `+2`, or `+3` per demonstrated item while requiring all allocations to reconcile exactly to the Plus score.
+* Adds a separate Alarm Audit skill and deterministic helper using Check, Cause, Chronic, and Alarm Plus scoring; ordinary case QA and alarm scoring remain intentionally separate.
+* Adds canonical Codex entry points, release-manifest coverage, validation/report CLIs, and regression tests for both management quality workflows.
+
+### Installer Hardening
+
+* Keeps process execution-policy changes out of config-migration-only runs.
+* Makes profile-baseline hashing tolerate transient locked files by recording `LOCKED` while preserving deterministic change detection.
+
+### Validation
+
+* Passes 327 Python tests plus 627 subtests, 39 Node/Apps Script tests, all three skill validators, plugin validation, Python compilation, PowerShell parsing, presentation checks, and diff validation.
 
 ---
 
