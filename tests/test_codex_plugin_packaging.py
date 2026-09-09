@@ -103,12 +103,13 @@ class CodexPluginPackagingTests(unittest.TestCase):
         for marker in (
             "$CloudBridgeVerified",
             "docs/GMAIL_CLOUD_BRIDGE.md",
-            '"plugin", "marketplace", "add"',
-            '"plugin", "add"',
-            "codex plugin marketplace list --json",
+            "Get-CodexMarketplaceSnapshot",
+            "Set-CodexMarketplaceAtRef",
+            "Restore-CodexMarketplaceSnapshot",
             "gmail_brokerctl.py",
         ):
             self.assertIn(marker, source)
+        self.assertNotIn("Remove-Item", source)
 
         powershell = shutil.which("powershell")
         if powershell is None:
@@ -154,14 +155,9 @@ class CodexPluginPackagingTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(0, dry_run.returncode, dry_run.stderr)
-        self.assertIn(
-            "codex plugin marketplace add https://github.com/avayahmao/avaya-case-review-pack --ref main",
-            dry_run.stdout,
-        )
-        self.assertIn(
-            "codex plugin add avaya-case-review@avaya-case-review-pack",
-            dry_run.stdout,
-        )
+        self.assertIn("Ref:         v1.10.0", dry_run.stdout)
+        self.assertIn("> new marketplace add", dry_run.stdout)
+        self.assertIn("> new plugin add", dry_run.stdout)
         self.assertIn("no state changes were made", dry_run.stdout)
 
     def test_agent_contract_has_both_supported_install_modes(self):
