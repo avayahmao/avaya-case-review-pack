@@ -1,6 +1,6 @@
 var GMAIL_BRIDGE_VERSION = 4;
 var GMAIL_BRIDGE_CONTRACT_REVISION = 1;
-var GMAIL_BRIDGE_SOURCE_SHA256 = "16f57c29d3a3810d567fb1de5f90baf8cecba258c7eb8a27ecfefacc7246551d";
+var GMAIL_BRIDGE_SOURCE_SHA256 = "14f8542b9ed19f1bb84ea2fb0209f8c70151f0d427b48453b904683187e884c0";
 var MAX_LIST_RESULTS = 100;
 var DEFAULT_LIST_RESULTS = 100;
 var DEFAULT_LEGACY_SEARCH_RESULTS = 10;
@@ -16,6 +16,7 @@ function doGet(e) {
   try {
     var parameters = (e && e.parameter) || {};
     var action = parameters.action || "search";
+    if (action === "capabilities") return jsonOutput_(capabilities_());
     if (action === "search") return jsonOutput_(legacySearch_(parameters));
     if (action === "read") return jsonOutput_(legacyRead_(parameters));
     if (action === "send") return jsonOutput_(legacySend_(parameters));
@@ -29,6 +30,23 @@ function doGet(e) {
 
 function jsonOutput_(value) {
   return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function capabilities_() {
+  return {
+    success: true,
+    bridge_version: GMAIL_BRIDGE_VERSION,
+    contract_revision: GMAIL_BRIDGE_CONTRACT_REVISION,
+    bridge_source_sha256: GMAIL_BRIDGE_SOURCE_SHA256,
+    capabilities: {
+      stable_snapshots: true,
+      thread_pagination: true,
+      cursor_pagination: true,
+      manifest_sha256: true,
+      body_bytes: true,
+      body_sha256: true,
+    },
+  };
 }
 
 function legacySearch_(parameters) {
@@ -1090,6 +1108,9 @@ function sanitizedError_(error) {
 
 var GmailBridgeTestExports = {
   bridgeVersion: GMAIL_BRIDGE_VERSION,
+  bridgeSourceSha256: GMAIL_BRIDGE_SOURCE_SHA256,
+  capabilities: capabilities_,
+  contractRevision: GMAIL_BRIDGE_CONTRACT_REVISION,
   decodeCursor: decodeCursor_,
   encodeCursor: encodeCursor_,
   listThreads: listThreads_,

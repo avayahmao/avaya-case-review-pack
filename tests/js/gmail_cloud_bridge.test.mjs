@@ -9,6 +9,32 @@ const INNER_BUDGET = 6 * MIB - 4 * 1024;
 const WIRE_BUDGET = 8 * MIB - 4 * 1024;
 const MAX_SEGMENTS = 32;
 
+test("capabilities returns fixed metadata without touching Gmail", () => {
+  const { context, calls } = loadBridge();
+  const response = JSON.parse(
+    context.doGet({ parameter: { action: "capabilities" } }).data,
+  );
+  assert.deepEqual(response, {
+    success: true,
+    bridge_version: 4,
+    contract_revision: 1,
+    bridge_source_sha256: context.GmailBridgeTestExports.bridgeSourceSha256,
+    capabilities: {
+      stable_snapshots: true,
+      thread_pagination: true,
+      cursor_pagination: true,
+      manifest_sha256: true,
+      body_bytes: true,
+      body_sha256: true,
+    },
+  });
+  assert.deepEqual(calls.list, []);
+  assert.deepEqual(calls.get, []);
+  assert.deepEqual(calls.messageGet, []);
+  assert.deepEqual(calls.search, []);
+  assert.deepEqual(calls.sent, []);
+});
+
 function bodySegment(message) {
   return message.segments[0];
 }
