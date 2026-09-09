@@ -55,6 +55,12 @@ counter_path = Path(os.environ["SETUP_FIXTURE_COUNTER"])
 command = sys.argv[1]
 with event_path.open("a", encoding="utf-8") as stream:
     stream.write(command + "\\n")
+with Path(os.environ["SETUP_FIXTURE_ENVIRONMENTS"]).open("a", encoding="utf-8") as stream:
+    stream.write(json.dumps({
+        "command": command,
+        "USERPROFILE": os.environ.get("USERPROFILE"),
+        "LOCALAPPDATA": os.environ.get("LOCALAPPDATA"),
+    }) + "\\n")
 
 if command == "verify-bridge":
     exits = [int(value) for value in os.environ["SETUP_FIXTURE_VERIFY_EXITS"].split(",")]
@@ -65,10 +71,17 @@ if command == "login":
     time.sleep(float(os.environ.get("SETUP_FIXTURE_LOGIN_SLEEP", "0")))
     raise SystemExit(int(os.environ.get("SETUP_FIXTURE_LOGIN_EXIT", "0")))
 if command == "stop":
-    raise SystemExit(20)
+    raise SystemExit(int(os.environ.get("SETUP_FIXTURE_STOP_EXIT", "20")))
 if command == "status":
+    if os.environ.get("SETUP_FIXTURE_ROLLBACK_BLOCK") == "1":
+        target = Path(os.environ["SETUP_FIXTURE_CONFIG"])
+        target.unlink()
+        target.mkdir()
+        (target / "block.txt").write_text("block", encoding="ascii")
     print(json.dumps({"ok": True, "result": {"build_id": "source"}}))
     raise SystemExit(int(os.environ.get("SETUP_FIXTURE_STATUS_EXIT", "0")))
+if command == "start":
+    raise SystemExit(int(os.environ.get("SETUP_FIXTURE_START_EXIT", "0")))
 raise SystemExit(30)
 '''
 
@@ -79,6 +92,7 @@ raise SystemExit(30)
         self.user = self.root / "user"
         self.local_app_data = self.root / "local"
         self.events = self.root / "events.txt"
+        self.environments = self.root / "environments.jsonl"
         self.counter = self.root / "counter.txt"
         self.target_plugin = (
             self.user / ".gemini/config/plugins/avaya-case-review"
@@ -140,6 +154,9 @@ raise SystemExit(30)
         (self.target_plugin / "old-plugin.bin").write_bytes(b"old plugin\x00")
         self.target_gmail.mkdir(parents=True)
         (self.target_gmail / "gmail_mcp_server.py").write_bytes(b"old gmail\x00")
+        (self.target_gmail / "gmail_brokerctl.py").write_text(
+            self.fake_brokerctl, encoding="utf-8", newline="\n"
+        )
         (self.target_gmail / "unrelated.txt").write_bytes(b"unrelated\x00")
         self.target_case.mkdir(parents=True)
         (self.target_case / "casetomd_mcp_bridge.py").write_bytes(b"old case\x00")
@@ -162,18 +179,32 @@ raise SystemExit(30)
         login_sleep: float = 0,
         login_timeout: int = 2,
         status_exit: int = 0,
+        stop_exit: int = 20,
+        start_exit: int = 0,
+        rollback_block: bool = False,
+        blocked_backup_parent: bool = False,
     ) -> subprocess.CompletedProcess:
         environment = os.environ.copy()
         environment.update(
             {
                 "SETUP_FIXTURE_EVENTS": str(self.events),
                 "SETUP_FIXTURE_COUNTER": str(self.counter),
+                "SETUP_FIXTURE_ENVIRONMENTS": str(self.environments),
                 "SETUP_FIXTURE_VERIFY_EXITS": verify_exits,
                 "SETUP_FIXTURE_LOGIN_EXIT": str(login_exit),
                 "SETUP_FIXTURE_LOGIN_SLEEP": str(login_sleep),
                 "SETUP_FIXTURE_STATUS_EXIT": str(status_exit),
+                "SETUP_FIXTURE_STOP_EXIT": str(stop_exit),
+                "SETUP_FIXTURE_START_EXIT": str(start_exit),
+                "SETUP_FIXTURE_ROLLBACK_BLOCK": "1" if rollback_block else "0",
+                "SETUP_FIXTURE_CONFIG": str(self.config),
             }
         )
+        if blocked_backup_parent:
+            blocked = self.root / "blocked-temp"
+            blocked.write_bytes(b"not a directory")
+            environment["TEMP"] = str(blocked)
+            environment["TMP"] = str(blocked)
         return subprocess.run(
             [
                 "powershell.exe",
@@ -204,6 +235,14 @@ raise SystemExit(30)
             return []
         return self.events.read_text(encoding="utf-8").splitlines()
 
+    def environment_records(self):
+        if not self.environments.exists():
+            return []
+        return [
+            json.loads(line)
+            for line in self.environments.read_text(encoding="utf-8").splitlines()
+        ]
+
 
 class InstallerContractTests(unittest.TestCase):
     @classmethod
@@ -227,11 +266,20 @@ class InstallerContractTests(unittest.TestCase):
 
     def test_bridge_preflight_precedes_plugin_and_mcp_replacement(self):
         verify = self.script.index("verify-bridge")
-        plugin_copy = self.script.index("Copy-Item -Path $SourcePluginDir")
+        plugin_copy = self.script.index(
+            "Copy-Item -LiteralPath $SourcePluginDir -Destination $TargetPluginDir"
+        )
         config_update = self.script.index("Update-McpConfiguration `", verify)
 
         self.assertLess(verify, plugin_copy)
         self.assertLess(verify, config_update)
+
+    def test_plugin_copy_uses_literal_source_and_destination_paths(self):
+        self.assertIn(
+            "Copy-Item -LiteralPath $SourcePluginDir -Destination $TargetPluginDir",
+            self.script,
+        )
+        self.assertNotIn("Copy-Item -Path $SourcePluginDir", self.script)
 
     def test_incompatible_bridge_preserves_prior_install_byte_for_byte(self):
         fixture = SetupInstallFixture()
@@ -278,10 +326,25 @@ class InstallerContractTests(unittest.TestCase):
             ),
             "# new\n",
         )
+        self.assertTrue((fixture.target_gmail / "cloud/bridge_identity.py").is_file())
+        self.assertFalse((fixture.target_gmail / "cloud/GmailMcpBridge.gs").exists())
         self.assertEqual(
             json.loads(fixture.config.read_text(encoding="utf-8-sig"))["existing"],
             "config",
         )
+
+    def test_all_broker_subprocesses_use_selected_install_environment(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+
+        completed = fixture.run("10,0")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        records = fixture.environment_records()
+        self.assertGreaterEqual(len(records), 5)
+        for record in records:
+            self.assertEqual(record["USERPROFILE"], str(fixture.user))
+            self.assertEqual(record["LOCALAPPDATA"], str(fixture.local_app_data))
 
     def test_unavailable_bridge_stops_before_replacement(self):
         fixture = SetupInstallFixture()
@@ -350,6 +413,104 @@ class InstallerContractTests(unittest.TestCase):
             ["verify-bridge", "stop", "status"],
         )
         self.assertEqual(fixture.snapshot(), before)
+
+    def test_rollback_failure_preserves_backup_and_reports_recovery_location(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+
+        completed = fixture.run("0", status_exit=30, rollback_block=True)
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        output = completed.stdout + completed.stderr
+        match = re.search(r"RECOVERY_BACKUP=(?P<path>[^\r\n]+)", output)
+        self.assertIsNotNone(match, output)
+        backup = Path(match.group("path").strip())
+        self.addCleanup(shutil.rmtree, backup, True)
+        self.assertTrue(backup.is_dir())
+        self.assertEqual(
+            (backup / "mcp_config.json").read_bytes(),
+            b'{"existing":"config"}\r\n',
+        )
+
+    def test_backup_failure_after_stop_restarts_prior_broker_without_mutation(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        before = fixture.snapshot()
+
+        completed = fixture.run("0", stop_exit=0, blocked_backup_parent=True)
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertEqual(fixture.event_lines(), ["verify-bridge", "stop", "start"])
+        self.assertEqual(fixture.snapshot(), before)
+
+    def test_restart_failure_preserves_verified_backup(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+
+        completed = fixture.run("0", status_exit=30, stop_exit=0, start_exit=20)
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        output = completed.stdout + completed.stderr
+        match = re.search(r"RECOVERY_BACKUP=(?P<path>[^\r\n]+)", output)
+        self.assertIsNotNone(match, output)
+        backup = Path(match.group("path").strip())
+        self.addCleanup(shutil.rmtree, backup, True)
+        self.assertTrue(backup.is_dir())
+        self.assertEqual(
+            (backup / "mcp_config.json").read_bytes(),
+            b'{"existing":"config"}\r\n',
+        )
+
+    def test_deployed_allowlist_supports_real_brokerctl_help_and_status(self):
+        cloud_match = re.search(
+            r"\$GmailCloudDeploymentFiles\s*=\s*@\((.*?)\n\)",
+            self.script,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(cloud_match, "cloud Python deployment allowlist missing")
+        cloud_files = re.findall(r'"([a-z0-9_]+\.py)"', cloud_match.group(1))
+        self.assertEqual(cloud_files, ["bridge_identity.py"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            deployed = root / "tools/gmail"
+            deployed.mkdir(parents=True)
+            for name in SetupInstallFixture.gmail_files:
+                shutil.copy2(GMAIL_SOURCE / name, deployed / name)
+            (deployed / "cloud").mkdir()
+            for name in cloud_files:
+                shutil.copy2(GMAIL_SOURCE / "cloud" / name, deployed / "cloud" / name)
+
+            help_result = subprocess.run(
+                ["python", str(deployed / "gmail_brokerctl.py"), "--help"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(help_result.returncode, 0, help_result.stderr)
+            status_code = '''
+from tools.gmail import gmail_brokerctl
+
+class Client:
+    def request(self, method, params):
+        assert method == "health"
+        return {"edge_state": "AUTHENTICATED", "build_id": "source"}
+
+raise SystemExit(gmail_brokerctl.main(["status"], client=Client()))
+'''
+            status_result = subprocess.run(
+                ["python", "-c", status_code],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(status_result.returncode, 0, status_result.stderr)
+            self.assertIn('"ok": true', status_result.stdout)
+            self.assertFalse((deployed / "cloud/GmailMcpBridge.gs").exists())
 
     def test_gmail_deployment_is_an_explicit_allowlist(self):
         expected_modules = {
@@ -423,7 +584,7 @@ class InstallerContractTests(unittest.TestCase):
         verify_match = re.search(
             r"\$BridgeVerifyResult\s*=\s*Invoke-BoundedCommand.*?"
             r"if\s*\(\$BridgeVerifyResult\.ExitCode\s+-eq\s+10\)\s*\{.*?"
-            r'-Arguments\s+@\(\$SourceBrokerCtlPath,\s+"login"\).*?'
+            r'-Arguments\s+@\("-B",\s+\$SourceBrokerCtlPath,\s+"login"\).*?'
             r'\-Stage\s+"verify-bridge retry"',
             self.script,
             re.DOTALL,
@@ -432,7 +593,7 @@ class InstallerContractTests(unittest.TestCase):
         self.assertEqual(
             len(
                 re.findall(
-                    r'(?m)^\s*-Arguments\s+@\(\$SourceBrokerCtlPath,\s+"login"\)\s*`$',
+                    r'(?m)^\s*-Arguments\s+@\("-B",\s+\$SourceBrokerCtlPath,\s+"login"\)\s*`$',
                     self.script,
                 )
             ),

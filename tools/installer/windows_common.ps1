@@ -116,6 +116,7 @@ function Invoke-BoundedCommand {
         [Parameter(Mandatory = $true)][string]$Command,
         [Parameter(Mandatory = $true)][object[]]$Arguments,
         [Parameter(Mandatory = $true)][ValidateRange(1, 2147483)][int]$TimeoutSeconds,
+        [System.Collections.IDictionary]$Environment,
         [switch]$AllowFailure
     )
 
@@ -150,6 +151,11 @@ function Invoke-BoundedCommand {
     $StartInfo.CreateNoWindow = $true
     $StartInfo.RedirectStandardOutput = $true
     $StartInfo.RedirectStandardError = $true
+    if ($null -ne $Environment) {
+        foreach ($Name in $Environment.Keys) {
+            $StartInfo.EnvironmentVariables[[string]$Name] = [string]$Environment[$Name]
+        }
+    }
 
     if ($null -ne $StartInfo.PSObject.Properties['ArgumentList']) {
         foreach ($Argument in $ProcessArguments) {

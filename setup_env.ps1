@@ -258,7 +258,8 @@ function Stop-RunningGmailBroker {
         [Parameter(Mandatory = $true)][string]$BrokerCtlPath,
         [Parameter(Mandatory = $true)][string]$StateFile,
         [Parameter(Mandatory = $true)][string]$EdgeProfileDir,
-        [Parameter(Mandatory = $true)][string]$PythonCommand
+        [Parameter(Mandatory = $true)][string]$PythonCommand,
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$BrokerEnvironment
     )
 
     $BrokerProcessId = 0
@@ -278,8 +279,9 @@ function Stop-RunningGmailBroker {
         $StopResult = Invoke-BoundedCommand `
             -Stage "Gmail broker stop" `
             -Command $PythonCommand `
-            -Arguments @($BrokerCtlPath, "stop") `
+            -Arguments @("-B", $BrokerCtlPath, "stop") `
             -TimeoutSeconds $TimeoutBridgeSeconds `
+            -Environment $BrokerEnvironment `
             -AllowFailure
         $StopExit = $StopResult.ExitCode
         if (-not [string]::IsNullOrWhiteSpace($StopResult.StdOut)) {
@@ -369,6 +371,10 @@ $BrokerStateFile = Join-Path $BrokerStateDir "state.json"
 $LegacyProfileDir = Join-Path $GeminiToolsDir "chrome_profile"
 $EdgeBrokerProfileDir = Join-Path $GeminiToolsDir "edge_broker_profile"
 $BrokerCtlPath = Join-Path $GeminiToolsDir "gmail_brokerctl.py"
+$BrokerEnvironment = @{
+    "USERPROFILE" = $UserHome
+    "LOCALAPPDATA" = $LocalAppData
+}
 
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "  Avaya Case Review Manager Suite — Environment Setup" -ForegroundColor Cyan
@@ -380,6 +386,7 @@ Write-Host ""
 # local and live compatibility gate has passed.
 $SourcePluginDir = Join-Path $ScriptDir "plugins\avaya-case-review"
 $SourceGmailDir = Join-Path $ScriptDir "tools\gmail"
+$SourceGmailCloudDir = Join-Path $SourceGmailDir "cloud"
 $SourceCaseToMdDir = Join-Path $ScriptDir "tools\casetomd"
 $SourceBrokerCtlPath = Join-Path $SourceGmailDir "gmail_brokerctl.py"
 $BridgeSourcePath = Join-Path $SourceGmailDir "cloud\GmailMcpBridge.gs"
@@ -387,6 +394,7 @@ $BridgeIdentityPath = Join-Path $SourceGmailDir "cloud\bridge_identity.py"
 $BridgeAttestationPath = Join-Path $SourceGmailDir "cloud\bridge_release_attestation.json"
 $PluginManifestPath = Join-Path $SourcePluginDir "plugin.json"
 $TargetPluginDir = Join-Path $GeminiPluginsDir "avaya-case-review"
+$TargetGmailCloudDir = Join-Path $GeminiToolsDir "cloud"
 $TargetCaseToMdDir = Join-Path $UserHome ".gemini\tools\casetomd"
 $CaseToMdSourceFile = Join-Path $SourceCaseToMdDir "casetomd_mcp_bridge.py"
 $CaseToMdTargetFile = Join-Path $TargetCaseToMdDir "casetomd_mcp_bridge.py"
@@ -401,6 +409,9 @@ $GmailDeploymentFiles = @(
     "gmail_legacy_backend.py",
     "gmail_mcp_server.py",
     "gmail_playwright.py"
+)
+$GmailCloudDeploymentFiles = @(
+    "bridge_identity.py"
 )
 
 foreach ($RequiredPath in @(
@@ -421,6 +432,12 @@ foreach ($RequiredGmailFile in $GmailDeploymentFiles) {
     $SourceFile = Join-Path $SourceGmailDir $RequiredGmailFile
     if (-not (Test-Path -LiteralPath $SourceFile -PathType Leaf)) {
         throw "Required Gmail deployment file is missing: $SourceFile"
+    }
+}
+foreach ($RequiredCloudFile in $GmailCloudDeploymentFiles) {
+    $SourceFile = Join-Path $SourceGmailCloudDir $RequiredCloudFile
+    if (-not (Test-Path -LiteralPath $SourceFile -PathType Leaf)) {
+        throw "Required Gmail cloud helper is missing: $SourceFile"
     }
 }
 
@@ -506,21 +523,24 @@ if (-not $SkipDependencyInstall) {
 $BridgeVerifyResult = Invoke-BoundedCommand `
     -Stage "verify-bridge" `
     -Command $PythonCommand `
-    -Arguments @($SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
+    -Arguments @("-B", $SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
     -TimeoutSeconds $TimeoutBridgeSeconds `
+    -Environment $BrokerEnvironment `
     -AllowFailure
 if ($BridgeVerifyResult.ExitCode -eq 10) {
     Write-Host "  Gmail authentication is required. Waiting for Managed Edge SSO/MFA..." -ForegroundColor Cyan
     $null = Invoke-BoundedCommand `
         -Stage "Gmail broker login" `
         -Command $PythonCommand `
-        -Arguments @($SourceBrokerCtlPath, "login") `
-        -TimeoutSeconds $LoginTimeoutSeconds
+        -Arguments @("-B", $SourceBrokerCtlPath, "login") `
+        -TimeoutSeconds $LoginTimeoutSeconds `
+        -Environment $BrokerEnvironment
     $BridgeVerifyResult = Invoke-BoundedCommand `
         -Stage "verify-bridge retry" `
         -Command $PythonCommand `
-        -Arguments @($SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
+        -Arguments @("-B", $SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
         -TimeoutSeconds $TimeoutBridgeSeconds `
+        -Environment $BrokerEnvironment `
         -AllowFailure
 }
 if ($BridgeVerifyResult.ExitCode -ne 0) {
@@ -533,72 +553,95 @@ Write-Host "  Gmail Cloud Bridge is authenticated and compatible." -ForegroundCo
 # ------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "[3/6] Preparing a reversible Antigravity deployment..." -ForegroundColor Yellow
-$BrokerStopResult = Stop-RunningGmailBroker `
-    -BrokerCtlPath $SourceBrokerCtlPath `
-    -StateFile $BrokerStateFile `
-    -EdgeProfileDir $EdgeBrokerProfileDir `
-    -PythonCommand $PythonCommand
-Write-Host "  Verified source broker is stopped (control exit $($BrokerStopResult.exit_code))." -ForegroundColor Green
-
-$LegacyProfileBaselineBefore = Get-ProfileBaseline -Path $LegacyProfileDir
-$EdgeProfileBaselineBefore = Get-ProfileBaseline -Path $EdgeBrokerProfileDir
-$BackupRoot = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-deploy-" + [guid]::NewGuid().ToString("N"))
-$BackupPluginDir = Join-Path $BackupRoot "plugin"
-$BackupGmailDir = Join-Path $BackupRoot "gmail"
-$BackupCaseFile = Join-Path $BackupRoot "casetomd_mcp_bridge.py"
-$BackupConfigFile = Join-Path $BackupRoot "mcp_config.json"
-$DeploymentBaselines = @{}
-$DeploymentBackups = @{}
-$DeploymentBaselines[$TargetPluginDir] = Get-DeploymentPathBaseline -Path $TargetPluginDir
-$DeploymentBackups[$TargetPluginDir] = $BackupPluginDir
-$DeploymentBaselines[$CaseToMdTargetFile] = Get-DeploymentPathBaseline -Path $CaseToMdTargetFile
-$DeploymentBackups[$CaseToMdTargetFile] = $BackupCaseFile
-$DeploymentBaselines[$McpConfigFile] = Get-DeploymentPathBaseline -Path $McpConfigFile
-$DeploymentBackups[$McpConfigFile] = $BackupConfigFile
-foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
-    $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
-    $DeploymentBaselines[$TargetFile] = Get-DeploymentPathBaseline -Path $TargetFile
-    $DeploymentBackups[$TargetFile] = Join-Path $BackupGmailDir $GmailDeploymentFile
-}
-
-New-Item -ItemType Directory -Path $BackupGmailDir -Force | Out-Null
-if (Test-Path -LiteralPath $TargetPluginDir -PathType Container) {
-    Copy-Item -LiteralPath $TargetPluginDir -Destination $BackupPluginDir -Recurse -Force
-}
-foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
-    $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
-    if (Test-Path -LiteralPath $TargetFile -PathType Leaf) {
-        Copy-Item -LiteralPath $TargetFile -Destination (Join-Path $BackupGmailDir $GmailDeploymentFile) -Force
-    }
-}
-if (Test-Path -LiteralPath $CaseToMdTargetFile -PathType Leaf) {
-    Copy-Item -LiteralPath $CaseToMdTargetFile -Destination $BackupCaseFile -Force
-}
-if (Test-Path -LiteralPath $McpConfigFile -PathType Leaf) {
-    Copy-Item -LiteralPath $McpConfigFile -Destination $BackupConfigFile -Force
-}
-foreach ($TargetPath in $DeploymentBaselines.Keys) {
-    $BackupBaseline = Get-DeploymentPathBaseline -Path $DeploymentBackups[$TargetPath]
-    if (-not [string]::Equals(
-        [string]$DeploymentBaselines[$TargetPath],
-        [string]$BackupBaseline,
-        [StringComparison]::Ordinal
-    )) {
-        throw "Backup verification failed before deployment for target: $TargetPath"
-    }
-}
-
-# ------------------------------------------------------------------------------
-# 4-6. Commit Plugin, MCP, and Configuration Changes; Verify the New Broker
-# ------------------------------------------------------------------------------
+$BrokerStopResult = $null
+$BrokerWasStopped = $false
+$BackupRoot = $null
+$PreserveBackup = $false
 $DeploymentStarted = $false
 try {
+    $BrokerStopResult = Stop-RunningGmailBroker `
+        -BrokerCtlPath $SourceBrokerCtlPath `
+        -StateFile $BrokerStateFile `
+        -EdgeProfileDir $EdgeBrokerProfileDir `
+        -PythonCommand $PythonCommand `
+        -BrokerEnvironment $BrokerEnvironment
+    $BrokerWasStopped = $BrokerStopResult.exit_code -eq 0
+    Write-Host "  Verified source broker is stopped (control exit $($BrokerStopResult.exit_code))." -ForegroundColor Green
+
+    $LegacyProfileBaselineBefore = Get-ProfileBaseline -Path $LegacyProfileDir
+    $EdgeProfileBaselineBefore = Get-ProfileBaseline -Path $EdgeBrokerProfileDir
+    $BackupRoot = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-deploy-" + [guid]::NewGuid().ToString("N"))
+    $BackupPluginDir = Join-Path $BackupRoot "plugin"
+    $BackupGmailDir = Join-Path $BackupRoot "gmail"
+    $BackupGmailCloudDir = Join-Path $BackupGmailDir "cloud"
+    $BackupCaseFile = Join-Path $BackupRoot "casetomd_mcp_bridge.py"
+    $BackupConfigFile = Join-Path $BackupRoot "mcp_config.json"
+    $DeploymentBaselines = @{}
+    $DeploymentBackups = @{}
+    $DeploymentBaselines[$TargetPluginDir] = Get-DeploymentPathBaseline -Path $TargetPluginDir
+    $DeploymentBackups[$TargetPluginDir] = $BackupPluginDir
+    $DeploymentBaselines[$CaseToMdTargetFile] = Get-DeploymentPathBaseline -Path $CaseToMdTargetFile
+    $DeploymentBackups[$CaseToMdTargetFile] = $BackupCaseFile
+    $DeploymentBaselines[$McpConfigFile] = Get-DeploymentPathBaseline -Path $McpConfigFile
+    $DeploymentBackups[$McpConfigFile] = $BackupConfigFile
+    foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
+        $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
+        $DeploymentBaselines[$TargetFile] = Get-DeploymentPathBaseline -Path $TargetFile
+        $DeploymentBackups[$TargetFile] = Join-Path $BackupGmailDir $GmailDeploymentFile
+    }
+    foreach ($GmailCloudDeploymentFile in $GmailCloudDeploymentFiles) {
+        $TargetFile = Join-Path $TargetGmailCloudDir $GmailCloudDeploymentFile
+        $DeploymentBaselines[$TargetFile] = Get-DeploymentPathBaseline -Path $TargetFile
+        $DeploymentBackups[$TargetFile] = Join-Path $BackupGmailCloudDir $GmailCloudDeploymentFile
+    }
+
+    New-Item -ItemType Directory -Path $BackupGmailCloudDir -Force | Out-Null
+    if (Test-Path -LiteralPath $TargetPluginDir -PathType Container) {
+        Copy-Item -LiteralPath $TargetPluginDir -Destination $BackupPluginDir -Recurse -Force
+    }
+    foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
+        $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
+        if (Test-Path -LiteralPath $TargetFile -PathType Leaf) {
+            Copy-Item -LiteralPath $TargetFile -Destination (Join-Path $BackupGmailDir $GmailDeploymentFile) -Force
+        }
+    }
+    foreach ($GmailCloudDeploymentFile in $GmailCloudDeploymentFiles) {
+        $TargetFile = Join-Path $TargetGmailCloudDir $GmailCloudDeploymentFile
+        if (Test-Path -LiteralPath $TargetFile -PathType Leaf) {
+            Copy-Item -LiteralPath $TargetFile -Destination (Join-Path $BackupGmailCloudDir $GmailCloudDeploymentFile) -Force
+        }
+    }
+    if (Test-Path -LiteralPath $CaseToMdTargetFile -PathType Leaf) {
+        Copy-Item -LiteralPath $CaseToMdTargetFile -Destination $BackupCaseFile -Force
+    }
+    if (Test-Path -LiteralPath $McpConfigFile -PathType Leaf) {
+        Copy-Item -LiteralPath $McpConfigFile -Destination $BackupConfigFile -Force
+    }
+    foreach ($TargetPath in $DeploymentBaselines.Keys) {
+        $BackupBaseline = Get-DeploymentPathBaseline -Path $DeploymentBackups[$TargetPath]
+        if (-not [string]::Equals(
+            [string]$DeploymentBaselines[$TargetPath],
+            [string]$BackupBaseline,
+            [StringComparison]::Ordinal
+        )) {
+            throw "Backup verification failed before deployment for target: $TargetPath"
+        }
+    }
+
+    # --------------------------------------------------------------------------
+    # 4-6. Commit Plugin, MCP, and Configuration Changes; Verify the New Broker
+    # --------------------------------------------------------------------------
     Assert-DeploymentTarget -Path $TargetPluginDir -AllowedRoot $GeminiPluginsDir
     Assert-DeploymentTarget -Path $CaseToMdTargetFile -AllowedRoot $TargetCaseToMdDir
     Assert-DeploymentTarget -Path $McpConfigFile -AllowedRoot $GeminiConfigDir
     foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
         Assert-DeploymentTarget `
             -Path (Join-Path $GeminiToolsDir $GmailDeploymentFile) `
+            -AllowedRoot $GeminiToolsDir
+    }
+    foreach ($GmailCloudDeploymentFile in $GmailCloudDeploymentFiles) {
+        Assert-DeploymentTarget `
+            -Path (Join-Path $TargetGmailCloudDir $GmailCloudDeploymentFile) `
             -AllowedRoot $GeminiToolsDir
     }
     $DeploymentStarted = $true
@@ -608,13 +651,20 @@ try {
     if (Test-Path -LiteralPath $TargetPluginDir) {
         Remove-Item -LiteralPath $TargetPluginDir -Recurse -Force
     }
-    Copy-Item -Path $SourcePluginDir -Destination $GeminiPluginsDir -Recurse -Force
+    Copy-Item -LiteralPath $SourcePluginDir -Destination $TargetPluginDir -Recurse -Force
 
     New-Item -ItemType Directory -Path $GeminiToolsDir -Force | Out-Null
     foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
         Copy-Item `
             -LiteralPath (Join-Path $SourceGmailDir $GmailDeploymentFile) `
             -Destination (Join-Path $GeminiToolsDir $GmailDeploymentFile) `
+            -Force
+    }
+    New-Item -ItemType Directory -Path $TargetGmailCloudDir -Force | Out-Null
+    foreach ($GmailCloudDeploymentFile in $GmailCloudDeploymentFiles) {
+        Copy-Item `
+            -LiteralPath (Join-Path $SourceGmailCloudDir $GmailCloudDeploymentFile) `
+            -Destination (Join-Path $TargetGmailCloudDir $GmailCloudDeploymentFile) `
             -Force
     }
     New-Item -ItemType Directory -Path $TargetCaseToMdDir -Force | Out-Null
@@ -653,8 +703,9 @@ try {
     $BrokerStatus = Invoke-BoundedCommand `
         -Stage "deployed Gmail broker status" `
         -Command $PythonCommand `
-        -Arguments @($BrokerCtlPath, "status") `
+        -Arguments @("-B", $BrokerCtlPath, "status") `
         -TimeoutSeconds $TimeoutBridgeSeconds `
+        -Environment $BrokerEnvironment `
         -AllowFailure
     if ($BrokerStatus.ExitCode -ne 0) {
         throw "Deployed Gmail broker validation failed with exit code $($BrokerStatus.ExitCode)."
@@ -665,8 +716,8 @@ try {
     Write-Host "  Running broker build verified: $ExpectedBrokerBuildId" -ForegroundColor Green
 } catch {
     $PrimaryFailure = $_
-    if ($DeploymentStarted) {
-        try {
+    try {
+        if ($DeploymentStarted) {
             if (Test-Path -LiteralPath $TargetPluginDir) {
                 Remove-Item -LiteralPath $TargetPluginDir -Recurse -Force
             }
@@ -683,16 +734,27 @@ try {
                     Copy-Item -LiteralPath $BackupFile -Destination $TargetFile -Force
                 }
             }
-            foreach ($FilePair in @(
-                @($CaseToMdTargetFile, $BackupCaseFile),
-                @($McpConfigFile, $BackupConfigFile)
-            )) {
-                if (Test-Path -LiteralPath $FilePair[0]) {
-                    Remove-Item -LiteralPath $FilePair[0] -Force
+            foreach ($GmailCloudDeploymentFile in $GmailCloudDeploymentFiles) {
+                $TargetFile = Join-Path $TargetGmailCloudDir $GmailCloudDeploymentFile
+                $BackupFile = Join-Path $BackupGmailCloudDir $GmailCloudDeploymentFile
+                if (Test-Path -LiteralPath $TargetFile) {
+                    Remove-Item -LiteralPath $TargetFile -Force
                 }
-                if (Test-Path -LiteralPath $FilePair[1] -PathType Leaf) {
-                    Copy-Item -LiteralPath $FilePair[1] -Destination $FilePair[0] -Force
+                if (Test-Path -LiteralPath $BackupFile -PathType Leaf) {
+                    Copy-Item -LiteralPath $BackupFile -Destination $TargetFile -Force
                 }
+            }
+            if (Test-Path -LiteralPath $CaseToMdTargetFile) {
+                Remove-Item -LiteralPath $CaseToMdTargetFile -Force
+            }
+            if (Test-Path -LiteralPath $BackupCaseFile -PathType Leaf) {
+                Copy-Item -LiteralPath $BackupCaseFile -Destination $CaseToMdTargetFile -Force
+            }
+            if (Test-Path -LiteralPath $McpConfigFile) {
+                Remove-Item -LiteralPath $McpConfigFile -Force
+            }
+            if (Test-Path -LiteralPath $BackupConfigFile -PathType Leaf) {
+                Copy-Item -LiteralPath $BackupConfigFile -Destination $McpConfigFile -Force
             }
             foreach ($TargetPath in $DeploymentBaselines.Keys) {
                 $RestoredBaseline = Get-DeploymentPathBaseline -Path $TargetPath
@@ -704,23 +766,35 @@ try {
                     throw "Backup verification failed for restored target: $TargetPath"
                 }
             }
-            if (
-                $BrokerStopResult.exit_code -eq 0 -and
-                (Test-Path -LiteralPath $BrokerCtlPath -PathType Leaf)
-            ) {
-                $null = Invoke-BoundedCommand `
-                    -Stage "restored Gmail broker start" `
-                    -Command $PythonCommand `
-                    -Arguments @($BrokerCtlPath, "start") `
-                    -TimeoutSeconds $TimeoutBridgeSeconds
-            }
-        } catch {
-            throw "Antigravity deployment failed: $($PrimaryFailure.Exception.Message) Rollback also failed: $($_.Exception.Message)"
         }
+        if ($BrokerWasStopped -and (Test-Path -LiteralPath $BrokerCtlPath -PathType Leaf)) {
+            $null = Invoke-BoundedCommand `
+                -Stage "restored Gmail broker start" `
+                -Command $PythonCommand `
+                -Arguments @("-B", $BrokerCtlPath, "start") `
+                -TimeoutSeconds $TimeoutBridgeSeconds `
+                -Environment $BrokerEnvironment
+        }
+    } catch {
+        $RecoveryFailure = $_
+        $BackupStatus = "No usable backup was created."
+        if (
+            -not [string]::IsNullOrWhiteSpace($BackupRoot) -and
+            (Test-Path -LiteralPath $BackupRoot -PathType Container)
+        ) {
+            $PreserveBackup = $true
+            $BackupStatus = "Backup preserved at: $BackupRoot"
+            Write-Host "RECOVERY_BACKUP=$BackupRoot"
+        }
+        throw "Antigravity deployment failed: $($PrimaryFailure.Exception.Message) Recovery status: failed ($($RecoveryFailure.Exception.Message)). $BackupStatus"
     }
     throw $PrimaryFailure
 } finally {
-    if (Test-Path -LiteralPath $BackupRoot) {
+    if (
+        -not $PreserveBackup -and
+        -not [string]::IsNullOrWhiteSpace($BackupRoot) -and
+        (Test-Path -LiteralPath $BackupRoot)
+    ) {
         Remove-Item -LiteralPath $BackupRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
