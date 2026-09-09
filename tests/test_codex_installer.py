@@ -27,6 +27,7 @@ if ($args.Count -ge 4 -and $args[0] -eq "plugin" -and $args[1] -eq "marketplace"
     }
     if ($env:AVAYA_INSTALL_TEST_MODE -eq "cleanup-failure") {
         Start-Sleep -Seconds 3
+        Add-TestEvent "resistant-child-mutated"
     }
     exit 0
 }
@@ -181,6 +182,26 @@ class CodexInstallerTests(unittest.TestCase):
             check=False,
         )
 
+    def _faulted_cleanup_helper(self):
+        helper_path = self.temp_root / "windows_common_faulted.ps1"
+        source = WINDOWS_COMMON.read_text(encoding="utf-8-sig")
+        replacements = {
+            "$CleanupTimeoutMilliseconds = 5000": "$CleanupTimeoutMilliseconds = 1000",
+            "$TaskKillPath = Join-Path ([Environment]::GetFolderPath('System')) 'taskkill.exe'": (
+                "$TaskKillPath = [string](Get-Command powershell.exe "
+                "-CommandType Application).Path"
+            ),
+            '$TaskKillStartInfo.Arguments = "/PID $CapturedProcessId /T /F"': (
+                '$TaskKillStartInfo.Arguments = '
+                "'-NoProfile -Command \"Start-Sleep -Seconds 30\"'"
+            ),
+        }
+        for original, replacement in replacements.items():
+            self.assertEqual(1, source.count(original))
+            source = source.replace(original, replacement)
+        helper_path.write_text(source, encoding="utf-8-sig", newline="\r\n")
+        return helper_path
+
     def test_installer_marketplace_timeout_kills_only_started_child_tree(self):
         fixture_root = self._short_marketplace_timeout_fixture()
         result = self._run_installer_with_caller_tree_sentinel(fixture_root)
@@ -227,6 +248,41 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertIn("marketplace", result.stderr.lower())
         self.assertIn("timed out", result.stderr.lower())
         self.assertNotIn("UNSANITIZED_CLEANUP_SENTINEL", result.stderr)
+
+    def test_unconfirmed_cleanup_is_bounded_sanitized_and_stops_child_mutation(self):
+        helper_path = self._faulted_cleanup_helper()
+        command = (
+            f". '{helper_path}'; "
+            "Invoke-BoundedCommand -Stage 'marketplace add' -Command 'codex' "
+            "-Arguments @('plugin', 'marketplace', 'add', 'https://example.invalid/repo') "
+            "-TimeoutSeconds 1"
+        )
+        result = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command,
+            ],
+            cwd=ROOT,
+            env=self._environment(mode="cleanup-failure"),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=6,
+            check=False,
+        )
+        time.sleep(2.5)
+        events = self._events()
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("marketplace", result.stderr.lower())
+        self.assertIn("timed out", result.stderr.lower())
+        self.assertIn("cleanup failed", result.stderr.lower())
+        self.assertIn("marketplace-add", events)
+        self.assertNotIn("resistant-child-mutated", events)
 
     def test_literal_arguments_are_not_reparsed_by_a_shell(self):
         result, events = self.run_installer(source=r"C:\path with spaces\repo")

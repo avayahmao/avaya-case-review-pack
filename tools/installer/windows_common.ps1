@@ -48,9 +48,11 @@ function Stop-SpawnedProcessTree {
     $CleanupTimeoutMilliseconds = 5000
     $CleanupClock = [Diagnostics.Stopwatch]::StartNew()
     $CapturedProcessId = $Process.Id
+    $TreeTerminationSucceeded = $false
+    $TargetExitConfirmed = $false
     try {
         if ($Process.HasExited) {
-            return
+            return $false
         }
 
         $TaskKillPath = Join-Path ([Environment]::GetFolderPath('System')) 'taskkill.exe'
@@ -74,6 +76,8 @@ function Stop-SpawnedProcessTree {
                     )
                     if (-not $TaskKillProcess.WaitForExit($RemainingMilliseconds)) {
                         try { $TaskKillProcess.Kill() } catch {}
+                    } else {
+                        $TreeTerminationSucceeded = $TaskKillProcess.ExitCode -eq 0
                     }
                 }
             } catch {
@@ -92,11 +96,17 @@ function Stop-SpawnedProcessTree {
             0,
             $CleanupTimeoutMilliseconds - [int]$CleanupClock.ElapsedMilliseconds
         )
-        try { [void]$Process.WaitForExit($RemainingMilliseconds) } catch {}
+        try {
+            $TargetExitConfirmed = $Process.HasExited -or $Process.WaitForExit($RemainingMilliseconds)
+        } catch {
+            $TargetExitConfirmed = $false
+        }
     } catch {
+        $TargetExitConfirmed = $false
     } finally {
         $CleanupClock.Stop()
     }
+    return $TreeTerminationSucceeded -and $TargetExitConfirmed
 }
 
 function Invoke-BoundedCommand {
@@ -171,7 +181,15 @@ function Invoke-BoundedCommand {
         $StdOutTask = $Process.StandardOutput.ReadToEndAsync()
         $StdErrTask = $Process.StandardError.ReadToEndAsync()
         if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
-            try { Stop-SpawnedProcessTree -Process $Process } catch {}
+            $CleanupConfirmed = $false
+            try {
+                $CleanupConfirmed = [bool](Stop-SpawnedProcessTree -Process $Process)
+            } catch {
+                $CleanupConfirmed = $false
+            }
+            if (-not $CleanupConfirmed) {
+                throw "Stage '$Stage' timed out after $TimeoutSeconds seconds; cleanup failed to confirm child process exit."
+            }
             throw "Stage '$Stage' timed out after $TimeoutSeconds seconds."
         }
 
