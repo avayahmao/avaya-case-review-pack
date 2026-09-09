@@ -15,27 +15,36 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "tools\installer\windows_common.ps1")
+
 function Invoke-CheckedCommand {
     param(
+        [Parameter(Mandatory = $true)][string]$Stage,
         [Parameter(Mandatory = $true)][string]$Command,
         [Parameter(Mandatory = $true)][object[]]$Arguments,
-        [Parameter(Mandatory = $true)][string]$Description
+        [Parameter(Mandatory = $true)][string]$Description,
+        [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
+        [switch]$AllowFailure
     )
 
-    $RenderedArguments = @($Arguments | ForEach-Object {
-        $Text = [string]$_
-        if ($Text -match '\s') { '"' + $Text.Replace('"', '\"') + '"' } else { $Text }
-    })
     Write-Host "  $Description" -ForegroundColor Yellow
-    Write-Host "  > $Command $($RenderedArguments -join ' ')" -ForegroundColor DarkGray
+    Write-Host "  > $Stage" -ForegroundColor DarkGray
     if ($DryRun) {
-        return
+        return [pscustomobject]@{
+            Stage = $Stage
+            ExitCode = 0
+            TimedOut = $false
+            StdOut = ""
+            StdErr = ""
+        }
     }
 
-    & $Command @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "$Description failed with exit code $LASTEXITCODE."
-    }
+    return Invoke-BoundedCommand `
+        -Stage $Stage `
+        -Command $Command `
+        -Arguments $Arguments `
+        -TimeoutSeconds $TimeoutSeconds `
+        -AllowFailure:$AllowFailure
 }
 
 function Normalize-GitSource {
@@ -104,6 +113,8 @@ Write-Host "  Marketplace: $MarketplaceName"
 Write-Host "  Source:      $MarketplaceSource"
 if ($DryRun) {
     Write-Host "  Mode:        dry run (no state changes)" -ForegroundColor DarkGray
+    Write-Host "  Planned gate: validate release attestation" -ForegroundColor DarkGray
+    Write-Host "  Planned gate: verify-bridge" -ForegroundColor DarkGray
 }
 
 if (-not $SkipDependencyInstall) {
@@ -113,7 +124,12 @@ if (-not $SkipDependencyInstall) {
         "--trusted-host", "pypi.python.org",
         "--trusted-host", "files.pythonhosted.org"
     )
-    Invoke-CheckedCommand -Command "python" -Arguments $PipArguments -Description "Installing Python MCP and Playwright dependencies"
+    $null = Invoke-CheckedCommand `
+        -Stage "pip install" `
+        -Command "python" `
+        -Arguments $PipArguments `
+        -Description "Installing Python MCP and Playwright dependencies" `
+        -TimeoutSeconds $TimeoutPipSeconds
 
     if ($IncludeLegacyChromium) {
         $PreviousNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
@@ -122,9 +138,11 @@ if (-not $SkipDependencyInstall) {
                 $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
             }
             Invoke-CheckedCommand `
+                -Stage "playwright install" `
                 -Command "python" `
                 -Arguments @("-m", "playwright", "install", "chromium") `
-                -Description "Installing optional legacy Chromium rollback runtime"
+                -Description "Installing optional legacy Chromium rollback runtime" `
+                -TimeoutSeconds $TimeoutPipSeconds | Out-Null
         } finally {
             $env:NODE_TLS_REJECT_UNAUTHORIZED = $PreviousNodeTls
         }
@@ -136,14 +154,21 @@ if ($DryRun) {
     if (-not (Test-LocalMarketplaceSource -Value $MarketplaceSource) -and $MarketplaceRef) {
         $AddArguments += @("--ref", $MarketplaceRef)
     }
-    Invoke-CheckedCommand -Command "codex" -Arguments $AddArguments -Description "Adding the Codex marketplace"
+    $null = Invoke-CheckedCommand `
+        -Stage "marketplace add" `
+        -Command "codex" `
+        -Arguments $AddArguments `
+        -Description "Adding the Codex marketplace" `
+        -TimeoutSeconds $TimeoutMarketplaceSeconds
 } else {
-    $MarketplaceListJson = & codex plugin marketplace list --json
-    if ($LASTEXITCODE -ne 0) {
-        throw "Unable to list configured Codex marketplaces."
-    }
+    $MarketplaceListResult = Invoke-CheckedCommand `
+        -Stage "marketplace list" `
+        -Command "codex" `
+        -Arguments @("plugin", "marketplace", "list", "--json") `
+        -Description "Listing configured Codex marketplaces" `
+        -TimeoutSeconds $TimeoutMarketplaceSeconds
     try {
-        $MarketplaceList = ($MarketplaceListJson | Out-String) | ConvertFrom-Json
+        $MarketplaceList = $MarketplaceListResult.StdOut | ConvertFrom-Json
     } catch {
         throw "Codex marketplace list returned invalid JSON."
     }
@@ -168,28 +193,42 @@ if ($DryRun) {
                 throw "Marketplace '$MarketplaceName' already exists with a different source."
             }
             Invoke-CheckedCommand `
+                -Stage "marketplace upgrade" `
                 -Command "codex" `
                 -Arguments @("plugin", "marketplace", "upgrade", $MarketplaceName) `
-                -Description "Refreshing the existing Codex marketplace"
+                -Description "Refreshing the existing Codex marketplace" `
+                -TimeoutSeconds $TimeoutMarketplaceSeconds | Out-Null
         }
     } else {
         $AddArguments = @("plugin", "marketplace", "add", $MarketplaceSource)
         if (-not (Test-LocalMarketplaceSource -Value $MarketplaceSource) -and $MarketplaceRef) {
             $AddArguments += @("--ref", $MarketplaceRef)
         }
-        Invoke-CheckedCommand -Command "codex" -Arguments $AddArguments -Description "Adding the Codex marketplace"
+        $null = Invoke-CheckedCommand `
+            -Stage "marketplace add" `
+            -Command "codex" `
+            -Arguments $AddArguments `
+            -Description "Adding the Codex marketplace" `
+            -TimeoutSeconds $TimeoutMarketplaceSeconds
     }
 }
 
 Invoke-CheckedCommand `
+    -Stage "plugin add" `
     -Command "codex" `
     -Arguments @("plugin", "add", "$PluginName@$MarketplaceName") `
-    -Description "Installing the Codex plugin"
+    -Description "Installing the Codex plugin" `
+    -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
 
 if (-not $SkipLogin -and -not $DryRun) {
     Write-Host "  Checking the shared Gmail Edge broker..." -ForegroundColor Yellow
-    & python $BrokerCtlPath status
-    $BrokerStatusExit = $LASTEXITCODE
+    $BrokerStatus = Invoke-BoundedCommand `
+        -Stage "Gmail broker status" `
+        -Command "python" `
+        -Arguments @($BrokerCtlPath, "status") `
+        -TimeoutSeconds $TimeoutBridgeSeconds `
+        -AllowFailure
+    $BrokerStatusExit = $BrokerStatus.ExitCode
     if ($BrokerStatusExit -eq 10) {
         Write-Host "  Gmail authentication is required. Opening Managed Edge for SSO/MFA..." -ForegroundColor Cyan
         & python $BrokerCtlPath login

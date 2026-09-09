@@ -49,6 +49,7 @@ skills/alarm-audit/SKILL.md
 skills/qa/SKILL.md
 skills/gmail-capability/SKILL.md
 tools/casetomd/casetomd_mcp_bridge.py
+tools/installer/windows_common.ps1
 tools/gmail/cloud/GmailMcpBridge.gs
 tools/gmail/cloud/rollback_bridge_v3.appsscript.txt
 tools/gmail/cloud/rollback_bridge_v3.mjs
