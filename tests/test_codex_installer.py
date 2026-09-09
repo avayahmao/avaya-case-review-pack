@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import time
 import unittest
@@ -23,6 +24,9 @@ if ($args.Count -ge 4 -and $args[0] -eq "plugin" -and $args[1] -eq "marketplace"
     if ($env:AVAYA_INSTALL_TEST_MODE -eq "hang-marketplace") {
         & powershell.exe -NoProfile -Command 'Start-Sleep -Seconds 2; Add-Content -LiteralPath $env:AVAYA_INSTALL_TEST_LOG -Value "descendant-survived" -Encoding UTF8'
         Start-Sleep -Seconds 30
+    }
+    if ($env:AVAYA_INSTALL_TEST_MODE -eq "cleanup-failure") {
+        Start-Sleep -Seconds 3
     }
     exit 0
 }
@@ -108,9 +112,95 @@ class CodexInstallerTests(unittest.TestCase):
         )
         return result, self._events()
 
-    def test_marketplace_timeout_kills_only_started_child_tree(self):
+    def _short_marketplace_timeout_fixture(self):
+        fixture_root = self.temp_root / "installer"
+        for relative_path in (
+            ".codex-plugin/plugin.json",
+            ".agents/plugins/marketplace.json",
+            "tools/gmail/gmail_brokerctl.py",
+        ):
+            destination = fixture_root / relative_path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(ROOT / relative_path, destination)
+
+        shutil.copy2(INSTALLER, fixture_root / INSTALLER.name)
+        helper_destination = fixture_root / "tools" / "installer" / WINDOWS_COMMON.name
+        helper_destination.parent.mkdir(parents=True, exist_ok=True)
+        helper_source = WINDOWS_COMMON.read_text(encoding="utf-8-sig")
+        self.assertEqual(1, helper_source.count("$TimeoutMarketplaceSeconds = 180"))
+        shortened = helper_source.replace(
+            "$TimeoutMarketplaceSeconds = 180",
+            "$TimeoutMarketplaceSeconds = 1",
+        )
+        helper_destination.write_text(
+            shortened, encoding="utf-8-sig", newline="\r\n"
+        )
+        return fixture_root
+
+    def _run_installer_with_caller_tree_sentinel(self, fixture_root):
+        sentinel_path = self.temp_root / "caller-tree-sentinel.ps1"
+        sentinel_path.write_text(
+            'Start-Sleep -Seconds 2\n'
+            'Add-Content -LiteralPath $env:AVAYA_INSTALL_TEST_LOG '
+            '-Value "caller-tree-survived" -Encoding UTF8\n',
+            encoding="utf-8-sig",
+            newline="\r\n",
+        )
+        wrapper_path = self.temp_root / "installer-wrapper.ps1"
+        wrapper_path.write_text(
+            '$ErrorActionPreference = "Stop"\n'
+            f'$SentinelPath = \'{sentinel_path}\'\n'
+            '$null = Start-Process powershell.exe -ArgumentList '
+            "@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $SentinelPath)\n"
+            "try {\n"
+            f"    & '{fixture_root / INSTALLER.name}' "
+            "-CloudBridgeVerified -SkipDependencyInstall -SkipLogin "
+            "-MarketplaceSource 'https://example.invalid/repo'\n"
+            "} catch {\n"
+            "    [Console]::Error.WriteLine($_.Exception.Message)\n"
+            "    exit 1\n"
+            "}\n",
+            encoding="utf-8-sig",
+            newline="\r\n",
+        )
+        return subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(wrapper_path),
+            ],
+            cwd=fixture_root,
+            env=self._environment(mode="hang-marketplace"),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=10,
+            check=False,
+        )
+
+    def test_installer_marketplace_timeout_kills_only_started_child_tree(self):
+        fixture_root = self._short_marketplace_timeout_fixture()
+        result = self._run_installer_with_caller_tree_sentinel(fixture_root)
+        time.sleep(2.5)
+        events = self._events()
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("marketplace", result.stderr.lower())
+        self.assertIn("timed out", result.stderr.lower())
+        self.assertIn("marketplace-list", events)
+        self.assertIn("marketplace-add", events)
+        self.assertIn("caller-tree-survived", events)
+        self.assertNotIn("descendant-survived", events)
+
+    def test_cleanup_failure_is_hidden_behind_sanitized_timeout(self):
         command = (
             f". '{WINDOWS_COMMON}'; "
+            "function Stop-SpawnedProcessTree { param($Process); "
+            "$Process.Kill(); [void]$Process.WaitForExit(1000); "
+            "throw 'UNSANITIZED_CLEANUP_SENTINEL' }; "
             "Invoke-BoundedCommand -Stage 'marketplace add' -Command 'codex' "
             "-Arguments @('plugin', 'marketplace', 'add', 'https://example.invalid/repo') "
             "-TimeoutSeconds 1"
@@ -125,21 +215,18 @@ class CodexInstallerTests(unittest.TestCase):
                 command,
             ],
             cwd=ROOT,
-            env=self._environment(mode="hang-marketplace"),
+            env=self._environment(mode="cleanup-failure"),
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=10,
+            timeout=6,
             check=False,
         )
-        time.sleep(2.5)
-        events = self._events()
 
         self.assertNotEqual(0, result.returncode)
         self.assertIn("marketplace", result.stderr.lower())
         self.assertIn("timed out", result.stderr.lower())
-        self.assertNotIn("ancestor-killed", events)
-        self.assertNotIn("descendant-survived", events)
+        self.assertNotIn("UNSANITIZED_CLEANUP_SENTINEL", result.stderr)
 
     def test_literal_arguments_are_not_reparsed_by_a_shell(self):
         result, events = self.run_installer(source=r"C:\path with spaces\repo")

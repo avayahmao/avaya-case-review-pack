@@ -45,18 +45,58 @@ function ConvertTo-WindowsProcessArgument {
 function Stop-SpawnedProcessTree {
     param([Parameter(Mandatory = $true)][System.Diagnostics.Process]$Process)
 
-    if ($Process.HasExited) {
-        return
-    }
+    $CleanupTimeoutMilliseconds = 5000
+    $CleanupClock = [Diagnostics.Stopwatch]::StartNew()
+    $CapturedProcessId = $Process.Id
+    try {
+        if ($Process.HasExited) {
+            return
+        }
 
-    $TaskKillPath = Join-Path ([Environment]::GetFolderPath('System')) 'taskkill.exe'
-    if (Test-Path -LiteralPath $TaskKillPath -PathType Leaf) {
-        & $TaskKillPath /PID ([string]$Process.Id) /T /F 2>$null | Out-Null
+        $TaskKillPath = Join-Path ([Environment]::GetFolderPath('System')) 'taskkill.exe'
+        if (Test-Path -LiteralPath $TaskKillPath -PathType Leaf) {
+            $TaskKillStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+            $TaskKillStartInfo.FileName = $TaskKillPath
+            $TaskKillStartInfo.Arguments = "/PID $CapturedProcessId /T /F"
+            $TaskKillStartInfo.UseShellExecute = $false
+            $TaskKillStartInfo.CreateNoWindow = $true
+            $TaskKillStartInfo.RedirectStandardOutput = $true
+            $TaskKillStartInfo.RedirectStandardError = $true
+            $TaskKillProcess = New-Object System.Diagnostics.Process
+            $TaskKillProcess.StartInfo = $TaskKillStartInfo
+            try {
+                if ($TaskKillProcess.Start()) {
+                    $TaskKillStdOut = $TaskKillProcess.StandardOutput.ReadToEndAsync()
+                    $TaskKillStdErr = $TaskKillProcess.StandardError.ReadToEndAsync()
+                    $RemainingMilliseconds = [Math]::Max(
+                        0,
+                        $CleanupTimeoutMilliseconds - [int]$CleanupClock.ElapsedMilliseconds
+                    )
+                    if (-not $TaskKillProcess.WaitForExit($RemainingMilliseconds)) {
+                        try { $TaskKillProcess.Kill() } catch {}
+                    }
+                }
+            } catch {
+            } finally {
+                try { $TaskKillProcess.Dispose() } catch {}
+            }
+        }
+
+        try {
+            if (-not $Process.HasExited) {
+                $Process.Kill()
+            }
+        } catch {
+        }
+        $RemainingMilliseconds = [Math]::Max(
+            0,
+            $CleanupTimeoutMilliseconds - [int]$CleanupClock.ElapsedMilliseconds
+        )
+        try { [void]$Process.WaitForExit($RemainingMilliseconds) } catch {}
+    } catch {
+    } finally {
+        $CleanupClock.Stop()
     }
-    if (-not $Process.HasExited) {
-        $Process.Kill()
-    }
-    $Process.WaitForExit()
 }
 
 function Invoke-BoundedCommand {
@@ -131,9 +171,7 @@ function Invoke-BoundedCommand {
         $StdOutTask = $Process.StandardOutput.ReadToEndAsync()
         $StdErrTask = $Process.StandardError.ReadToEndAsync()
         if (-not $Process.WaitForExit($TimeoutSeconds * 1000)) {
-            Stop-SpawnedProcessTree -Process $Process
-            [void]$StdOutTask.Result
-            [void]$StdErrTask.Result
+            try { Stop-SpawnedProcessTree -Process $Process } catch {}
             throw "Stage '$Stage' timed out after $TimeoutSeconds seconds."
         }
 
@@ -150,6 +188,6 @@ function Invoke-BoundedCommand {
         }
         return $Result
     } finally {
-        $Process.Dispose()
+        try { $Process.Dispose() } catch {}
     }
 }
