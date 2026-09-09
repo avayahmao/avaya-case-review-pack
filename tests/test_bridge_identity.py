@@ -79,6 +79,24 @@ class BridgeAttestationTests(unittest.TestCase):
         self.assertEqual(actual["contract_revision"], CONTRACT_REVISION)
         self.assertEqual(set(actual["checks"]), REQUIRED_CHECKS)
 
+    def test_write_attestation_rejects_an_unstamped_source(self):
+        self.source_path.write_text(SOURCE, encoding="utf-8", newline="")
+
+        with self.assertRaises(ValueError):
+            self.write_valid_attestation()
+
+        self.assertFalse(self.attestation_path.exists())
+
+    def test_validate_attestation_rejects_a_stale_embedded_source_digest(self):
+        self.write_valid_attestation()
+        stale_source = self.source_path.read_text(encoding="utf-8").replace(
+            compute_source_sha256(SOURCE), "f" * 64
+        )
+        self.source_path.write_text(stale_source, encoding="utf-8", newline="")
+
+        with self.assertRaises(ValueError):
+            validate_attestation(self.source_path, self.attestation_path, "1.10.1")
+
     def test_validate_attestation_rejects_each_strict_contract_violation(self):
         valid = self.write_valid_attestation()
         cases = []

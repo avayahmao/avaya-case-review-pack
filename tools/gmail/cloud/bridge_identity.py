@@ -52,6 +52,17 @@ def compute_source_sha256(source: str) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def validate_source_identity(source: str) -> str:
+    digest = compute_source_sha256(source)
+    normalized = source.replace("\r\n", "\n").replace("\r", "\n")
+    embedded_digest = IDENTITY_RE.search(normalized)
+    if embedded_digest is None:
+        raise ValueError("bridge source must contain exactly one identity assignment")
+    if embedded_digest.group(1) != digest:
+        raise ValueError("bridge source identity does not match its computed digest")
+    return digest
+
+
 def _write_text_atomically(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -110,7 +121,7 @@ def write_attestation(
         "plugin_version": plugin_version,
         "bridge_version": BRIDGE_PROTOCOL_VERSION,
         "contract_revision": CONTRACT_REVISION,
-        "bridge_source_sha256": compute_source_sha256(_read_source(source_path)),
+        "bridge_source_sha256": validate_source_identity(_read_source(source_path)),
         "verified_at_utc": verified_at_utc,
         "checks": {name: True for name in sorted(REQUIRED_CHECKS)},
     }
@@ -169,7 +180,7 @@ def validate_attestation(
     _require_exact_keys(checks, REQUIRED_CHECKS, "check")
     if any(type(value) is not bool or not value for value in checks.values()):
         raise ValueError("attestation checks must all be true booleans")
-    if digest != compute_source_sha256(_read_source(source_path)):
+    if digest != validate_source_identity(_read_source(source_path)):
         raise ValueError("attestation bridge source digest does not match")
     return attestation
 
