@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "relative-path-probe": {
+      "command": "python",
+      "args": ["probe/probe_mcp.py"]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "relative-path-probe",
+  "version": "1.0.0",
+  "description": "Probe Codex relative MCP argument handling.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

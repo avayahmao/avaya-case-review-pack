@@ -1,0 +1,12 @@
+{
+  "name": "codex-relative-mcp-probe",
+  "plugins": [
+    {
+      "name": "relative-path-probe",
+      "source": {
+        "source": "local",
+        "path": "./"
+      }
+    }
+  ]
+}
