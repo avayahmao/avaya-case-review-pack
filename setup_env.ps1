@@ -10,14 +10,20 @@ param(
     [switch]$ConfigMigrationOnly,
     [string]$ConfigMigrationPath,
     [string]$ConfigMigrationGmailScript,
-    [string]$ConfigMigrationCaseToMdScript
+    [string]$ConfigMigrationCaseToMdScript,
+    [switch]$SkipDependencyInstall,
+    [ValidateRange(1, 2147483)][int]$LoginTimeoutSeconds = 330,
+    [string]$InstallUserHome,
+    [string]$InstallLocalAppData
 )
 
-if (-not $ConfigMigrationOnly) {
-    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-}
-
 $ErrorActionPreference = "Stop"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$WindowsCommonPath = Join-Path $ScriptDir "tools\installer\windows_common.ps1"
+if (-not (Test-Path -LiteralPath $WindowsCommonPath -PathType Leaf)) {
+    throw "Required installer helper is missing: $WindowsCommonPath"
+}
+. $WindowsCommonPath
 
 function Test-ObjectContainer {
     param([AllowNull()][object]$Value)
@@ -125,6 +131,19 @@ function Update-McpConfiguration {
     Set-Content -LiteralPath $ConfigPath -Value $McpJson -Encoding UTF8
 }
 
+function Get-FileSha256 {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $Stream = [IO.File]::OpenRead($Path)
+    $Sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($Sha256.ComputeHash($Stream))).Replace("-", "")
+    } finally {
+        $Sha256.Dispose()
+        $Stream.Dispose()
+    }
+}
+
 function Get-ProfileBaseline {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -138,7 +157,7 @@ function Get-ProfileBaseline {
             ForEach-Object {
                 $RelativePath = $_.FullName.Substring($ResolvedRoot.Length).TrimStart("\", "/")
                 $Hash = try {
-                    (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256 -ErrorAction Stop).Hash
+                    Get-FileSha256 -Path $_.FullName
                 } catch {
                     "LOCKED"
                 }
@@ -157,6 +176,34 @@ function Assert-ProfileBaselineUnchanged {
 
     if (-not [string]::Equals($Before, $After, [StringComparison]::Ordinal)) {
         throw "$Name changed during deployment; refusing to continue."
+    }
+}
+
+function Get-DeploymentPathBaseline {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return "[ABSENT]"
+    }
+    if (Test-Path -LiteralPath $Path -PathType Container) {
+        return Get-ProfileBaseline -Path $Path
+    }
+    $File = Get-Item -LiteralPath $Path
+    $Hash = Get-FileSha256 -Path $Path
+    return "[FILE]|$($File.Length)|$Hash"
+}
+
+function Assert-DeploymentTarget {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$AllowedRoot
+    )
+
+    $FullPath = [IO.Path]::GetFullPath($Path).TrimEnd("\", "/")
+    $FullRoot = [IO.Path]::GetFullPath($AllowedRoot).TrimEnd("\", "/")
+    $RequiredPrefix = $FullRoot + [IO.Path]::DirectorySeparatorChar
+    if (-not $FullPath.StartsWith($RequiredPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to modify deployment target outside its expected root: $FullPath"
     }
 }
 
@@ -210,7 +257,8 @@ function Stop-RunningGmailBroker {
     param(
         [Parameter(Mandatory = $true)][string]$BrokerCtlPath,
         [Parameter(Mandatory = $true)][string]$StateFile,
-        [Parameter(Mandatory = $true)][string]$EdgeProfileDir
+        [Parameter(Mandatory = $true)][string]$EdgeProfileDir,
+        [Parameter(Mandatory = $true)][string]$PythonCommand
     )
 
     $BrokerProcessId = 0
@@ -227,10 +275,15 @@ function Stop-RunningGmailBroker {
 
     $StopExit = 20
     if (Test-Path -LiteralPath $BrokerCtlPath) {
-        $StopOutput = @(python $BrokerCtlPath stop)
-        $StopExit = $LASTEXITCODE
-        if ($StopOutput.Count -gt 0) {
-            Write-Host "  Existing broker stop response: $($StopOutput[-1])" -ForegroundColor DarkGray
+        $StopResult = Invoke-BoundedCommand `
+            -Stage "Gmail broker stop" `
+            -Command $PythonCommand `
+            -Arguments @($BrokerCtlPath, "stop") `
+            -TimeoutSeconds $TimeoutBridgeSeconds `
+            -AllowFailure
+        $StopExit = $StopResult.ExitCode
+        if (-not [string]::IsNullOrWhiteSpace($StopResult.StdOut)) {
+            Write-Host "  Existing broker stop response: $($StopResult.StdOut.Trim())" -ForegroundColor DarkGray
         }
         if ($StopExit -ne 0 -and $StopExit -ne 20) {
             throw "Unable to stop the existing Gmail broker (exit $StopExit)."
@@ -295,13 +348,18 @@ if ($ConfigMigrationOnly) {
     return
 }
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$UserHome = $env:USERPROFILE
+$UserHome = if ([string]::IsNullOrWhiteSpace($InstallUserHome)) {
+    $env:USERPROFILE
+} else {
+    [IO.Path]::GetFullPath($InstallUserHome)
+}
 $GeminiConfigDir = Join-Path $UserHome ".gemini\config"
 $GeminiPluginsDir = Join-Path $GeminiConfigDir "plugins"
 $GeminiToolsDir = Join-Path $UserHome ".gemini\tools\gmail"
 $McpConfigFile = Join-Path $GeminiConfigDir "mcp_config.json"
-$LocalAppData = if ($env:LOCALAPPDATA) {
+$LocalAppData = if (-not [string]::IsNullOrWhiteSpace($InstallLocalAppData)) {
+    [IO.Path]::GetFullPath($InstallLocalAppData)
+} elseif ($env:LOCALAPPDATA) {
     $env:LOCALAPPDATA
 } else {
     Join-Path $UserHome "AppData\Local"
@@ -317,95 +375,21 @@ Write-Host "  Avaya Case Review Manager Suite — Environment Setup" -Foreground
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ------------------------------------------------------------------------------
-# 1. Check Python Environment
-# ------------------------------------------------------------------------------
-Write-Host "[1/6] Checking Python installation..." -ForegroundColor Yellow
-$PythonCmd = Get-Command python -ErrorAction SilentlyContinue
-if (-not $PythonCmd) {
-    Write-Error "Python was not found in PATH. Please install Python 3.10+ and add it to PATH."
-    exit 1
-}
-$PythonVersion = python --version 2>&1
-Write-Host "  Found: $PythonVersion" -ForegroundColor Green
-
-# ------------------------------------------------------------------------------
-# 2. Install Required Python Packages & Playwright Browser
-# ------------------------------------------------------------------------------
-Write-Host ""
-Write-Host "[2/6] Installing required Python libraries (mcp, playwright)..." -ForegroundColor Yellow
-$env:PYTHONIOENCODING = "utf-8"
-
-# Corporate SSL bypass for pip (many enterprise proxies MITM PyPI TLS).
-# --trusted-host disables cert validation ONLY for these hosts; other traffic is untouched.
-$PipTrustedHosts = @(
-    "--trusted-host", "pypi.org",
-    "--trusted-host", "pypi.python.org",
-    "--trusted-host", "files.pythonhosted.org"
-)
-
-python -m pip install --upgrade pip --quiet @PipTrustedHosts
-python -m pip install mcp playwright --quiet @PipTrustedHosts
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to install Python packages. If your corporate proxy requires authentication, set HTTPS_PROXY / HTTP_PROXY before running this script."
-    exit 1
-}
-Write-Host "  Python packages installed successfully." -ForegroundColor Green
-
-Write-Host "  Installing Playwright Chromium browser binary..." -ForegroundColor Yellow
-# Corporate MITM proxies (e.g. Zscaler, Netskope, Blue Coat) commonly break the
-# Playwright browser download because the bundled Node driver validates TLS strictly.
-# NODE_TLS_REJECT_UNAUTHORIZED=0 disables cert validation for THIS process only —
-# it does NOT persist after the script exits.
-# If your org supplies a corporate CA bundle, prefer setting NODE_EXTRA_CA_CERTS
-# to that PEM file INSTEAD of using this bypass.
-$OldNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
-if (-not $env:NODE_EXTRA_CA_CERTS) {
-    Write-Host "  (Applying NODE_TLS_REJECT_UNAUTHORIZED=0 to bypass corporate SSL inspection for this download.)" -ForegroundColor DarkGray
-    $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
-} else {
-    Write-Host "  (Using corporate CA bundle from NODE_EXTRA_CA_CERTS=$($env:NODE_EXTRA_CA_CERTS))" -ForegroundColor DarkGray
-}
-playwright install chromium
-$PlaywrightExit = $LASTEXITCODE
-# Restore prior state (do not leak the bypass into later steps or the user's shell).
-$env:NODE_TLS_REJECT_UNAUTHORIZED = $OldNodeTls
-
-if ($PlaywrightExit -ne 0) {
-    Write-Warning "Playwright browser installation returned non-zero code ($PlaywrightExit). Attempting to proceed."
-    Write-Warning "If this failed due to corporate SSL, set NODE_EXTRA_CA_CERTS to your corporate CA .pem file and re-run install.bat."
-} else {
-    Write-Host "  Playwright Chromium installed successfully." -ForegroundColor Green
-}
-
-# ------------------------------------------------------------------------------
-# 3. Deploy Plugin Files
-# ------------------------------------------------------------------------------
-Write-Host ""
-Write-Host "[3/6] Deploying Avaya Case Review plugin files..." -ForegroundColor Yellow
+# Source and destination paths are resolved before preflight, but no deployed
+# plugin, MCP script, configuration, or broker state is changed until every
+# local and live compatibility gate has passed.
 $SourcePluginDir = Join-Path $ScriptDir "plugins\avaya-case-review"
-$TargetPluginDir = Join-Path $GeminiPluginsDir "avaya-case-review"
-
-if (-not (Test-Path $GeminiPluginsDir)) {
-    New-Item -ItemType Directory -Path $GeminiPluginsDir -Force | Out-Null
-}
-
-if (Test-Path $SourcePluginDir) {
-    Copy-Item -Path $SourcePluginDir -Destination $GeminiPluginsDir -Recurse -Force
-    Write-Host "  Plugin deployed to: $TargetPluginDir" -ForegroundColor Green
-} else {
-    Write-Error "Source plugin directory not found at $SourcePluginDir"
-    exit 1
-}
-
-# ------------------------------------------------------------------------------
-# 4. Deploy Gmail & CaseToMD MCP Server Scripts
-# ------------------------------------------------------------------------------
-Write-Host ""
-Write-Host "[4/6] Deploying MCP server scripts (Gmail & CaseToMD)..." -ForegroundColor Yellow
 $SourceGmailDir = Join-Path $ScriptDir "tools\gmail"
 $SourceCaseToMdDir = Join-Path $ScriptDir "tools\casetomd"
+$SourceBrokerCtlPath = Join-Path $SourceGmailDir "gmail_brokerctl.py"
+$BridgeSourcePath = Join-Path $SourceGmailDir "cloud\GmailMcpBridge.gs"
+$BridgeIdentityPath = Join-Path $SourceGmailDir "cloud\bridge_identity.py"
+$BridgeAttestationPath = Join-Path $SourceGmailDir "cloud\bridge_release_attestation.json"
+$PluginManifestPath = Join-Path $SourcePluginDir "plugin.json"
+$TargetPluginDir = Join-Path $GeminiPluginsDir "avaya-case-review"
 $TargetCaseToMdDir = Join-Path $UserHome ".gemini\tools\casetomd"
+$CaseToMdSourceFile = Join-Path $SourceCaseToMdDir "casetomd_mcp_bridge.py"
+$CaseToMdTargetFile = Join-Path $TargetCaseToMdDir "casetomd_mcp_bridge.py"
 $GmailDeploymentFiles = @(
     "gmail_broker_client.py",
     "gmail_broker_protocol.py",
@@ -419,108 +403,326 @@ $GmailDeploymentFiles = @(
     "gmail_playwright.py"
 )
 
-if (-not (Test-Path -LiteralPath $SourceGmailDir)) {
-    Write-Error "Source Gmail directory not found at $SourceGmailDir"
-    exit 1
+foreach ($RequiredPath in @(
+    $SourcePluginDir,
+    $SourceGmailDir,
+    $PluginManifestPath,
+    $SourceBrokerCtlPath,
+    $BridgeSourcePath,
+    $BridgeIdentityPath,
+    $BridgeAttestationPath,
+    $CaseToMdSourceFile
+)) {
+    if (-not (Test-Path -LiteralPath $RequiredPath)) {
+        throw "Required installation source is missing: $RequiredPath"
+    }
 }
 foreach ($RequiredGmailFile in $GmailDeploymentFiles) {
     $SourceFile = Join-Path $SourceGmailDir $RequiredGmailFile
     if (-not (Test-Path -LiteralPath $SourceFile -PathType Leaf)) {
-        Write-Error "Required Gmail deployment file not found at $SourceFile"
-        exit 1
+        throw "Required Gmail deployment file is missing: $SourceFile"
     }
 }
 
-if (-not (Test-Path $GeminiToolsDir)) {
-    New-Item -ItemType Directory -Path $GeminiToolsDir -Force | Out-Null
-}
-if (-not (Test-Path $TargetCaseToMdDir)) {
-    New-Item -ItemType Directory -Path $TargetCaseToMdDir -Force | Out-Null
+$PluginManifest = Get-Content -LiteralPath $PluginManifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$PluginVersion = [string]$PluginManifest.version
+if ([string]::IsNullOrWhiteSpace($PluginVersion)) {
+    throw "Antigravity plugin version is missing."
 }
 
+# ------------------------------------------------------------------------------
+# 1. Validate Local Release and Python Environment
+# ------------------------------------------------------------------------------
+Write-Host "[1/6] Validating the local release and Python installation..." -ForegroundColor Yellow
+$PythonCmd = Get-Command python -CommandType Application -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if (-not $PythonCmd) {
+    throw "Python was not found in PATH. Please install Python 3.10+ and add it to PATH."
+}
+$PythonCommand = [string]$PythonCmd.Path
+$PythonVersionResult = Invoke-BoundedCommand `
+    -Stage "Python version" `
+    -Command $PythonCommand `
+    -Arguments @("--version") `
+    -TimeoutSeconds $TimeoutLocalSeconds
+Write-Host "  Found: $($PythonVersionResult.StdOut.Trim())" -ForegroundColor Green
+
+$null = Invoke-BoundedCommand `
+    -Stage "validate release attestation" `
+    -Command $PythonCommand `
+    -Arguments @(
+        $BridgeIdentityPath,
+        "validate",
+        "--source", $BridgeSourcePath,
+        "--attestation", $BridgeAttestationPath,
+        "--plugin-version", $PluginVersion
+    ) `
+    -TimeoutSeconds $TimeoutLocalSeconds
+Write-Host "  Release attestation validated." -ForegroundColor Green
+
+# ------------------------------------------------------------------------------
+# 2. Install Dependencies and Verify the Central Bridge
+# ------------------------------------------------------------------------------
+Write-Host ""
+Write-Host "[2/6] Preparing dependencies and validating the Gmail Cloud Bridge..." -ForegroundColor Yellow
+$env:PYTHONIOENCODING = "utf-8"
+if (-not $SkipDependencyInstall) {
+    $PipTrustedHosts = @(
+        "--trusted-host", "pypi.org",
+        "--trusted-host", "pypi.python.org",
+        "--trusted-host", "files.pythonhosted.org"
+    )
+    $null = Invoke-BoundedCommand `
+        -Stage "pip upgrade" `
+        -Command $PythonCommand `
+        -Arguments (@("-m", "pip", "install", "--upgrade", "pip", "--quiet") + $PipTrustedHosts) `
+        -TimeoutSeconds $TimeoutPipSeconds
+    $null = Invoke-BoundedCommand `
+        -Stage "pip install" `
+        -Command $PythonCommand `
+        -Arguments (@("-m", "pip", "install", "mcp", "playwright", "--quiet") + $PipTrustedHosts) `
+        -TimeoutSeconds $TimeoutPipSeconds
+    Write-Host "  Python packages installed successfully." -ForegroundColor Green
+
+    $OldNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
+    try {
+        if (-not $env:NODE_EXTRA_CA_CERTS) {
+            $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
+        }
+        $PlaywrightResult = Invoke-BoundedCommand `
+            -Stage "playwright install" `
+            -Command $PythonCommand `
+            -Arguments @("-m", "playwright", "install", "chromium") `
+            -TimeoutSeconds $TimeoutPipSeconds `
+            -AllowFailure
+    } finally {
+        $env:NODE_TLS_REJECT_UNAUTHORIZED = $OldNodeTls
+    }
+    if ($PlaywrightResult.ExitCode -ne 0) {
+        Write-Warning "Playwright Chromium installation failed; the legacy rollback backend may be unavailable."
+    }
+}
+
+$BridgeVerifyResult = Invoke-BoundedCommand `
+    -Stage "verify-bridge" `
+    -Command $PythonCommand `
+    -Arguments @($SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
+    -TimeoutSeconds $TimeoutBridgeSeconds `
+    -AllowFailure
+if ($BridgeVerifyResult.ExitCode -eq 10) {
+    Write-Host "  Gmail authentication is required. Waiting for Managed Edge SSO/MFA..." -ForegroundColor Cyan
+    $null = Invoke-BoundedCommand `
+        -Stage "Gmail broker login" `
+        -Command $PythonCommand `
+        -Arguments @($SourceBrokerCtlPath, "login") `
+        -TimeoutSeconds $LoginTimeoutSeconds
+    $BridgeVerifyResult = Invoke-BoundedCommand `
+        -Stage "verify-bridge retry" `
+        -Command $PythonCommand `
+        -Arguments @($SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
+        -TimeoutSeconds $TimeoutBridgeSeconds `
+        -AllowFailure
+}
+if ($BridgeVerifyResult.ExitCode -ne 0) {
+    throw "Gmail Cloud Bridge preflight failed with exit code $($BridgeVerifyResult.ExitCode); deployed Antigravity state was not changed."
+}
+Write-Host "  Gmail Cloud Bridge is authenticated and compatible." -ForegroundColor Green
+
+# ------------------------------------------------------------------------------
+# 3. Stop the Verified Source Broker and Capture Deployment Backups
+# ------------------------------------------------------------------------------
+Write-Host ""
+Write-Host "[3/6] Preparing a reversible Antigravity deployment..." -ForegroundColor Yellow
 $BrokerStopResult = Stop-RunningGmailBroker `
-    -BrokerCtlPath $BrokerCtlPath `
+    -BrokerCtlPath $SourceBrokerCtlPath `
     -StateFile $BrokerStateFile `
-    -EdgeProfileDir $EdgeBrokerProfileDir
-Write-Host "  Existing Gmail broker is stopped (control exit $($BrokerStopResult.exit_code))." -ForegroundColor Green
+    -EdgeProfileDir $EdgeBrokerProfileDir `
+    -PythonCommand $PythonCommand
+Write-Host "  Verified source broker is stopped (control exit $($BrokerStopResult.exit_code))." -ForegroundColor Green
 
 $LegacyProfileBaselineBefore = Get-ProfileBaseline -Path $LegacyProfileDir
 $EdgeProfileBaselineBefore = Get-ProfileBaseline -Path $EdgeBrokerProfileDir
-
+$BackupRoot = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-deploy-" + [guid]::NewGuid().ToString("N"))
+$BackupPluginDir = Join-Path $BackupRoot "plugin"
+$BackupGmailDir = Join-Path $BackupRoot "gmail"
+$BackupCaseFile = Join-Path $BackupRoot "casetomd_mcp_bridge.py"
+$BackupConfigFile = Join-Path $BackupRoot "mcp_config.json"
+$DeploymentBaselines = @{}
+$DeploymentBackups = @{}
+$DeploymentBaselines[$TargetPluginDir] = Get-DeploymentPathBaseline -Path $TargetPluginDir
+$DeploymentBackups[$TargetPluginDir] = $BackupPluginDir
+$DeploymentBaselines[$CaseToMdTargetFile] = Get-DeploymentPathBaseline -Path $CaseToMdTargetFile
+$DeploymentBackups[$CaseToMdTargetFile] = $BackupCaseFile
+$DeploymentBaselines[$McpConfigFile] = Get-DeploymentPathBaseline -Path $McpConfigFile
+$DeploymentBackups[$McpConfigFile] = $BackupConfigFile
 foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
-    Copy-Item `
-        -LiteralPath (Join-Path $SourceGmailDir $GmailDeploymentFile) `
-        -Destination (Join-Path $GeminiToolsDir $GmailDeploymentFile) `
-        -Force
-}
-Write-Host "  Gmail MCP scripts deployed to: $GeminiToolsDir" -ForegroundColor Green
-
-$CaseToMdSourceFile = Join-Path $SourceCaseToMdDir "casetomd_mcp_bridge.py"
-if (Test-Path -LiteralPath $CaseToMdSourceFile -PathType Leaf) {
-    Copy-Item -LiteralPath $CaseToMdSourceFile -Destination $TargetCaseToMdDir -Force
-    Write-Host "  CaseToMD MCP bridge deployed to: $TargetCaseToMdDir" -ForegroundColor Green
+    $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
+    $DeploymentBaselines[$TargetFile] = Get-DeploymentPathBaseline -Path $TargetFile
+    $DeploymentBackups[$TargetFile] = Join-Path $BackupGmailDir $GmailDeploymentFile
 }
 
-$LegacyProfileBaselineAfter = Get-ProfileBaseline -Path $LegacyProfileDir
-$EdgeProfileBaselineAfter = Get-ProfileBaseline -Path $EdgeBrokerProfileDir
-Assert-ProfileBaselineUnchanged `
-    -Name "Legacy Gmail profile" `
-    -Before $LegacyProfileBaselineBefore `
-    -After $LegacyProfileBaselineAfter
-Assert-ProfileBaselineUnchanged `
-    -Name "Managed Edge broker profile" `
-    -Before $EdgeProfileBaselineBefore `
-    -After $EdgeProfileBaselineAfter
-
-New-Item -ItemType Directory -Path $BrokerStateDir -Force | Out-Null
-$AclPython = "import sys; sys.path.insert(0, sys.argv[1]); from gmail_broker_state import apply_windows_acl; apply_windows_acl(sys.argv[2])"
-python -c $AclPython $GeminiToolsDir $BrokerStateDir
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to restrict the Gmail broker state directory ACL."
-    exit 1
+New-Item -ItemType Directory -Path $BackupGmailDir -Force | Out-Null
+if (Test-Path -LiteralPath $TargetPluginDir -PathType Container) {
+    Copy-Item -LiteralPath $TargetPluginDir -Destination $BackupPluginDir -Recurse -Force
 }
-Write-Host "  Gmail broker state directory secured: $BrokerStateDir" -ForegroundColor Green
+foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
+    $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
+    if (Test-Path -LiteralPath $TargetFile -PathType Leaf) {
+        Copy-Item -LiteralPath $TargetFile -Destination (Join-Path $BackupGmailDir $GmailDeploymentFile) -Force
+    }
+}
+if (Test-Path -LiteralPath $CaseToMdTargetFile -PathType Leaf) {
+    Copy-Item -LiteralPath $CaseToMdTargetFile -Destination $BackupCaseFile -Force
+}
+if (Test-Path -LiteralPath $McpConfigFile -PathType Leaf) {
+    Copy-Item -LiteralPath $McpConfigFile -Destination $BackupConfigFile -Force
+}
+foreach ($TargetPath in $DeploymentBaselines.Keys) {
+    $BackupBaseline = Get-DeploymentPathBaseline -Path $DeploymentBackups[$TargetPath]
+    if (-not [string]::Equals(
+        [string]$DeploymentBaselines[$TargetPath],
+        [string]$BackupBaseline,
+        [StringComparison]::Ordinal
+    )) {
+        throw "Backup verification failed before deployment for target: $TargetPath"
+    }
+}
 
 # ------------------------------------------------------------------------------
-# 5. Configure MCP Config (mcp_config.json) safely without overwriting other servers
+# 4-6. Commit Plugin, MCP, and Configuration Changes; Verify the New Broker
 # ------------------------------------------------------------------------------
-Write-Host ""
-Write-Host "[5/6] Updating Antigravity MCP configuration ($McpConfigFile)..." -ForegroundColor Yellow
+$DeploymentStarted = $false
+try {
+    Assert-DeploymentTarget -Path $TargetPluginDir -AllowedRoot $GeminiPluginsDir
+    Assert-DeploymentTarget -Path $CaseToMdTargetFile -AllowedRoot $TargetCaseToMdDir
+    Assert-DeploymentTarget -Path $McpConfigFile -AllowedRoot $GeminiConfigDir
+    foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
+        Assert-DeploymentTarget `
+            -Path (Join-Path $GeminiToolsDir $GmailDeploymentFile) `
+            -AllowedRoot $GeminiToolsDir
+    }
+    $DeploymentStarted = $true
 
-$GmailScriptPath = (Join-Path $GeminiToolsDir "gmail_mcp_server.py").Replace("\", "/")
-$CaseToMdScriptPath = (Join-Path $TargetCaseToMdDir "casetomd_mcp_bridge.py").Replace("\", "/")
+    Write-Host "[4/6] Deploying Avaya Case Review plugin and MCP files..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $GeminiPluginsDir -Force | Out-Null
+    if (Test-Path -LiteralPath $TargetPluginDir) {
+        Remove-Item -LiteralPath $TargetPluginDir -Recurse -Force
+    }
+    Copy-Item -Path $SourcePluginDir -Destination $GeminiPluginsDir -Recurse -Force
 
-Update-McpConfiguration `
-    -ConfigPath $McpConfigFile `
-    -GmailScriptPath $GmailScriptPath `
-    -CaseToMdScriptPath $CaseToMdScriptPath
-Write-Host "  mcp_config.json updated successfully." -ForegroundColor Green
+    New-Item -ItemType Directory -Path $GeminiToolsDir -Force | Out-Null
+    foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
+        Copy-Item `
+            -LiteralPath (Join-Path $SourceGmailDir $GmailDeploymentFile) `
+            -Destination (Join-Path $GeminiToolsDir $GmailDeploymentFile) `
+            -Force
+    }
+    New-Item -ItemType Directory -Path $TargetCaseToMdDir -Force | Out-Null
+    Copy-Item -LiteralPath $CaseToMdSourceFile -Destination $CaseToMdTargetFile -Force
 
-# ------------------------------------------------------------------------------
-# 6. Start Broker and Authenticate Only When Required
-# ------------------------------------------------------------------------------
-Write-Host ""
-Write-Host "[6/6] Starting and validating the Gmail Edge broker..." -ForegroundColor Yellow
-$InstalledBrokerScript = Join-Path $GeminiToolsDir "gmail_edge_broker.py"
-$ExpectedBrokerBuildId = Get-InstalledBrokerBuildId -BrokerScriptPath $InstalledBrokerScript
-$BrokerStatusOutput = @(python $BrokerCtlPath status)
-$BrokerStatusExit = $LASTEXITCODE
+    $LegacyProfileBaselineAfter = Get-ProfileBaseline -Path $LegacyProfileDir
+    $EdgeProfileBaselineAfter = Get-ProfileBaseline -Path $EdgeBrokerProfileDir
+    Assert-ProfileBaselineUnchanged `
+        -Name "Legacy Gmail profile" `
+        -Before $LegacyProfileBaselineBefore `
+        -After $LegacyProfileBaselineAfter
+    Assert-ProfileBaselineUnchanged `
+        -Name "Managed Edge broker profile" `
+        -Before $EdgeProfileBaselineBefore `
+        -After $EdgeProfileBaselineAfter
 
-if ($BrokerStatusExit -eq 0 -or $BrokerStatusExit -eq 10) {
+    New-Item -ItemType Directory -Path $BrokerStateDir -Force | Out-Null
+    $AclPython = "import sys; sys.path.insert(0, sys.argv[1]); from gmail_broker_state import apply_windows_acl; apply_windows_acl(sys.argv[2])"
+    $null = Invoke-BoundedCommand `
+        -Stage "secure Gmail broker state" `
+        -Command $PythonCommand `
+        -Arguments @("-B", "-c", $AclPython, $GeminiToolsDir, $BrokerStateDir) `
+        -TimeoutSeconds $TimeoutLocalSeconds
+
+    Write-Host "[5/6] Updating Antigravity MCP configuration ($McpConfigFile)..." -ForegroundColor Yellow
+    $GmailScriptPath = (Join-Path $GeminiToolsDir "gmail_mcp_server.py").Replace("\", "/")
+    $CaseToMdScriptPath = $CaseToMdTargetFile.Replace("\", "/")
+    Update-McpConfiguration `
+        -ConfigPath $McpConfigFile `
+        -GmailScriptPath $GmailScriptPath `
+        -CaseToMdScriptPath $CaseToMdScriptPath
+
+    Write-Host "[6/6] Starting and validating the deployed Gmail Edge broker..." -ForegroundColor Yellow
+    $InstalledBrokerScript = Join-Path $GeminiToolsDir "gmail_edge_broker.py"
+    $ExpectedBrokerBuildId = Get-InstalledBrokerBuildId -BrokerScriptPath $InstalledBrokerScript
+    $BrokerStatus = Invoke-BoundedCommand `
+        -Stage "deployed Gmail broker status" `
+        -Command $PythonCommand `
+        -Arguments @($BrokerCtlPath, "status") `
+        -TimeoutSeconds $TimeoutBridgeSeconds `
+        -AllowFailure
+    if ($BrokerStatus.ExitCode -ne 0) {
+        throw "Deployed Gmail broker validation failed with exit code $($BrokerStatus.ExitCode)."
+    }
     Assert-BrokerBuildId `
-        -StatusOutput $BrokerStatusOutput `
+        -StatusOutput @($BrokerStatus.StdOut -split "`r?`n") `
         -ExpectedBuildId $ExpectedBrokerBuildId
     Write-Host "  Running broker build verified: $ExpectedBrokerBuildId" -ForegroundColor Green
-}
-
-if ($BrokerStatusExit -eq 10) {
-    Write-Host "  Gmail authentication is required. Opening Managed Edge for SSO/MFA..." -ForegroundColor Cyan
-    python $BrokerCtlPath login
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Gmail authentication was not completed; run python $BrokerCtlPath login before using Gmail tools."
+} catch {
+    $PrimaryFailure = $_
+    if ($DeploymentStarted) {
+        try {
+            if (Test-Path -LiteralPath $TargetPluginDir) {
+                Remove-Item -LiteralPath $TargetPluginDir -Recurse -Force
+            }
+            if (Test-Path -LiteralPath $BackupPluginDir -PathType Container) {
+                Copy-Item -LiteralPath $BackupPluginDir -Destination $TargetPluginDir -Recurse -Force
+            }
+            foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
+                $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
+                $BackupFile = Join-Path $BackupGmailDir $GmailDeploymentFile
+                if (Test-Path -LiteralPath $TargetFile) {
+                    Remove-Item -LiteralPath $TargetFile -Force
+                }
+                if (Test-Path -LiteralPath $BackupFile -PathType Leaf) {
+                    Copy-Item -LiteralPath $BackupFile -Destination $TargetFile -Force
+                }
+            }
+            foreach ($FilePair in @(
+                @($CaseToMdTargetFile, $BackupCaseFile),
+                @($McpConfigFile, $BackupConfigFile)
+            )) {
+                if (Test-Path -LiteralPath $FilePair[0]) {
+                    Remove-Item -LiteralPath $FilePair[0] -Force
+                }
+                if (Test-Path -LiteralPath $FilePair[1] -PathType Leaf) {
+                    Copy-Item -LiteralPath $FilePair[1] -Destination $FilePair[0] -Force
+                }
+            }
+            foreach ($TargetPath in $DeploymentBaselines.Keys) {
+                $RestoredBaseline = Get-DeploymentPathBaseline -Path $TargetPath
+                if (-not [string]::Equals(
+                    [string]$DeploymentBaselines[$TargetPath],
+                    [string]$RestoredBaseline,
+                    [StringComparison]::Ordinal
+                )) {
+                    throw "Backup verification failed for restored target: $TargetPath"
+                }
+            }
+            if (
+                $BrokerStopResult.exit_code -eq 0 -and
+                (Test-Path -LiteralPath $BrokerCtlPath -PathType Leaf)
+            ) {
+                $null = Invoke-BoundedCommand `
+                    -Stage "restored Gmail broker start" `
+                    -Command $PythonCommand `
+                    -Arguments @($BrokerCtlPath, "start") `
+                    -TimeoutSeconds $TimeoutBridgeSeconds
+            }
+        } catch {
+            throw "Antigravity deployment failed: $($PrimaryFailure.Exception.Message) Rollback also failed: $($_.Exception.Message)"
+        }
     }
-} elseif ($BrokerStatusExit -ne 0) {
-    Write-Warning "Gmail broker is not ready; legacy rollback remains available."
+    throw $PrimaryFailure
+} finally {
+    if (Test-Path -LiteralPath $BackupRoot) {
+        Remove-Item -LiteralPath $BackupRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Host ""
