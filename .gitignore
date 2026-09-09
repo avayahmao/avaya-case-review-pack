@@ -8,6 +8,7 @@ env/
 venv/
 ENV/
 .venv/
+.worktrees/
 
 # Playwright & Browser Sessions
 chrome_profile/
