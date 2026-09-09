@@ -122,17 +122,19 @@ function Get-CodexMarketplaceSnapshot {
     ) | Select-Object -First 1
 
     $Source = ""
+    $SourceType = ""
     $Root = ""
     $Commit = ""
     if ($null -ne $ExistingMarketplace) {
         $Root = [string]$ExistingMarketplace.root
+        $SourceType = [string]$ExistingMarketplace.marketplaceSource.sourceType
         $Source = [string]$ExistingMarketplace.marketplaceSource.source
         if ([string]::IsNullOrWhiteSpace($Source)) {
             $Source = $Root
         }
         if (
             -not [string]::IsNullOrWhiteSpace($Root) -and
-            [string]$ExistingMarketplace.marketplaceSource.sourceType -ne "local"
+            $SourceType -ne "local"
         ) {
             $CommitResult = Invoke-CheckedCommand `
                 -Stage "marketplace commit snapshot" `
@@ -150,6 +152,7 @@ function Get-CodexMarketplaceSnapshot {
     return [pscustomobject]@{
         Exists = $null -ne $ExistingMarketplace
         Source = $Source
+        SourceType = $SourceType
         Root = $Root
         Commit = $Commit
         PluginInstalled = $null -ne $ExistingPlugin -and [bool]$ExistingPlugin.installed
@@ -160,12 +163,16 @@ function Get-CodexMarketplaceSnapshot {
 function Resolve-GitRefCommit {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
-        [Parameter(Mandatory = $true)][string]$Ref
+        [Parameter(Mandatory = $true)][string]$Ref,
+        [switch]$RequireTag
     )
 
     $RefIsCommit = $Ref -match '^[0-9a-fA-F]{40}$'
     $Arguments = @("ls-remote", "--exit-code", $Source)
-    if (-not $RefIsCommit) {
+    if ($RequireTag) {
+        $TagRef = "refs/tags/$Ref"
+        $Arguments += @($TagRef, "$TagRef^{}")
+    } elseif (-not $RefIsCommit) {
         $Arguments += @($Ref, "$Ref^{}")
     }
     $Result = Invoke-CheckedCommand `
@@ -178,13 +185,26 @@ function Resolve-GitRefCommit {
     if ($Lines.Count -eq 0) {
         throw "Stage 'target ref resolve' returned no commit."
     }
-    $ResolvedLine = if ($RefIsCommit) {
+    $ResolvedLine = if ($RequireTag) {
+        $PeeledLine = @($Lines | Where-Object {
+            @($_ -split "\s+")[1] -eq "$TagRef^{}"
+        }) | Select-Object -First 1
+        if ($null -ne $PeeledLine) {
+            $PeeledLine
+        } else {
+            @($Lines | Where-Object {
+                @($_ -split "\s+")[1] -eq $TagRef
+            }) | Select-Object -First 1
+        }
+    } elseif ($RefIsCommit) {
         @($Lines | Where-Object { @($_ -split "\s+")[0] -eq $Ref }) | Select-Object -First 1
     } else {
         @($Lines | Where-Object { $_ -match '\^\{\}\s*$' }) | Select-Object -First 1
     }
     if ($null -eq $ResolvedLine) {
-        if ($RefIsCommit) {
+        if ($RequireTag) {
+            throw "Stage 'target ref resolve' did not return the required release tag."
+        } elseif ($RefIsCommit) {
             throw "Stage 'target ref resolve' did not advertise the requested commit."
         }
         $ResolvedLine = $Lines[0]
@@ -215,35 +235,91 @@ function Add-CodexMarketplace {
         -TimeoutSeconds $TimeoutMarketplaceSeconds | Out-Null
 }
 
+function Test-CodexMarketplaceIdentity {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject]$Snapshot,
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$SourceType,
+        [string]$Commit
+    )
+
+    if (-not $Snapshot.Exists -or $Snapshot.SourceType -ne $SourceType) {
+        return $false
+    }
+    if ($SourceType -eq "local") {
+        return (Normalize-LocalPath -Value $Snapshot.Root).Equals(
+            (Normalize-LocalPath -Value $Source),
+            [StringComparison]::OrdinalIgnoreCase
+        )
+    }
+    return (
+        (Normalize-GitSource -Value $Snapshot.Source) -eq
+        (Normalize-GitSource -Value $Source) -and
+        ([string]::IsNullOrWhiteSpace($Commit) -or $Snapshot.Commit -eq $Commit)
+    )
+}
+
 function Restore-CodexMarketplaceSnapshot {
     param(
         [Parameter(Mandatory = $true)][pscustomobject]$Before,
         [Parameter(Mandatory = $true)][pscustomobject]$Transaction
     )
 
-    if ($Transaction.PluginAdded) {
+    $Current = Get-CodexMarketplaceSnapshot `
+        -MarketplaceName $script:MarketplaceName `
+        -PluginName $script:PluginName
+    $CurrentIsBefore = if ($Before.Exists) {
+        Test-CodexMarketplaceIdentity `
+            -Snapshot $Current `
+            -Source $Before.Source `
+            -SourceType $Before.SourceType `
+            -Commit $Before.Commit
+    } else {
+        -not $Current.Exists
+    }
+    $CurrentIsTarget = Test-CodexMarketplaceIdentity `
+        -Snapshot $Current `
+        -Source $Transaction.TargetSource `
+        -SourceType $Transaction.TargetSourceType `
+        -Commit ""
+
+    if (
+        $Current.PluginInstalled -and
+        (
+            -not $Before.PluginInstalled -or
+            -not $CurrentIsBefore -or
+            $Current.PluginEnabled -ne $Before.PluginEnabled
+        )
+    ) {
         Invoke-CheckedCommand `
             -Stage "rollback plugin remove" `
             -Command "codex" `
             -Arguments @("plugin", "remove", $script:PluginSelector) `
             -Description "Removing the plugin added by the failed transaction" `
             -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
+        $Current.PluginInstalled = $false
+        $Current.PluginEnabled = $false
     }
-    if ($Transaction.MarketplaceAdded) {
+    if ($Current.Exists -and -not $CurrentIsBefore) {
+        if (-not $CurrentIsTarget) {
+            throw "Stage 'rollback marketplace identity verification' failed."
+        }
         Invoke-CheckedCommand `
             -Stage "rollback marketplace remove" `
             -Command "codex" `
             -Arguments @("plugin", "marketplace", "remove", $script:MarketplaceName) `
             -Description "Removing the marketplace added by the failed transaction" `
             -TimeoutSeconds $TimeoutMarketplaceSeconds | Out-Null
+        $Current.Exists = $false
     }
-    if ($Before.Exists -and $Transaction.MarketplaceRemoved) {
+    if ($Before.Exists -and -not $Current.Exists) {
         Add-CodexMarketplace `
             -Stage "rollback marketplace add" `
             -Source $Before.Source `
             -Ref $Before.Commit
+        $Current.Exists = $true
     }
-    if ($Before.PluginInstalled -and $Transaction.PluginRemoved) {
+    if ($Before.PluginInstalled -and -not $Current.PluginInstalled) {
         Invoke-CheckedCommand `
             -Stage "rollback plugin add" `
             -Command "codex" `
@@ -282,11 +358,17 @@ function Set-CodexMarketplaceAtRef {
         MarketplaceRemoved = $false
         MarketplaceAdded = $false
         PluginAdded = $false
+        TargetSource = $TargetSource
+        TargetSourceType = ""
+        TargetCommit = ""
     }
 
     $TargetIsLocal = Test-LocalMarketplaceSource -Value $TargetSource
     if ($Before.Exists) {
-        if ($TargetIsLocal) {
+        $ExistingIsLocal = $Before.SourceType -eq "local"
+        if ($TargetIsLocal -ne $ExistingIsLocal) {
+            $SameSource = $false
+        } elseif ($TargetIsLocal) {
             $SameSource = (Normalize-LocalPath -Value $Before.Root).Equals(
                 (Normalize-LocalPath -Value $TargetSource),
                 [StringComparison]::OrdinalIgnoreCase
@@ -303,64 +385,65 @@ function Set-CodexMarketplaceAtRef {
 
     $TargetCommit = ""
     if (-not $TargetIsLocal) {
-        $TargetCommit = Resolve-GitRefCommit -Source $TargetSource -Ref $TargetRef
+        $TargetCommit = Resolve-GitRefCommit `
+            -Source $TargetSource `
+            -Ref $TargetRef `
+            -RequireTag:($TargetRef -eq $script:ReleaseRef)
     }
-    if (
+    $Transaction.TargetSourceType = if ($TargetIsLocal) { "local" } else { "git" }
+    $Transaction.TargetCommit = $TargetCommit
+    $MarketplaceAtTarget = (
         $Before.Exists -and
         (($TargetIsLocal -and $Before.Root) -or ($Before.Commit -eq $TargetCommit))
-    ) {
-        if (-not $Before.PluginInstalled -or -not $Before.PluginEnabled) {
-            Invoke-CheckedCommand `
-                -Stage "new plugin add" `
-                -Command "codex" `
-                -Arguments @("plugin", "add", $script:PluginSelector, "--json") `
-                -Description "Installing the Codex plugin" `
-                -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
-            $Transaction.PluginAdded = $true
-        }
+    )
+    if ($Before.PluginInstalled -and -not $Before.PluginEnabled) {
+        throw "The installed plugin is disabled; this Codex CLI cannot safely preserve disabled state. No changes were made."
+    }
+    if ($MarketplaceAtTarget -and $Before.PluginInstalled) {
         return $Transaction
     }
 
     try {
-        if ($Before.PluginInstalled) {
-            Invoke-CheckedCommand `
-                -Stage "plugin remove" `
-                -Command "codex" `
-                -Arguments @("plugin", "remove", $script:PluginSelector) `
-                -Description "Removing the installed Codex plugin before marketplace replacement" `
-                -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
-            $Transaction.PluginRemoved = $true
-        }
-        if ($Before.Exists) {
-            Invoke-CheckedCommand `
-                -Stage "marketplace remove" `
-                -Command "codex" `
-                -Arguments @("plugin", "marketplace", "remove", $script:MarketplaceName) `
-                -Description "Removing the existing same-source Codex marketplace" `
-                -TimeoutSeconds $TimeoutMarketplaceSeconds | Out-Null
-            $Transaction.MarketplaceRemoved = $true
+        if (-not $MarketplaceAtTarget) {
+            if ($Before.PluginInstalled) {
+                $Transaction.PluginRemoved = $true
+                Invoke-CheckedCommand `
+                    -Stage "plugin remove" `
+                    -Command "codex" `
+                    -Arguments @("plugin", "remove", $script:PluginSelector) `
+                    -Description "Removing the installed Codex plugin before marketplace replacement" `
+                    -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
+            }
+            if ($Before.Exists) {
+                $Transaction.MarketplaceRemoved = $true
+                Invoke-CheckedCommand `
+                    -Stage "marketplace remove" `
+                    -Command "codex" `
+                    -Arguments @("plugin", "marketplace", "remove", $script:MarketplaceName) `
+                    -Description "Removing the existing same-source Codex marketplace" `
+                    -TimeoutSeconds $TimeoutMarketplaceSeconds | Out-Null
+            }
+
+            $Transaction.MarketplaceAdded = $true
+            Add-CodexMarketplace `
+                -Stage "new marketplace add" `
+                -Source $TargetSource `
+                -Ref $TargetRef
+            $Added = Get-CodexMarketplaceSnapshot `
+                -MarketplaceName $script:MarketplaceName `
+                -PluginName $script:PluginName
+            if (-not $TargetIsLocal -and $Added.Commit -ne $TargetCommit) {
+                throw "Stage 'resolved marketplace commit verification' failed."
+            }
         }
 
-        Add-CodexMarketplace `
-            -Stage "new marketplace add" `
-            -Source $TargetSource `
-            -Ref $TargetRef
-        $Transaction.MarketplaceAdded = $true
-
-        $Added = Get-CodexMarketplaceSnapshot `
-            -MarketplaceName $script:MarketplaceName `
-            -PluginName $script:PluginName
-        if (-not $TargetIsLocal -and $Added.Commit -ne $TargetCommit) {
-            throw "Stage 'resolved marketplace commit verification' failed."
-        }
-
+        $Transaction.PluginAdded = $true
         Invoke-CheckedCommand `
             -Stage "new plugin add" `
             -Command "codex" `
             -Arguments @("plugin", "add", $script:PluginSelector, "--json") `
             -Description "Installing the Codex plugin" `
             -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
-        $Transaction.PluginAdded = $true
         return $Transaction
     } catch {
         $PrimaryMessage = $_.Exception.Message

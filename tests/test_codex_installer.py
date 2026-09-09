@@ -52,11 +52,23 @@ if ($args.Count -ge 4 -and $args[0] -eq "plugin" -and $args[1] -eq "marketplace"
         exit 31
     }
     if ($State.fail_stage -like "*new-marketplace-add*" -and $RequestedRef -eq [string]$State.target_ref) {
+        if ($State.fail_stage -eq "new-marketplace-add-after-mutation") {
+            $State.marketplace_exists = $true
+            $State.marketplace_source = [string]$args[3]
+            $State.marketplace_source_type = [string]$State.target_source_type
+            $State.marketplace_sha = [string]$State.target_sha
+            Write-TestState $State
+        }
         Write-Error "UNSANITIZED_NEW_MARKETPLACE_ADD"
         exit 32
     }
+    if ($State.marketplace_exists) {
+        Write-Error "UNSANITIZED_DUPLICATE_MARKETPLACE"
+        exit 36
+    }
     $State.marketplace_exists = $true
     $State.marketplace_source = [string]$args[3]
+    $State.marketplace_source_type = [string]$State.target_source_type
     $State.marketplace_sha = if ($RequestedRef -eq [string]$State.target_ref) {
         [string]$State.target_sha
     } else {
@@ -76,7 +88,7 @@ if ($args.Count -ge 4 -and $args[0] -eq "plugin" -and $args[1] -eq "marketplace"
                     name = "avaya-case-review-pack"
                     root = $env:AVAYA_INSTALL_TEST_MARKETPLACE_ROOT
                     marketplaceSource = [pscustomobject]@{
-                        sourceType = "git"
+                        sourceType = [string]$State.marketplace_source_type
                         source = [string]$State.marketplace_source
                     }
                 }
@@ -92,8 +104,17 @@ if ($args.Count -ge 4 -and $args[0] -eq "plugin" -and $args[1] -eq "marketplace"
     $State = Read-TestState
     Add-TestEvent "marketplace-remove"
     if ($State.fail_stage -like "*marketplace-remove*") {
+        if ($State.fail_stage -eq "marketplace-remove-after-mutation") {
+            $State.marketplace_exists = $false
+            $State.marketplace_sha = ""
+            Write-TestState $State
+        }
         Write-Error "UNSANITIZED_MARKETPLACE_REMOVE"
         exit 33
+    }
+    if ($State.plugin_installed) {
+        Write-Error "UNSANITIZED_MARKETPLACE_HAS_PLUGIN"
+        exit 37
     }
     $State.marketplace_exists = $false
     $State.marketplace_sha = ""
@@ -126,7 +147,19 @@ if ($args.Count -ge 3 -and $args[0] -eq "plugin" -and $args[1] -eq "add") {
     $PluginId = [string]$args[2]
     Add-TestEvent "plugin-add"
     Add-TestEvent ("plugin-add:" + $PluginId)
+    if (-not $State.marketplace_exists) {
+        Write-Error "UNSANITIZED_PLUGIN_MARKETPLACE_MISSING"
+        exit 38
+    }
     if ($State.fail_stage -like "*new-plugin-add*" -and $State.marketplace_sha -eq $State.target_sha) {
+        if ($State.fail_stage -in @("new-plugin-add-after-mutation", "new-plugin-add-after-mutation-timeout")) {
+            $State.plugin_installed = $true
+            $State.plugin_enabled = $true
+            Write-TestState $State
+            if ($State.fail_stage -eq "new-plugin-add-after-mutation-timeout") {
+                Start-Sleep -Seconds 30
+            }
+        }
         Write-Error "UNSANITIZED_NEW_PLUGIN_ADD"
         exit 34
     }
@@ -140,6 +173,11 @@ if ($args.Count -ge 3 -and $args[0] -eq "plugin" -and $args[1] -eq "remove") {
     $State = Read-TestState
     Add-TestEvent "plugin-remove"
     if ($State.fail_stage -like "*plugin-remove*") {
+        if ($State.fail_stage -eq "plugin-remove-after-mutation") {
+            $State.plugin_installed = $false
+            $State.plugin_enabled = $false
+            Write-TestState $State
+        }
         Write-Error "UNSANITIZED_PLUGIN_REMOVE"
         exit 35
     }
@@ -168,13 +206,29 @@ if ($args.Count -ge 3 -and $args[0] -eq "ls-remote") {
         exit 0
     }
     $RequestedRef = [string]$args[3]
-    Add-TestEvent ("git-ls-remote:" + $RequestedRef)
+    $DisplayRef = $RequestedRef.Replace("refs/tags/", "").Replace("^{}", "")
+    Add-TestEvent ("git-ls-remote:" + $DisplayRef)
+    if ($RequestedRef.StartsWith("refs/tags/")) {
+        $TagRef = $RequestedRef.Replace("^{}", "")
+        if ($State.annotated_tag) {
+            Write-Output ("tag-object-sha`t" + $TagRef)
+            Write-Output (([string]$State.target_sha) + "`t" + $TagRef + "^{}")
+        } else {
+            Write-Output (([string]$State.target_sha) + "`t" + $TagRef)
+        }
+        exit 0
+    }
     if ($RequestedRef -match '^[0-9a-fA-F]{40}$') {
         exit 2
     }
     if ($State.annotated_tag) {
         Write-Output ("tag-object-sha`trefs/tags/" + $RequestedRef)
         Write-Output (([string]$State.target_sha) + "`trefs/tags/" + $RequestedRef + "^{}")
+        exit 0
+    }
+    if ($State.ref_collision) {
+        Write-Output ("branch-sha`trefs/heads/" + $RequestedRef)
+        Write-Output (([string]$State.target_sha) + "`trefs/tags/" + $RequestedRef)
         exit 0
     }
     Write-Output (([string]$State.target_sha) + "`trefs/tags/" + $RequestedRef)
@@ -227,6 +281,7 @@ class CodexInstallerTests(unittest.TestCase):
         self,
         *,
         existing_source="https://example.invalid/repo",
+        existing_source_type="git",
         existing_sha="",
         target_sha="new-sha",
         target_ref="v1.10.0",
@@ -234,10 +289,13 @@ class CodexInstallerTests(unittest.TestCase):
         plugin_enabled=False,
         fail_stage="",
         annotated_tag=False,
+        ref_collision=False,
+        target_source_type="git",
     ):
         state = {
             "marketplace_exists": bool(existing_sha),
             "marketplace_source": existing_source,
+            "marketplace_source_type": existing_source_type,
             "marketplace_sha": existing_sha,
             "original_sha": existing_sha,
             "target_sha": target_sha,
@@ -246,6 +304,8 @@ class CodexInstallerTests(unittest.TestCase):
             "plugin_enabled": plugin_enabled,
             "fail_stage": fail_stage,
             "annotated_tag": annotated_tag,
+            "ref_collision": ref_collision,
+            "target_source_type": target_source_type,
         }
         self.state_path.write_text(json.dumps(state), encoding="utf-8-sig")
 
@@ -305,12 +365,15 @@ class CodexInstallerTests(unittest.TestCase):
         *,
         plugin_version="1.10.1",
         existing_source="https://example.invalid/repo",
+        existing_source_type="git",
         existing_sha="",
         target_sha="new-sha",
         plugin_installed=False,
         plugin_enabled=False,
         fail_stage="",
         annotated_tag=False,
+        ref_collision=False,
+        source="https://example.invalid/repo",
         extra_arguments=(),
     ):
         fixture_root = self.temp_root / "stateful-installer"
@@ -325,6 +388,16 @@ class CodexInstallerTests(unittest.TestCase):
             shutil.copy2(ROOT / relative_path, destination)
         shutil.copy2(INSTALLER, fixture_root / INSTALLER.name)
 
+        if fail_stage.endswith("timeout"):
+            helper_path = fixture_root / "tools/installer/windows_common.ps1"
+            helper_source = helper_path.read_text(encoding="utf-8-sig")
+            helper_source = helper_source.replace(
+                "$TimeoutPluginSeconds = 120", "$TimeoutPluginSeconds = 1"
+            )
+            helper_path.write_text(
+                helper_source, encoding="utf-8-sig", newline="\r\n"
+            )
+
         manifest_path = fixture_root / ".codex-plugin/plugin.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
         manifest["version"] = plugin_version
@@ -336,6 +409,7 @@ class CodexInstallerTests(unittest.TestCase):
             target_ref = extra_arguments[extra_arguments.index("-MarketplaceRef") + 1]
         self._write_state(
             existing_source=existing_source,
+            existing_source_type=existing_source_type,
             existing_sha=existing_sha,
             target_sha=target_sha,
             target_ref=target_ref,
@@ -343,6 +417,8 @@ class CodexInstallerTests(unittest.TestCase):
             plugin_enabled=plugin_enabled,
             fail_stage=fail_stage,
             annotated_tag=annotated_tag,
+            ref_collision=ref_collision,
+            target_source_type="local" if Path(source).exists() else "git",
         )
         result = subprocess.run(
             [
@@ -356,7 +432,7 @@ class CodexInstallerTests(unittest.TestCase):
                 "-SkipDependencyInstall",
                 "-SkipLogin",
                 "-MarketplaceSource",
-                "https://example.invalid/repo",
+                source,
                 *extra_arguments,
             ],
             cwd=fixture_root,
@@ -364,7 +440,7 @@ class CodexInstallerTests(unittest.TestCase):
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=15,
+            timeout=30,
             check=False,
         )
         return result, self._events(), self._read_state()
@@ -578,6 +654,13 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertIn("git-rev-parse:new-sha", events)
         self.assertEqual("new-sha", state.marketplace_sha)
 
+    def test_version_tag_does_not_resolve_from_same_named_branch(self):
+        result, events, state = self.run_stateful_installer(ref_collision=True)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("git-ls-remote:v1.10.1", events)
+        self.assertEqual("new-sha", state.marketplace_sha)
+
     def test_conflicting_source_is_never_removed(self):
         result, events, state = self.run_stateful_installer(
             existing_source="https://example.invalid/other",
@@ -642,6 +725,90 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertTrue(state.plugin_installed)
         self.assertNotIn("marketplace-remove", events)
 
+    def test_disabled_plugin_blocks_ref_change_before_mutation(self):
+        result, events, state = self.run_stateful_installer(
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=False,
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("disabled", result.stderr.lower())
+        self.assertNotIn("plugin-remove", events)
+        self.assertNotIn("marketplace-remove", events)
+        self.assertEqual("old-sha", state.marketplace_sha)
+        self.assertTrue(state.plugin_installed)
+        self.assertFalse(state.plugin_enabled)
+
+    def test_disabled_plugin_at_target_fails_without_mutation(self):
+        result, events, state = self.run_stateful_installer(
+            existing_sha="new-sha",
+            target_sha="new-sha",
+            plugin_installed=True,
+            plugin_enabled=False,
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("disabled", result.stderr.lower())
+        self.assertNotIn("plugin-remove", events)
+        self.assertNotIn("marketplace-remove", events)
+        self.assertEqual("new-sha", state.marketplace_sha)
+        self.assertFalse(state.plugin_enabled)
+
+    def test_plugin_remove_mutation_then_failure_restores_snapshot(self):
+        result, _, state = self.run_stateful_installer(
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=True,
+            fail_stage="plugin-remove-after-mutation",
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual("old-sha", state.marketplace_sha)
+        self.assertTrue(state.plugin_installed)
+        self.assertTrue(state.plugin_enabled)
+
+    def test_marketplace_remove_mutation_then_failure_restores_snapshot(self):
+        result, _, state = self.run_stateful_installer(
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=True,
+            fail_stage="marketplace-remove-after-mutation",
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual("old-sha", state.marketplace_sha)
+        self.assertTrue(state.plugin_installed)
+        self.assertTrue(state.plugin_enabled)
+
+    def test_marketplace_add_mutation_then_failure_restores_snapshot(self):
+        result, _, state = self.run_stateful_installer(
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=True,
+            fail_stage="new-marketplace-add-after-mutation",
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual("old-sha", state.marketplace_sha)
+        self.assertTrue(state.plugin_installed)
+        self.assertTrue(state.plugin_enabled)
+
+    def test_plugin_add_mutation_then_timeout_restores_snapshot(self):
+        result, _, state = self.run_stateful_installer(
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=True,
+            fail_stage="new-plugin-add-after-mutation-timeout",
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("new plugin add", result.stderr.lower())
+        self.assertIn("timed out", result.stderr.lower())
+        self.assertEqual("old-sha", state.marketplace_sha)
+        self.assertTrue(state.plugin_installed)
+        self.assertTrue(state.plugin_enabled)
+
     def test_resolved_sha_mismatch_triggers_rollback(self):
         result, events, state = self.run_stateful_installer(
             existing_sha="old-sha",
@@ -694,6 +861,21 @@ class CodexInstallerTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("marketplace-add:candidate-sha", events)
+
+    def test_git_marketplace_root_is_not_accepted_as_same_local_source(self):
+        result, events, state = self.run_stateful_installer(
+            source=str(self.marketplace_root),
+            existing_source="https://example.invalid/repo",
+            existing_source_type="git",
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=True,
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertNotIn("plugin-remove", events)
+        self.assertNotIn("marketplace-remove", events)
+        self.assertEqual("old-sha", state.marketplace_sha)
 
     def test_unreleased_commit_sha_is_verified_from_advertised_refs(self):
         commit = "a" * 40
