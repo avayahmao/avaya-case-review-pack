@@ -209,6 +209,8 @@ class ToolContractTests(unittest.TestCase):
                 "gmail_read_thread_page",
             ],
         )
+        self.assertNotIn("bridge_capabilities", [tool.name for tool in tools])
+        self.assertNotIn("verify-bridge", [tool.name for tool in tools])
         self.assertEqual(tools[0].inputSchema, {
             "type": "object",
             "properties": {"query": {"type": "string", "description": "Search query"}},

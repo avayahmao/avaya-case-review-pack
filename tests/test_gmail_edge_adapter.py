@@ -221,7 +221,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(playwright.stop_calls, 1)
 
     async def test_maps_all_gmail_methods_and_creates_one_page_per_execute(self):
-        pages = [FakePage(body=f"response-{index}") for index in range(5)]
+        pages = [FakePage(body=f"response-{index}") for index in range(6)]
         context = FakeContext(*pages)
         adapter, _starter, playwright = self.make_adapter(context)
         await adapter.start()
@@ -250,13 +250,14 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                     "cursor": "cursor-2",
                 },
             ),
+            await adapter.execute("bridge_capabilities", {}),
         ]
 
         self.assertEqual(
             results,
-            ["response-0", "response-1", "response-2", "response-3", "response-4"],
+            ["response-0", "response-1", "response-2", "response-3", "response-4", "response-5"],
         )
-        self.assertEqual(len(context.created_pages), 5)
+        self.assertEqual(len(context.created_pages), 6)
         self.assertEqual(len(playwright.chromium.launches), 1)
         expected = [
             ("search", {"q": ["subject:1-2 & owner"]}),
@@ -286,6 +287,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                     "cursor": ["cursor-2"],
                 },
             ),
+            ("capabilities", {}),
         ]
         for page, (action, params) in zip(pages, expected):
             url = page.goto_calls[0][0]
@@ -297,6 +299,16 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(page.close_calls, 1)
 
         await adapter.close()
+
+    def test_bridge_capabilities_maps_to_parameter_free_cloud_action(self):
+        context = FakeContext()
+        adapter, _starter, _playwright = self.make_adapter(context)
+
+        url = adapter._build_method_url("bridge_capabilities", {})
+
+        self.assertEqual({"action": ["capabilities"]}, parse_qs(urlparse(url).query))
+        with self.assertRaisesRegex(BrowserApplicationError, "parameters"):
+            adapter._build_method_url("bridge_capabilities", {"q": "INC1"})
 
     async def test_omits_empty_optional_thread_context_parameters(self):
         pages = [FakePage(), FakePage()]
@@ -421,6 +433,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             ("gmail_read_thread_page", {"thread_id": "", "snapshot_before": "snapshot"}),
             ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": ""}),
             ("gmail_read_thread_page", {"thread_id": "thread", "snapshot_before": "snapshot", "cursor": 1}),
+            ("bridge_capabilities", {"q": "INC1"}),
             ("health", {}),
         ):
             with self.subTest(method=method, params=params):
@@ -439,6 +452,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                     "gmail_read",
                     "gmail_list_threads",
                     "gmail_read_thread_page",
+                    "bridge_capabilities",
                 }
             ),
         )

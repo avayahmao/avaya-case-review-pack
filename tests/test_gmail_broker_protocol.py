@@ -49,6 +49,7 @@ class RequestDecodingTests(unittest.TestCase):
                     "gmail_send",
                     "gmail_list_threads",
                     "gmail_read_thread_page",
+                    "bridge_capabilities",
                     "auth_login",
                     "shutdown",
                 }

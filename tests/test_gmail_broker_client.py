@@ -208,6 +208,28 @@ class HealthyStateRequestTests(unittest.TestCase):
         self.assertNotEqual(broker.requests[0].id, broker.requests[1].id)
         self.assertEqual(broker.requests[1].params, {"query": sentinel})
 
+    def test_authenticated_health_precedes_control_only_capabilities_request(self):
+        def respond(request):
+            if request.method == "health":
+                return BrokerResponse.success(request.id, make_health_result())
+            return BrokerResponse.success(request.id, "{\"success\":true}")
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            store = BrokerStateStore(Path(tmp), acl_applier=None)
+            write_state(store, broker)
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda _pid: True,
+            )
+
+            result = client.request("bridge_capabilities", {})
+
+        self.assertEqual(result, "{\"success\":true}")
+        self.assertEqual(
+            [(item.method, item.params) for item in broker.requests],
+            [("health", {}), ("bridge_capabilities", {})],
+        )
+
 
 class ExistingBrokerRequestTests(unittest.TestCase):
     def test_missing_broker_is_unavailable_without_launching(self):

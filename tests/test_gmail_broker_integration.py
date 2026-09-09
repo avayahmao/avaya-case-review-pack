@@ -475,7 +475,11 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(broker.diagnostics()["browser_crash_count"], 1)
 
     async def test_new_safe_read_methods_retry_once_after_browser_error(self):
-        for method in ("gmail_list_threads", "gmail_read_thread_page"):
+        for method in (
+            "gmail_list_threads",
+            "gmail_read_thread_page",
+            "bridge_capabilities",
+        ):
             with self.subTest(method=method):
                 fake = FakeBrowserAdapter()
                 broker, _store = await self.make_broker(fake)

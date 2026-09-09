@@ -95,6 +95,7 @@ _SAFE_READ_METHODS = frozenset(
         "gmail_read",
         "gmail_list_threads",
         "gmail_read_thread_page",
+        "bridge_capabilities",
     }
 )
 _GMAIL_METHODS = _SAFE_READ_METHODS | {"gmail_send"}
@@ -417,6 +418,11 @@ class ManagedEdgeAdapter:
                 ),
                 "cursor": self._optional_string(params, "cursor"),
             }
+        elif method == "bridge_capabilities":
+            if params:
+                raise BrowserApplicationError("Gmail request parameters are invalid")
+            action = "capabilities"
+            mapped = {}
         else:
             raise BrowserApplicationError("Unsupported Gmail browser method")
         if method in {"gmail_list_threads", "gmail_read_thread_page"}:

@@ -6,8 +6,15 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from tools.gmail import gmail_brokerctl
+from tools.gmail.cloud.bridge_identity import (
+    CONTRACT_REVISION,
+    BRIDGE_PROTOCOL_VERSION,
+    validate_source_identity,
+    write_attestation,
+)
 from tools.gmail.gmail_broker_client import (
     BrokerClientError,
     BrokerProtocolMismatch,
@@ -54,12 +61,188 @@ class RecordingClient:
         return self.results[method]
 
 
-def run_cli(command, client):
+ROOT = Path(__file__).resolve().parents[1]
+BRIDGE_SOURCE = ROOT / "tools/gmail/cloud/GmailMcpBridge.gs"
+
+
+def make_capabilities(**overrides):
+    result = {
+        "success": True,
+        "bridge_version": BRIDGE_PROTOCOL_VERSION,
+        "contract_revision": CONTRACT_REVISION,
+        "bridge_source_sha256": validate_source_identity(
+            BRIDGE_SOURCE.read_text(encoding="utf-8")
+        ),
+        "capabilities": {
+            "stable_snapshots": True,
+            "thread_pagination": True,
+            "cursor_pagination": True,
+            "manifest_sha256": True,
+            "body_bytes": True,
+            "body_sha256": True,
+        },
+    }
+    result.update(overrides)
+    return result
+
+
+def run_cli(command, client, *arguments):
     stdout = io.StringIO()
     stderr = io.StringIO()
     with redirect_stdout(stdout), redirect_stderr(stderr):
-        exit_code = gmail_brokerctl.main([command], client=client)
+        exit_code = gmail_brokerctl.main([command, *arguments], client=client)
     return exit_code, json.loads(stdout.getvalue()), stderr.getvalue()
+
+
+class VerifyBridgeTests(unittest.TestCase):
+    def write_attestation(self, directory):
+        path = Path(directory) / "bridge_release_attestation.json"
+        write_attestation(
+            BRIDGE_SOURCE,
+            path,
+            plugin_version="1.10.0",
+            verified_at_utc="2026-09-09T12:34:56Z",
+        )
+        return path
+
+    def run_verify(self, path, client):
+        return run_cli("verify-bridge", client, "--attestation", str(path))
+
+    def test_verify_bridge_reports_only_compatible_result(self):
+        with TemporaryDirectory() as directory:
+            path = self.write_attestation(directory)
+            client = RecordingClient({"bridge_capabilities": make_capabilities()})
+
+            exit_code, payload, stderr = self.run_verify(path, client)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(client.calls, [("request", "bridge_capabilities", {})])
+        self.assertEqual(
+            payload,
+            {"ok": True, "command": "verify-bridge", "result": {"compatible": True}},
+        )
+        self.assertEqual(stderr, "")
+
+    def test_verify_bridge_does_not_construct_an_unbounded_client(self):
+        with TemporaryDirectory() as directory:
+            path = self.write_attestation(directory)
+            client = RecordingClient({"bridge_capabilities": make_capabilities()})
+            with patch.object(gmail_brokerctl, "BrokerClient", return_value=client) as factory:
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    exit_code = gmail_brokerctl.main(
+                        ["verify-bridge", "--attestation", str(path)]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["result"], {"compatible": True})
+        factory.assert_called_once_with(request_timeout=60)
+
+    def test_verify_bridge_sanitizes_unknown_live_response_fields(self):
+        sentinel = "SENSITIVE_URL_IDENTITY_COOKIE_TOKEN_CASE_BODY_DIGEST"
+        with TemporaryDirectory() as directory:
+            path = self.write_attestation(directory)
+            live = make_capabilities(
+                url=sentinel,
+                identity=sentinel,
+                cookie=sentinel,
+                token=sentinel,
+                case_id=sentinel,
+                body=sentinel,
+                digest=sentinel,
+            )
+            exit_code, payload, stderr = self.run_verify(
+                path,
+                RecordingClient({"bridge_capabilities": live}),
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["result"], {"compatible": True})
+        self.assertNotIn(sentinel, json.dumps(payload))
+        self.assertNotIn(sentinel, stderr)
+
+    def test_verify_bridge_maps_broker_failures_to_existing_exit_codes(self):
+        cases = (
+            (BrokerClientError("AUTH_REQUIRED"), 10, "AUTH_REQUIRED"),
+            (BrokerClientError("REQUEST_TIMEOUT"), 20, "REQUEST_TIMEOUT"),
+            (BrokerUnavailable(), 20, "BROKER_UNAVAILABLE"),
+        )
+        with TemporaryDirectory() as directory:
+            path = self.write_attestation(directory)
+            for error, expected_exit, expected_code in cases:
+                with self.subTest(code=expected_code):
+                    exit_code, payload, stderr = self.run_verify(
+                        path,
+                        RecordingClient(error=error),
+                    )
+                    self.assertEqual(exit_code, expected_exit)
+                    self.assertEqual(payload["code"], expected_code)
+                    self.assertEqual(stderr, "")
+
+    def test_verify_bridge_rejects_malformed_or_incompatible_live_responses(self):
+        cases = (
+            "malformed-json",
+            {"bridge_version": 3},
+        )
+        valid = make_capabilities()
+        for field, bad_value in (
+            ("success", None),
+            ("success", "true"),
+            ("success", False),
+            ("bridge_version", None),
+            ("bridge_version", "4"),
+            ("bridge_version", 3),
+            ("contract_revision", None),
+            ("contract_revision", "1"),
+            ("contract_revision", 2),
+            ("bridge_source_sha256", None),
+            ("bridge_source_sha256", "not-a-digest"),
+            ("bridge_source_sha256", "0" * 64),
+            ("capabilities", None),
+        ):
+            invalid = dict(valid)
+            invalid[field] = bad_value
+            cases += (invalid,)
+        for capability in valid["capabilities"]:
+            missing = make_capabilities(capabilities=dict(valid["capabilities"]))
+            del missing["capabilities"][capability]
+            cases += (missing,)
+            wrong_type = make_capabilities(capabilities=dict(valid["capabilities"]))
+            wrong_type["capabilities"][capability] = "true"
+            cases += (wrong_type,)
+            false_value = make_capabilities(capabilities=dict(valid["capabilities"]))
+            false_value["capabilities"][capability] = False
+            cases += (false_value,)
+
+        with TemporaryDirectory() as directory:
+            path = self.write_attestation(directory)
+            for live in cases:
+                with self.subTest(live=repr(live)[:60]):
+                    exit_code, payload, stderr = self.run_verify(
+                        path,
+                        RecordingClient({"bridge_capabilities": live}),
+                    )
+                    self.assertEqual(exit_code, 30)
+                    self.assertEqual(payload["code"], "BRIDGE_INCOMPATIBLE")
+                    self.assertEqual(stderr, "")
+
+    def test_verify_bridge_rejects_duplicate_capabilities_json_without_echoing_it(self):
+        sentinel = "DUPLICATE_SECRET_7b91"
+        duplicate_json = (
+            '{"success":true,"success":true,"bridge_version":4,'
+            '"contract_revision":1,"bridge_source_sha256":"' + sentinel + '"}'
+        )
+        with TemporaryDirectory() as directory:
+            path = self.write_attestation(directory)
+            exit_code, payload, stderr = self.run_verify(
+                path,
+                RecordingClient({"bridge_capabilities": duplicate_json}),
+            )
+
+        self.assertEqual(exit_code, 30)
+        self.assertEqual(payload["code"], "BRIDGE_INCOMPATIBLE")
+        self.assertNotIn(sentinel, json.dumps(payload))
+        self.assertNotIn(sentinel, stderr)
 
 
 class CommandDispatchTests(unittest.TestCase):
