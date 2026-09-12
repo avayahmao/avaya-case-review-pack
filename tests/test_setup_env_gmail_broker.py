@@ -278,6 +278,48 @@ class InstallerContractTests(unittest.TestCase):
         self.assertLess(verify, plugin_copy)
         self.assertLess(verify, config_update)
 
+    def test_canonical_broker_build_is_validated_before_live_or_mutating_work(self):
+        build_preflight = self.script.index(
+            "$ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `"
+        )
+        live_preflight = self.script.index('-Stage "verify-bridge"')
+        plugin_copy = self.script.index(
+            "Copy-Item -LiteralPath $SourcePluginDir -Destination $TargetPluginDir"
+        )
+        config_update = self.script.index("Update-McpConfiguration `", live_preflight)
+
+        self.assertLess(build_preflight, live_preflight)
+        self.assertLess(build_preflight, plugin_copy)
+        self.assertLess(build_preflight, config_update)
+
+    def test_missing_or_malformed_canonical_broker_aborts_before_live_preflight(self):
+        for mode in ("missing", "malformed"):
+            with self.subTest(mode=mode):
+                fixture = SetupInstallFixture()
+                self.addCleanup(fixture.close)
+                broker_module = (
+                    fixture.source
+                    / "avaya_case_review_runtime/gmail_edge_broker.py"
+                )
+                if mode == "missing":
+                    broker_module.unlink()
+                else:
+                    broker_module.write_text(
+                        'build_id: str = "not valid whitespace"\n',
+                        encoding="utf-8",
+                    )
+                before = fixture.snapshot()
+
+                completed = fixture.run("0")
+
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(
+                    "canonical gmail broker",
+                    (completed.stdout + completed.stderr).lower(),
+                )
+                self.assertEqual(fixture.event_lines(), [])
+                self.assertEqual(fixture.snapshot(), before)
+
     def test_both_bridge_preflights_pass_explicit_release_identity_inputs(self):
         argument_blocks = re.findall(
             r'-Stage "verify-bridge(?: retry)?"\s+`\s+'

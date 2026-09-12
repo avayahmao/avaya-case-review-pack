@@ -452,6 +452,8 @@ $PluginVersion = [string]$PluginManifest.version
 if ([string]::IsNullOrWhiteSpace($PluginVersion)) {
     throw "Antigravity plugin version is missing."
 }
+$ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `
+    -RuntimePackageRoot $CanonicalRuntimePackageRoot
 
 # ------------------------------------------------------------------------------
 # 1. Validate Local Release and Python Environment
@@ -714,8 +716,6 @@ try {
         -CaseToMdScriptPath $CaseToMdScriptPath
 
     Write-Host "[6/6] Starting and validating the deployed Gmail Edge broker..." -ForegroundColor Yellow
-    $ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `
-        -RuntimePackageRoot $CanonicalRuntimePackageRoot
     $BrokerStatus = Invoke-BoundedCommand `
         -Stage "deployed Gmail broker status" `
         -Command $PythonCommand `
