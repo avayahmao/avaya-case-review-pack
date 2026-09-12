@@ -303,16 +303,20 @@ function Stop-RunningGmailBroker {
     }
 }
 
-function Get-InstalledBrokerBuildId {
-    param([Parameter(Mandatory = $true)][string]$BrokerScriptPath)
+function Get-CanonicalBrokerBuildId {
+    param([Parameter(Mandatory = $true)][string]$RuntimePackageRoot)
 
-    $BrokerSource = Get-Content -LiteralPath $BrokerScriptPath -Raw -Encoding UTF8
+    $BrokerModulePath = Join-Path $RuntimePackageRoot "gmail_edge_broker.py"
+    if (-not (Test-Path -LiteralPath $BrokerModulePath -PathType Leaf)) {
+        throw "Canonical Gmail broker runtime module is missing."
+    }
+    $BrokerSource = Get-Content -LiteralPath $BrokerModulePath -Raw -Encoding UTF8
     $BuildMatch = [regex]::Match(
         $BrokerSource,
         'build_id:\s*str\s*=\s*"(?<id>[A-Za-z0-9._-]+)"'
     )
     if (-not $BuildMatch.Success) {
-        throw "Unable to determine the installed Gmail broker build ID."
+        throw "Unable to determine the canonical Gmail broker build ID."
     }
     return $BuildMatch.Groups["id"].Value
 }
@@ -388,6 +392,7 @@ $SourcePluginDir = Join-Path $ScriptDir "plugins\avaya-case-review"
 $SourceGmailDir = Join-Path $ScriptDir "tools\gmail"
 $SourceGmailCloudDir = Join-Path $SourceGmailDir "cloud"
 $SourceCaseToMdDir = Join-Path $ScriptDir "tools\casetomd"
+$CanonicalRuntimePackageRoot = Join-Path $ScriptDir "avaya_case_review_runtime"
 $SourceBrokerCtlPath = Join-Path $SourceGmailDir "gmail_brokerctl.py"
 $BridgeSourcePath = Join-Path $SourceGmailDir "cloud\GmailMcpBridge.gs"
 $BridgeIdentityPath = Join-Path $SourceGmailDir "cloud\bridge_identity.py"
@@ -417,6 +422,7 @@ $GmailCloudDeploymentFiles = @(
 foreach ($RequiredPath in @(
     $SourcePluginDir,
     $SourceGmailDir,
+    $CanonicalRuntimePackageRoot,
     $PluginManifestPath,
     $SourceBrokerCtlPath,
     $BridgeSourcePath,
@@ -708,8 +714,8 @@ try {
         -CaseToMdScriptPath $CaseToMdScriptPath
 
     Write-Host "[6/6] Starting and validating the deployed Gmail Edge broker..." -ForegroundColor Yellow
-    $InstalledBrokerScript = Join-Path $GeminiToolsDir "gmail_edge_broker.py"
-    $ExpectedBrokerBuildId = Get-InstalledBrokerBuildId -BrokerScriptPath $InstalledBrokerScript
+    $ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `
+        -RuntimePackageRoot $CanonicalRuntimePackageRoot
     $BrokerStatus = Invoke-BoundedCommand `
         -Stage "deployed Gmail broker status" `
         -Command $PythonCommand `

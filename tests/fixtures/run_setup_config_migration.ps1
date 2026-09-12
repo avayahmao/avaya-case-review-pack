@@ -92,8 +92,8 @@ try {
         -Before $ProfileBefore `
         -After $ProfileAfter
 
-    $BuildId = Get-InstalledBrokerBuildId `
-        -BrokerScriptPath (Join-Path $RepoRoot "avaya_case_review_runtime\gmail_edge_broker.py")
+    $BuildId = Get-CanonicalBrokerBuildId `
+        -RuntimePackageRoot (Join-Path $RepoRoot "avaya_case_review_runtime")
     if ($BuildId -ne "source") {
         throw "Installed broker build ID extraction failed."
     }

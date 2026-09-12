@@ -623,14 +623,18 @@ raise SystemExit(gmail_brokerctl.main(["status"], client=Client()))
             1,
         )
 
-    def test_running_build_id_is_checked_against_installed_source(self):
+    def test_running_build_id_is_checked_against_canonical_runtime_package(self):
         for marker in (
-            "Get-InstalledBrokerBuildId",
+            "function Get-CanonicalBrokerBuildId",
+            '$CanonicalRuntimePackageRoot = Join-Path $ScriptDir "avaya_case_review_runtime"',
+            "$ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `",
+            "-RuntimePackageRoot $CanonicalRuntimePackageRoot",
             "Assert-BrokerBuildId",
             'result.build_id',
-            "gmail_edge_broker.py",
         ):
             self.assertIn(marker, self.script)
+        self.assertNotIn("$InstalledBrokerScript", self.script)
+        self.assertNotIn("Get-InstalledBrokerBuildId", self.script)
 
     def test_powershell_fixture_preserves_existing_config(self):
         completed = subprocess.run(
