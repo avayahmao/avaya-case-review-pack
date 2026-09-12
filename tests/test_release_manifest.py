@@ -33,6 +33,7 @@ INSTALLER_ENTRY_POINTS = frozenset(
 
 REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
     {
+        "pyproject.toml",
         "release-manifest.txt",
         ".agents/plugins/marketplace.json",
         ".codex-plugin/plugin.json",
@@ -46,6 +47,22 @@ REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
         "plugins/avaya-case-review/skills/gmail-capability/SKILL.md",
         "skills/case-review/SKILL.md",
         "skills/gmail-capability/SKILL.md",
+    }
+)
+
+RUNTIME_PACKAGE_FILES = frozenset(
+    {
+        "__init__.py",
+        "bridge_identity.py",
+        "casetomd_mcp_bridge.py",
+        "gmail_broker_client.py",
+        "gmail_broker_protocol.py",
+        "gmail_broker_state.py",
+        "gmail_brokerctl.py",
+        "gmail_edge_broker.py",
+        "gmail_edge_common.py",
+        "gmail_legacy_backend.py",
+        "gmail_mcp_server.py",
     }
 )
 
@@ -135,6 +152,17 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertFalse(
             REQUIRED_RELEASE_PATHS - entries,
             f"missing required release paths: {sorted(REQUIRED_RELEASE_PATHS - entries)}",
+        )
+        required_runtime_paths = {
+            f"avaya_case_review_runtime/{name}" for name in RUNTIME_PACKAGE_FILES
+        }
+        self.assertFalse(
+            required_runtime_paths - entries,
+            f"missing packaged runtime files: {sorted(required_runtime_paths - entries)}",
+        )
+        self.assertFalse(
+            any(name.startswith("tools/codex/") for name in entries),
+            "release must not contain a Codex cache materializer",
         )
 
         reference_root = (

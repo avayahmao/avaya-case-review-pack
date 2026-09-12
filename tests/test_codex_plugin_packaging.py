@@ -63,18 +63,19 @@ class CodexPluginPackagingTests(unittest.TestCase):
         self.assertEqual("ON_INSTALL", entry["policy"]["authentication"])
         self.assertEqual("Productivity", entry["category"])
 
-    def test_bundled_mcp_paths_resolve_inside_plugin_root(self):
+    def test_bundled_mcp_servers_launch_installed_runtime_modules(self):
         servers = load_json(MCP_MANIFEST)["mcpServers"]
         self.assertSetEqual({"gmail", "CaseToMD"}, set(servers))
+
+        expected_args = {
+            "gmail": ["-m", "avaya_case_review_runtime.gmail_mcp_server"],
+            "CaseToMD": ["-m", "avaya_case_review_runtime.casetomd_mcp_bridge"],
+        }
 
         for name, server in servers.items():
             with self.subTest(server=name):
                 self.assertEqual("python", server["command"])
-                self.assertEqual(1, len(server["args"]))
-                argument = server["args"][0]
-                self.assertTrue(argument.startswith("${CLAUDE_PLUGIN_ROOT}/"))
-                relative = argument.removeprefix("${CLAUDE_PLUGIN_ROOT}/")
-                self.assertTrue((ROOT / relative).is_file())
+                self.assertEqual(expected_args[name], server["args"])
                 self.assertEqual("utf-8", server["env"]["PYTHONIOENCODING"])
 
         self.assertEqual("edge_broker", servers["gmail"]["env"]["GMAIL_BACKEND"])

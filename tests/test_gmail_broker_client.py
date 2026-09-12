@@ -383,6 +383,7 @@ class LazyStartupTests(unittest.TestCase):
             environment = {
                 "LOCALAPPDATA": str(local_app_data),
                 "USERPROFILE": str(user_home),
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1]),
             }
             with patch.dict(os.environ, environment):
                 store = BrokerStateStore(acl_applier=None)
@@ -436,7 +437,7 @@ class LazyStartupTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn("serve", completed.stdout)
 
-    def test_launch_uses_absolute_script_injected_interpreter_and_explicit_state_cwd(self):
+    def test_launch_uses_runtime_module_injected_interpreter_and_explicit_state_cwd(self):
         sentinel = "PARAM_SENTINEL_MUST_NOT_REACH_COMMAND_LINE"
         launches = []
 
@@ -478,12 +479,17 @@ class LazyStartupTests(unittest.TestCase):
         self.assertEqual(result, {"messages": []})
         self.assertEqual(len(launches), 1)
         command, kwargs = launches[0]
-        self.assertEqual(command[0], str(interpreter.resolve()))
-        self.assertTrue(Path(command[1]).is_absolute())
-        self.assertEqual(Path(command[1]).name, "gmail_edge_broker.py")
-        self.assertEqual(len(command), 2)
+        self.assertEqual(
+            command,
+            [
+                str(interpreter.resolve()),
+                "-m",
+                "avaya_case_review_runtime.gmail_edge_broker",
+            ],
+        )
         self.assertNotIn(sentinel, repr(command))
         self.assertEqual(Path(kwargs["cwd"]), state_directory.resolve())
+        self.assertEqual(kwargs["env"].get("PYTHONPATH"), os.environ.get("PYTHONPATH"))
         self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
         self.assertIs(kwargs["stdout"], subprocess.DEVNULL)
         self.assertIs(kwargs["stderr"], subprocess.DEVNULL)
@@ -491,6 +497,31 @@ class LazyStartupTests(unittest.TestCase):
             self.assertEqual(kwargs["creationflags"], subprocess.CREATE_NO_WINDOW)
         else:
             self.assertNotIn("creationflags", kwargs)
+
+    def test_launch_preserves_explicit_broker_script_support(self):
+        launches = []
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_directory = root / "state"
+            broker_script = root / "custom_broker.py"
+            interpreter = root / "python.exe"
+            client = BrokerClient(
+                state_store=BrokerStateStore(state_directory, acl_applier=None),
+                launcher=lambda command, **kwargs: launches.append((command, kwargs)),
+                executable=interpreter,
+                broker_script=broker_script,
+            )
+
+            client._launch_broker()
+
+        self.assertEqual(
+            launches[0][0],
+            [str(interpreter.resolve()), str(broker_script.resolve())],
+        )
+        self.assertEqual(
+            launches[0][1]["env"].get("PYTHONPATH"),
+            os.environ.get("PYTHONPATH"),
+        )
 
     def test_four_racing_clients_launch_one_broker_and_all_complete(self):
         launch_count = 0

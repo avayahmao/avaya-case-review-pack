@@ -9,6 +9,8 @@ venv/
 ENV/
 .venv/
 .worktrees/
+build/
+*.egg-info/
 
 # Playwright & Browser Sessions
 chrome_profile/

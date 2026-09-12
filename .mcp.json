@@ -3,7 +3,8 @@
     "gmail": {
       "command": "python",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/tools/gmail/gmail_mcp_server.py"
+        "-m",
+        "avaya_case_review_runtime.gmail_mcp_server"
       ],
       "env": {
         "GMAIL_BACKEND": "edge_broker",
@@ -13,7 +14,8 @@
     "CaseToMD": {
       "command": "python",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/tools/casetomd/casetomd_mcp_bridge.py"
+        "-m",
+        "avaya_case_review_runtime.casetomd_mcp_bridge"
       ],
       "env": {
         "PYTHONIOENCODING": "utf-8"

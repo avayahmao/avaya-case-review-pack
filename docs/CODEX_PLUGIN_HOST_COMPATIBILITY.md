@@ -3,15 +3,15 @@
 ## Scope
 
 This characterization covers the Codex CLI on Windows and the release Windows
-desktop application. It is the compatibility gate for relative MCP arguments
-and Git marketplace SHA pinning. It intentionally used disposable `CODEX_HOME`
-profiles and did not copy or inspect credentials.
+desktop application. It records the empirical ruling for MCP launch arguments
+and the Git marketplace SHA-pinning gate. It intentionally used disposable
+`CODEX_HOME` profiles and did not copy or inspect credentials.
 
 ## Recorded environment
 
 | Surface | Version | Marketplace source type | Status |
 | --- | --- | --- | --- |
-| Codex CLI | `0.153.4` | HTTPS Git (`https://github.com/avayahmao/avaya-case-review-pack`) | SHA marketplace test passed; relative-MCP evidence pending persistent execution |
+| Codex CLI | `0.154` | HTTPS Git (`https://github.com/avayahmao/avaya-case-review-pack`) | SHA marketplace test passed; relative MCP script launch failed outside plugin CWD |
 | Codex desktop | Release Windows desktop build (version pending capture) | Pending | Pending final release gate |
 
 ## Marketplace SHA result
@@ -39,27 +39,25 @@ run.
 
 ## Relative MCP result
 
-The local fixture marketplace and `relative-path-probe` plugin were installed
-in the task-scoped authenticated isolated profile. The command runner ended
-two synchronous `codex exec` attempts at its 30-second boundary before a
-sanitized final result could be captured. Raw output was suppressed; no
-credential data was read, copied, or printed. The controller will repeat this
-step in a persistent exec session. Consequently, neither launch-path predicate
-has yet been observed:
+Codex CLI `0.154` was run from a working directory outside the installed probe
+plugin. With `args: ["probe/probe_mcp.py"]`, the probe process never started
+and Codex reported an MCP handshake failure. Changing only that argument to the
+absolute script path registered the server and called
+`report_launch_context` successfully. This isolates argument resolution as the
+failure and rules out the probe implementation and MCP protocol.
 
-| Host | `script_under_installed_plugin_root` | `cwd_outside_installed_plugin_root` |
+| Host | Relative script argument | Absolute script argument |
 | --- | --- | --- |
-| CLI `0.153.4` | not verified | not verified |
-| Windows desktop | pending | pending |
+| CLI `0.154` outside plugin CWD | failed before process start | registered and called successfully |
+| Windows desktop | no longer required for selecting the safer fallback | pending final installed-package gate |
 
-`RELATIVE_MCP_ARGS=PENDING`.
-
-The probe cleanup was verified after the bounded attempts:
-`plugin_remove=true`, `marketplace_remove=true`, and
-`cleanup_verified=true`.
+`RELATIVE_MCP_ARGS=UNSUPPORTED`.
 
 ## Decision
 
-Do not treat relative MCP arguments as supported until the installed fixture is
-run to a sanitized result in the authenticated isolated profile. Desktop
-evidence remains the Task 12 release gate.
+Use the selected Python-package fallback. The plugin launches
+`avaya_case_review_runtime.gmail_mcp_server` and
+`avaya_case_review_runtime.casetomd_mcp_bridge` with `python -m`; compatibility
+scripts remain only as thin aliases/entry points. Do not use relative script
+arguments, placeholder variables, cache discovery, or cache mutation. Desktop
+evidence remains the final installed-package release gate.

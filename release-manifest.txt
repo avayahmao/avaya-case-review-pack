@@ -2,6 +2,7 @@
 .agents/plugins/marketplace.json
 .codex-plugin/plugin.json
 .mcp.json
+pyproject.toml
 .gitignore
 INSTALL.md
 README.html
@@ -11,6 +12,17 @@ install.bat
 install-codex.ps1
 setup_env.ps1
 release-manifest.txt
+avaya_case_review_runtime/__init__.py
+avaya_case_review_runtime/bridge_identity.py
+avaya_case_review_runtime/casetomd_mcp_bridge.py
+avaya_case_review_runtime/gmail_broker_client.py
+avaya_case_review_runtime/gmail_broker_protocol.py
+avaya_case_review_runtime/gmail_broker_state.py
+avaya_case_review_runtime/gmail_brokerctl.py
+avaya_case_review_runtime/gmail_edge_broker.py
+avaya_case_review_runtime/gmail_edge_common.py
+avaya_case_review_runtime/gmail_legacy_backend.py
+avaya_case_review_runtime/gmail_mcp_server.py
 docs/ANTIGRAVITY_INSTALLATION_GUIDE.html
 docs/ANTIGRAVITY_INSTALLATION_GUIDE.md
 docs/Avaya_Case_Review_Suite_Presentation.pptx

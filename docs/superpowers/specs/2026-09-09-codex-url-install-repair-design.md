@@ -77,8 +77,9 @@ three coordinated repairs:
 2. Replace the workstation's manual cloud-deployment assertion with a
    maintainer-produced release attestation plus a sanitized live compatibility
    check.
-3. Use plugin-relative MCP arguments instead of placeholder expansion or
-   post-install cache mutation.
+3. Install the uniquely named `avaya-case-review-runtime` Python distribution
+   and launch its MCP servers with `python -m`, without placeholder expansion
+   or post-install cache mutation.
 
 This is preferred over retaining the manual switch because the manual switch
 recreates the reported block on every fresh machine. It is preferred over a
@@ -232,47 +233,29 @@ authentication error instead of waiting indefinitely.
 
 ## Codex MCP Packaging Repair
 
-The preferred compatibility `.mcp.json` repair uses paths relative to the
-plugin root:
+Codex CLI `0.154` established that relative script arguments are not portable:
+from a working directory outside the installed plugin,
+`args: ["probe/probe_mcp.py"]` failed before the probe started, while changing
+only the argument to an absolute path registered and called the probe. The
+selected repair is therefore the approved Python-package fallback:
 
 ```json
-"args": ["tools/gmail/gmail_mcp_server.py"]
+"args": ["-m", "avaya_case_review_runtime.gmail_mcp_server"]
 ```
 
 ```json
-"args": ["tools/casetomd/casetomd_mcp_bridge.py"]
+"args": ["-m", "avaya_case_review_runtime.casetomd_mcp_bridge"]
 ```
 
-This matches the relative launch-path pattern used by a bundled Codex plugin
-and avoids dependence on a private cache layout. `${PLUGIN_ROOT}` is not used
-because OpenAI documents it for plugin hooks, while the observed MCP loader
-does not expand `${CLAUDE_PLUGIN_ROOT}` in MCP arguments.
-
-Relative MCP working-directory behavior is not yet an explicit public contract.
-The first implementation task is therefore a blocking host characterization on
-Codex CLI `0.153.4`, which is the minimum supported Codex version for this
-release, and on the Windows Codex desktop build used for release validation. A
-temporary plugin must expose a probe MCP whose `tools/list` response records the
-resolved script path and working directory. Both hosts must launch it from a
-working directory other than the plugin root and still resolve the relative
-argument into the installed plugin.
-
-If either host test fails, implementation stops and this design switches to the
-defined fallback: create a Python distribution named
-`avaya-case-review-runtime`, move the canonical runtime modules under the
-unique `avaya_case_review_runtime` package, retain the existing `tools/` files
-as thin compatibility entry points for Antigravity, install the pinned wheel
-with the existing Python interpreter, and launch MCP servers as
-`python -m avaya_case_review_runtime.gmail_mcp_server` and
-`python -m avaya_case_review_runtime.casetomd_mcp_bridge`. Upgrade and rollback
-install the matching versioned wheel. Cache-path construction or cache mutation
-is not an allowed fallback.
-
-After the host characterization passes, the pending local materializer approach is superseded. Implementation removes
-the materializer call, removes `tools/codex/materialize_mcp_manifest.py`, and
-removes its release-manifest and test entries. Those existing uncommitted
-changes must be edited deliberately; they must not be discarded with a broad
-checkout or reset.
+The distribution is named `avaya-case-review-runtime`; its only package is
+`avaya_case_review_runtime`. Canonical runtime logic lives in that package and
+uses package-relative imports. Existing `tools/` modules are thin aliases or
+entry points so Antigravity paths and Python patch targets retain identity.
+The broker starts by module name without injecting `PYTHONPATH`; the legacy
+rollback profile remains under the per-user `.gemini/tools/gmail` tree rather
+than site-packages. Installers own installation and rollback of the matching
+versioned wheel. Cache-path construction, cache mutation, `${PLUGIN_ROOT}`, and
+`${CLAUDE_PLUGIN_ROOT}` are not allowed.
 
 The repair retains `.codex-plugin/plugin.json` and `.mcp.json`. Migration to the
 portable root `plugin.json` and `mcp.json` format is deferred to a separate
@@ -394,10 +377,12 @@ cookies, tokens, case identifiers, Gmail response bodies, or message hashes.
   algorithm and reject missing, malformed, or mismatched digest values.
 - Broker protocol, client, and control-CLI tests validate `verify-bridge`, all
   four exit categories, strict response validation, and output sanitization.
-- Packaging tests require relative MCP arguments, existing in-root launch
-  targets, no plugin-root placeholders, and no private Codex cache assumptions.
-- Host characterization tests cover both Codex CLI `0.153.4` and the Windows
-  Codex desktop release build before relative MCP arguments are accepted.
+- Packaging tests require exact `python -m avaya_case_review_runtime...`
+  arguments, an installable source distribution, compatibility-module identity,
+  and no plugin-root placeholders or private Codex cache assumptions.
+- Black-box tests install the package into a temporary target and complete MCP
+  `initialize` and `tools/list` from an unrelated working directory. The
+  Windows desktop release build remains an installed-package release gate.
 - Installer tests prove the cloud preflight occurs before marketplace or plugin
   commands, every subprocess deadline terminates only its child process tree,
   rollback restores recorded state, and deprecated `-CloudBridgeVerified`
@@ -411,7 +396,7 @@ cookies, tokens, case identifiers, Gmail response bodies, or message hashes.
 
 Using a unique temporary Codex profile and local marketplace source:
 
-1. run the blocking Codex-host relative-path characterization;
+1. install the runtime package into an isolated target;
 2. install the plugin without touching the developer's normal Codex profile;
 3. inspect the installed plugin and both MCP definitions;
 4. start each installed MCP server and complete MCP `initialize` and

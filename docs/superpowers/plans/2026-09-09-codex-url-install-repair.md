@@ -4,7 +4,7 @@
 
 **Goal:** Make `install this plugin: https://github.com/avayahmao/avaya-case-review-pack` a deterministic, fail-closed Codex installation flow in which the maintainer owns Cloud Bridge deployment and the workstation pauses only for SSO/MFA.
 
-**Architecture:** Keep the existing repository marketplace and Codex compatibility manifest. Bind every release to a centrally verified Gmail Cloud Bridge identity, validate that identity through the Managed Edge broker before plugin activation, and use plugin-relative MCP launch arguments only after real CLI and desktop host characterization. The installer uses bounded subprocesses and a reversible marketplace transaction; Antigravity consumes the same cloud identity without duplicating the case-review workflow.
+**Architecture:** Keep the existing repository marketplace and Codex compatibility manifest. Bind every release to a centrally verified Gmail Cloud Bridge identity, validate that identity through the Managed Edge broker before plugin activation, and install the unique `avaya-case-review-runtime` package so MCP servers launch with CWD-independent `python -m` commands. The installer uses bounded subprocesses and a reversible marketplace transaction; Antigravity consumes the same cloud identity without duplicating the case-review workflow.
 
 **Tech Stack:** Windows PowerShell 5.1, Python 3 and `unittest`, Node.js `node:test`, Google Apps Script, Codex CLI `0.153.4+`, JSON-RPC/MCP stdio, Git/GitHub Releases.
 
@@ -52,7 +52,8 @@
 - `tools/gmail/gmail_edge_broker.py` — map and execute the capability request.
 - `tools/gmail/gmail_brokerctl.py` — `verify-bridge` command and strict comparison.
 - `tests/test_gmail_broker_protocol.py`, `tests/test_gmail_edge_adapter.py`, `tests/test_gmail_broker_integration.py`, `tests/test_gmail_brokerctl.py` — broker contract tests.
-- `.mcp.json` — plugin-relative launch arguments.
+- `pyproject.toml`, `avaya_case_review_runtime/`, `.mcp.json` — packaged
+  runtime and CWD-independent module launch arguments.
 - `install-codex.ps1` — bounded commands, central gate, tagged transaction, rollback, and verification.
 - `setup_env.ps1` — central-gate preflight before Antigravity replacement.
 - `tests/test_codex_plugin_packaging.py`, `tests/test_setup_env_gmail_broker.py`, `tests/test_release_manifest.py` — packaging and installer contracts.
@@ -79,7 +80,8 @@
 
 **Interfaces:**
 - Consumes: Codex plugin marketplace CLI and desktop plugin loader.
-- Produces: a recorded pass/fail decision for relative MCP arguments and `marketplace add --ref` with a commit SHA on Codex CLI `0.153.4` and the release Windows desktop build.
+- Produces: the recorded relative-MCP failure decision and
+  `marketplace add --ref` result for the tested Codex host.
 
 - [ ] **Step 1: Write the failing fixture-contract test**
 
@@ -199,8 +201,9 @@ local username. Both launches pass only when both booleans are true.
 
 - [ ] **Step 8: Apply the decision gate**
 
-If both hosts pass, record `RELATIVE_MCP_ARGS=SUPPORTED` and continue to Task 5.
-If either fails, stop this plan and revise the spec for the defined
+The CLI `0.154` outside-CWD probe failed before process start with a relative
+argument and succeeded when only the argument became absolute. Record
+`RELATIVE_MCP_ARGS=UNSUPPORTED` and continue with the defined
 `avaya-case-review-runtime` Python package fallback. Do not implement cache
 discovery or cache mutation.
 
@@ -572,83 +575,32 @@ git add tools/gmail/gmail_broker_protocol.py tools/gmail/gmail_broker_client.py 
 git commit -m "feat(gmail): add attested bridge preflight"
 ```
 
-### Task 5: Replace Codex MCP Placeholders with Verified Relative Paths
+### Task 5: Package the Codex MCP Runtime for CWD-Independent Launch
 
-**Files:**
-- Modify: `.mcp.json:1-23`
-- Modify: `tests/test_codex_plugin_packaging.py:66-80`
-- Modify: `tests/test_release_manifest.py:117-159`
-- Modify: `release-manifest.txt`
-- Exclude from the implementation worktree: `tools/codex/materialize_mcp_manifest.py`
+**Files:** `pyproject.toml`, `avaya_case_review_runtime/`, compatibility shims
+under `tools/`, `.mcp.json`, package/broker/release tests, release manifest,
+and host-compatibility documentation.
 
 **Interfaces:**
-- Consumes: `RELATIVE_MCP_ARGS=SUPPORTED` evidence from Task 1.
-- Produces: cache-independent Gmail and CaseToMD MCP launch definitions.
+- Consumes: `RELATIVE_MCP_ARGS=UNSUPPORTED` evidence from Codex CLI `0.154`.
+- Produces: installable runtime modules and cache/CWD-independent Gmail and
+  CaseToMD MCP launch definitions.
 
-- [ ] **Step 1: Assert the Task 1 gate is satisfied**
-
-Read `docs/CODEX_PLUGIN_HOST_COMPATIBILITY.md` and confirm it records passing
-CLI and desktop evidence. If either result is absent or failed, stop and revise
-the spec for the Python-package fallback.
-
-- [ ] **Step 2: Replace the current placeholder test with a failing relative-path test**
-
-```python
-def test_bundled_mcp_arguments_are_relative_existing_paths(self):
-    servers = load_json(MCP_MANIFEST)["mcpServers"]
-    expected = {
-        "gmail": "tools/gmail/gmail_mcp_server.py",
-        "CaseToMD": "tools/casetomd/casetomd_mcp_bridge.py",
-    }
-    self.assertEqual(expected, {name: value["args"][0] for name, value in servers.items()})
-    for argument in expected.values():
-        self.assertFalse(Path(argument).is_absolute())
-        self.assertNotIn("${", argument)
-        self.assertTrue((ROOT / argument).is_file())
-```
-
-Add an installer-source assertion rejecting `plugins\\cache`, `CODEX_HOME`,
-and `materialize_mcp_manifest.py`.
-
-- [ ] **Step 3: Run packaging tests and confirm the old manifest fails**
-
-```powershell
-python -m unittest tests.test_codex_plugin_packaging tests.test_release_manifest -v
-```
-
-Expected: FAIL because `.mcp.json` still contains
-`${CLAUDE_PLUGIN_ROOT}`.
-
-- [ ] **Step 4: Change both MCP arguments**
-
-```json
-"args": ["tools/gmail/gmail_mcp_server.py"]
-```
-
-```json
-"args": ["tools/casetomd/casetomd_mcp_bridge.py"]
-```
-
-Remove materializer references from the installer test and release manifest.
-Because the isolated worktree starts from `274a23a`, do not copy the original
-checkout's uncommitted materializer file or installer hunks into it.
-
-- [ ] **Step 5: Run the package tests and repeat the real host probe**
-
-```powershell
-python -m unittest tests.test_codex_plugin_packaging tests.test_release_manifest -v
-```
-
-Then install the real plugin from the local marketplace in the disposable
-Codex account and invoke one tool from each MCP. Expected: both launch and no
-`${PLUGIN_ROOT}` or `${CLAUDE_PLUGIN_ROOT}` string appears in `codex mcp get`.
-
-- [ ] **Step 6: Commit the packaging repair**
-
-```powershell
-git add .mcp.json tests/test_codex_plugin_packaging.py tests/test_release_manifest.py release-manifest.txt
-git commit -m "fix: use plugin-relative Codex MCP launch paths"
-```
+- [ ] **Step 1:** Write failing tests for exact module arguments, package
+  metadata, installed-target MCP handshakes, shim identity, broker launch, and
+  release contents.
+- [ ] **Step 2:** Move canonical runtime logic into
+  `avaya_case_review_runtime`, use relative imports, and leave thin `tools/`
+  aliases/entry points.
+- [ ] **Step 3:** Install the source into a temporary `--target` directory with
+  `--no-deps --no-build-isolation`; from an unrelated CWD, complete
+  `initialize`, `notifications/initialized`, and `tools/list` for both MCPs.
+- [ ] **Step 4:** Require exactly five Gmail tools and only
+  `get_case_markdown`, without invoking an external tool.
+- [ ] **Step 5:** Verify compatibility shims, module broker launch without
+  `PYTHONPATH` injection, compilation, focused tests, and `git diff --check`.
+- [ ] **Step 6:** Commit with
+  `fix(codex): package MCP runtime for cwd-independent launch`.
 
 ### Task 6: Add a Bounded, Sanitized PowerShell Command Runner
 
@@ -955,7 +907,7 @@ failure terminates installation before `Set-CodexMarketplaceAtRef`.
 Require `codex plugin list --json` to contain one enabled
 `avaya-case-review@avaya-case-review-pack` with the manifest version. Require
 `codex mcp get gmail --json` and `codex mcp get CaseToMD --json` to report the
-two exact relative arguments from Task 5 and no string containing `${`.
+two exact module arguments from Task 5 and no string containing `${`.
 
 - [ ] **Step 7: Run focused tests, dry-run, and parser checks**
 
