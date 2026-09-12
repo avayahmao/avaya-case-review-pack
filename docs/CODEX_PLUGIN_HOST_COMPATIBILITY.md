@@ -11,7 +11,7 @@ profiles and did not copy or inspect credentials.
 
 | Surface | Version | Marketplace source type | Status |
 | --- | --- | --- | --- |
-| Codex CLI | `0.153.4` | HTTPS Git (`https://github.com/avayahmao/avaya-case-review-pack`) | SHA marketplace test passed; MCP launch pending authentication |
+| Codex CLI | `0.153.4` | HTTPS Git (`https://github.com/avayahmao/avaya-case-review-pack`) | SHA marketplace test passed; relative-MCP evidence pending persistent execution |
 | Codex desktop | Release Windows desktop build (version pending capture) | Pending | Pending final release gate |
 
 ## Marketplace SHA result
@@ -39,11 +39,13 @@ run.
 
 ## Relative MCP result
 
-The local fixture marketplace and `relative-path-probe` plugin installed in an
-isolated profile. `OPENAI_API_KEY` availability was checked as a boolean only:
-`false`. The CLI launch was not retried because the disposable profile is not
-authenticated. No normal-profile credentials were read or copied. Consequently,
-neither launch-path predicate was observed:
+The local fixture marketplace and `relative-path-probe` plugin were installed
+in the task-scoped authenticated isolated profile. The command runner ended
+two synchronous `codex exec` attempts at its 30-second boundary before a
+sanitized final result could be captured. Raw output was suppressed; no
+credential data was read, copied, or printed. The controller will repeat this
+step in a persistent exec session. Consequently, neither launch-path predicate
+has yet been observed:
 
 | Host | `script_under_installed_plugin_root` | `cwd_outside_installed_plugin_root` |
 | --- | --- | --- |
@@ -52,9 +54,12 @@ neither launch-path predicate was observed:
 
 `RELATIVE_MCP_ARGS=PENDING`.
 
+The probe cleanup was verified after the bounded attempts:
+`plugin_remove=true`, `marketplace_remove=true`, and
+`cleanup_verified=true`.
+
 ## Decision
 
 Do not treat relative MCP arguments as supported until the installed fixture is
-run in a disposable, authenticated Windows account. The desktop check remains
-a final release gate because the active desktop session cannot safely reload a
-test plugin.
+run to a sanitized result in the authenticated isolated profile. Desktop
+evidence remains the Task 12 release gate.
