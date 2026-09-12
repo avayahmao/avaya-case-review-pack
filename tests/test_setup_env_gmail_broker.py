@@ -115,6 +115,10 @@ raise SystemExit(30)
     def _build_source(self):
         (self.source / "tools/installer").mkdir(parents=True)
         shutil.copy2(SETUP, self.source / "setup_env.ps1")
+        shutil.copytree(
+            ROOT / "avaya_case_review_runtime",
+            self.source / "avaya_case_review_runtime",
+        )
         shutil.copy2(
             ROOT / "tools/installer/windows_common.ps1",
             self.source / "tools/installer/windows_common.ps1",
@@ -273,6 +277,21 @@ class InstallerContractTests(unittest.TestCase):
 
         self.assertLess(verify, plugin_copy)
         self.assertLess(verify, config_update)
+
+    def test_both_bridge_preflights_pass_explicit_release_identity_inputs(self):
+        argument_blocks = re.findall(
+            r'-Stage "verify-bridge(?: retry)?"\s+`\s+'
+            r'-Command \$PythonCommand\s+`\s+'
+            r'-Arguments @\((?P<arguments>.*?)\)\s+`',
+            self.script,
+            flags=re.DOTALL,
+        )
+        self.assertEqual(len(argument_blocks), 2)
+        for arguments in argument_blocks:
+            with self.subTest(arguments=arguments):
+                self.assertIn('"--source", $BridgeSourcePath', arguments)
+                self.assertIn('"--attestation", $BridgeAttestationPath', arguments)
+                self.assertIn('"--plugin-version", $PluginVersion', arguments)
 
     def test_plugin_copy_uses_literal_source_and_destination_paths(self):
         self.assertIn(
@@ -473,6 +492,10 @@ class InstallerContractTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            shutil.copytree(
+                ROOT / "avaya_case_review_runtime",
+                root / "avaya_case_review_runtime",
+            )
             deployed = root / "tools/gmail"
             deployed.mkdir(parents=True)
             for name in SetupInstallFixture.gmail_files:

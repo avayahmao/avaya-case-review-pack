@@ -83,11 +83,6 @@ _CAPABILITIES_FIELDS = frozenset(
     }
 )
 _DIGEST_RE = re.compile(r"[0-9a-f]{64}\Z")
-_ROOT = Path(__file__).resolve().parents[1]
-_BRIDGE_SOURCE_PATH = _ROOT / "tools" / "gmail" / "cloud" / "GmailMcpBridge.gs"
-_PLUGIN_MANIFEST_PATH = _ROOT / ".codex-plugin" / "plugin.json"
-
-
 class _InvalidResultError(ValueError):
     pass
 
@@ -99,22 +94,6 @@ def _reject_duplicate_fields(pairs: list[tuple[str, object]]) -> dict[str, objec
             raise _InvalidResultError
         result[key] = value
     return result
-
-
-def _plugin_version() -> str:
-    try:
-        manifest = json.loads(
-            _PLUGIN_MANIFEST_PATH.read_text(encoding="utf-8"),
-            object_pairs_hook=_reject_duplicate_fields,
-        )
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, _InvalidResultError):
-        raise _InvalidResultError from None
-    if not isinstance(manifest, dict):
-        raise _InvalidResultError
-    version = manifest.get("version")
-    if not isinstance(version, str) or not version:
-        raise _InvalidResultError
-    return version
 
 
 def parse_capabilities_response(raw: object) -> dict[str, object]:
@@ -211,7 +190,9 @@ def build_parser() -> argparse.ArgumentParser:
     verify_bridge = subparsers.add_parser(
         "verify-bridge", help="Verify the deployed Cloud Bridge against an attestation"
     )
+    verify_bridge.add_argument("--source", type=Path, required=True)
     verify_bridge.add_argument("--attestation", type=Path, required=True)
+    verify_bridge.add_argument("--plugin-version", required=True)
     return parser
 
 
@@ -303,9 +284,9 @@ def main(
     try:
         if args.command == "verify-bridge":
             attestation = validate_attestation(
-                _BRIDGE_SOURCE_PATH,
+                args.source,
                 args.attestation,
-                _plugin_version(),
+                args.plugin_version,
             )
             live = parse_capabilities_response(
                 broker_client.request("bridge_capabilities", {})

@@ -63,6 +63,7 @@ class RecordingClient:
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_SOURCE = ROOT / "tools/gmail/cloud/GmailMcpBridge.gs"
+PLUGIN_VERSION = "1.10.0"
 
 
 def make_capabilities(**overrides):
@@ -100,13 +101,22 @@ class VerifyBridgeTests(unittest.TestCase):
         write_attestation(
             BRIDGE_SOURCE,
             path,
-            plugin_version="1.10.0",
+            plugin_version=PLUGIN_VERSION,
             verified_at_utc="2026-09-09T12:34:56Z",
         )
         return path
 
     def run_verify(self, path, client):
-        return run_cli("verify-bridge", client, "--attestation", str(path))
+        return run_cli(
+            "verify-bridge",
+            client,
+            "--source",
+            str(BRIDGE_SOURCE),
+            "--attestation",
+            str(path),
+            "--plugin-version",
+            PLUGIN_VERSION,
+        )
 
     def test_verify_bridge_reports_only_compatible_result(self):
         with TemporaryDirectory() as directory:
@@ -131,12 +141,40 @@ class VerifyBridgeTests(unittest.TestCase):
                 stdout = io.StringIO()
                 with redirect_stdout(stdout):
                     exit_code = gmail_brokerctl.main(
-                        ["verify-bridge", "--attestation", str(path)]
+                        [
+                            "verify-bridge",
+                            "--source",
+                            str(BRIDGE_SOURCE),
+                            "--attestation",
+                            str(path),
+                            "--plugin-version",
+                            PLUGIN_VERSION,
+                        ]
                     )
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(json.loads(stdout.getvalue())["result"], {"compatible": True})
         factory.assert_called_once_with(request_timeout=60)
+
+    def test_verify_bridge_sanitizes_invalid_explicit_inputs(self):
+        sentinel = "SENSITIVE_SOURCE_PATH_AND_VERSION"
+        with TemporaryDirectory() as directory:
+            path = self.write_attestation(directory)
+            exit_code, payload, stderr = run_cli(
+                "verify-bridge",
+                RecordingClient({"bridge_capabilities": make_capabilities()}),
+                "--source",
+                str(Path(directory) / sentinel),
+                "--attestation",
+                str(path),
+                "--plugin-version",
+                sentinel,
+            )
+
+        self.assertEqual(exit_code, 30)
+        self.assertEqual(payload["code"], "BRIDGE_INCOMPATIBLE")
+        self.assertNotIn(sentinel, json.dumps(payload))
+        self.assertNotIn(sentinel, stderr)
 
     def test_verify_bridge_sanitizes_unknown_live_response_fields(self):
         sentinel = "SENSITIVE_URL_IDENTITY_COOKIE_TOKEN_CASE_BODY_DIGEST"

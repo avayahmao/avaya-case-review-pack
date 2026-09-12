@@ -219,6 +219,11 @@ unavailable, and an authenticated nonconforming response is incompatible.
 same Managed Edge path used at runtime, it compares the live `capabilities`
 response with `bridge_release_attestation.json`. It returns sanitized outcomes:
 
+The command requires explicit `--source`, `--attestation`, and
+`--plugin-version` inputs so the packaged control module never derives
+repository paths from its installed location. Invalid inputs map to the
+sanitized incompatible result without echoing path or version values.
+
 - exit `0`: authenticated and compatible;
 - exit `10`: SSO/MFA is required;
 - exit `20`: bridge or broker unavailable;

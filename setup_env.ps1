@@ -523,7 +523,12 @@ if (-not $SkipDependencyInstall) {
 $BridgeVerifyResult = Invoke-BoundedCommand `
     -Stage "verify-bridge" `
     -Command $PythonCommand `
-    -Arguments @("-B", $SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
+    -Arguments @(
+        "-B", $SourceBrokerCtlPath, "verify-bridge",
+        "--source", $BridgeSourcePath,
+        "--attestation", $BridgeAttestationPath,
+        "--plugin-version", $PluginVersion
+    ) `
     -TimeoutSeconds $TimeoutBridgeSeconds `
     -Environment $BrokerEnvironment `
     -AllowFailure
@@ -538,7 +543,12 @@ if ($BridgeVerifyResult.ExitCode -eq 10) {
     $BridgeVerifyResult = Invoke-BoundedCommand `
         -Stage "verify-bridge retry" `
         -Command $PythonCommand `
-        -Arguments @("-B", $SourceBrokerCtlPath, "verify-bridge", "--attestation", $BridgeAttestationPath) `
+        -Arguments @(
+            "-B", $SourceBrokerCtlPath, "verify-bridge",
+            "--source", $BridgeSourcePath,
+            "--attestation", $BridgeAttestationPath,
+            "--plugin-version", $PluginVersion
+        ) `
         -TimeoutSeconds $TimeoutBridgeSeconds `
         -Environment $BrokerEnvironment `
         -AllowFailure

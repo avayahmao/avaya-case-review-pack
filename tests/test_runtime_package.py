@@ -68,7 +68,9 @@ def installed_environment(target: Path) -> dict[str, str]:
     return environment
 
 
-def mcp_handshake(module: str, target: Path, cwd: Path) -> list[dict]:
+def mcp_handshake_command(
+    command: list[str], target: Path, cwd: Path
+) -> list[dict]:
     messages = (
         {
             "jsonrpc": "2.0",
@@ -84,7 +86,7 @@ def mcp_handshake(module: str, target: Path, cwd: Path) -> list[dict]:
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
     )
     completed = subprocess.run(
-        [sys.executable, "-m", module],
+        command,
         input="".join(json.dumps(message) + "\n" for message in messages),
         cwd=cwd,
         env=installed_environment(target),
@@ -97,6 +99,14 @@ def mcp_handshake(module: str, target: Path, cwd: Path) -> list[dict]:
     if completed.returncode:
         raise AssertionError(completed.stderr)
     return [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
+
+
+def mcp_handshake(module: str, target: Path, cwd: Path) -> list[dict]:
+    return mcp_handshake_command(
+        [sys.executable, "-m", module],
+        target,
+        cwd,
+    )
 
 
 class RuntimePackageTests(unittest.TestCase):
@@ -196,6 +206,34 @@ class RuntimePackageTests(unittest.TestCase):
                 )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 self.assertIn("help", completed.stdout.lower())
+
+    def test_compatibility_mcp_shims_handshake_from_outside_source_tree(self):
+        expected_tools = {
+            ROOT / "tools/gmail/gmail_mcp_server.py": {
+                "gmail_search",
+                "gmail_read",
+                "gmail_send",
+                "gmail_list_threads",
+                "gmail_read_thread_page",
+            },
+            ROOT / "tools/casetomd/casetomd_mcp_bridge.py": {
+                "get_case_markdown"
+            },
+        }
+        for script, expected in expected_tools.items():
+            with self.subTest(script=script.name):
+                responses = mcp_handshake_command(
+                    [sys.executable, str(script)],
+                    self.target,
+                    self.outside,
+                )
+                initialized = next(item for item in responses if item.get("id") == 1)
+                listed = next(item for item in responses if item.get("id") == 2)
+                self.assertIn("protocolVersion", initialized["result"])
+                self.assertSetEqual(
+                    expected,
+                    {tool["name"] for tool in listed["result"]["tools"]},
+                )
 
     def test_packaged_control_modules_run_from_outside_source_tree(self):
         modules = (

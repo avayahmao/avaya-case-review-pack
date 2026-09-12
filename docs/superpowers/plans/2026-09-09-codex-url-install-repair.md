@@ -458,7 +458,9 @@ git commit -m "feat(gmail): expose bridge compatibility capabilities"
 
 **Interfaces:**
 - Consumes: `bridge_release_attestation.json` schema and Cloud Bridge `capabilities` response from Tasks 2–3.
-- Produces: broker method `bridge_capabilities` and CLI command `gmail_brokerctl.py verify-bridge --attestation PATH` with exit codes `0`, `10`, `20`, and `30`.
+- Produces: broker method `bridge_capabilities` and CLI command
+  `gmail_brokerctl.py verify-bridge --source PATH --attestation PATH
+  --plugin-version VERSION` with exit codes `0`, `10`, `20`, and `30`.
 - Does not produce: an MCP tool named `bridge_capabilities` or `verify-bridge`.
 
 - [ ] **Step 1: Add failing protocol and adapter mapping tests**
@@ -480,7 +482,8 @@ most one retry after a browser transport failure.
 - [ ] **Step 2: Add failing control-CLI success and sanitization tests**
 
 Extend the existing `RecordingClient` fixture and call
-`gmail_brokerctl.main(["verify-bridge", "--attestation", str(path)], client=client)`.
+`gmail_brokerctl.main(["verify-bridge", "--source", str(source),
+"--attestation", str(path), "--plugin-version", version], client=client)`.
 The success assertion is:
 
 ```python
