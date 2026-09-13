@@ -23,7 +23,9 @@ function Add-TestEvent {
 }
 
 function Read-TestState {
-    return Get-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+    $State = Get-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not [string]::IsNullOrWhiteSpace([string]$State.fixture_sentinel)) { Write-Error ([string]$State.fixture_sentinel) }
+    return $State
 }
 
 function Write-TestState {
@@ -250,6 +252,7 @@ function Add-TestEvent {
 }
 
 $State = Get-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not [string]::IsNullOrWhiteSpace([string]$State.fixture_sentinel)) { Write-Error ([string]$State.fixture_sentinel) }
 if ($args.Count -ge 3 -and $args[0] -eq "ls-remote") {
     if ($args.Count -eq 3) {
         Add-TestEvent "git-ls-remote:all"
@@ -308,7 +311,9 @@ function Add-TestEvent {
     Add-Content -LiteralPath $env:AVAYA_INSTALL_TEST_LOG -Value $Name -Encoding UTF8
 }
 function Read-TestState {
-    return Get-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+    $State = Get-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not [string]::IsNullOrWhiteSpace([string]$State.fixture_sentinel)) { Write-Error ([string]$State.fixture_sentinel) }
+    return $State
 }
 function Write-TestState {
     param([Parameter(Mandatory = $true)][pscustomobject]$State)
@@ -439,6 +444,7 @@ class CodexInstallerTests(unittest.TestCase):
         verify_exits="0",
         login_exit=0,
         missing_tag=False,
+        fixture_sentinel="",
     ):
         state = {
             "marketplace_exists": bool(existing_sha),
@@ -461,6 +467,7 @@ class CodexInstallerTests(unittest.TestCase):
             "verify_index": 0,
             "login_exit": login_exit,
             "missing_tag": missing_tag,
+            "fixture_sentinel": fixture_sentinel,
         }
         self.state_path.write_text(json.dumps(state), encoding="utf-8-sig")
 
@@ -516,6 +523,7 @@ class CodexInstallerTests(unittest.TestCase):
         verify_exits="0",
         login_exit=0,
         missing_tag=False,
+        fixture_sentinel="",
         skip_dependency=True,
         corrupt_attestation=False,
         local_mcp_variant="",
@@ -565,7 +573,7 @@ class CodexInstallerTests(unittest.TestCase):
         )
         if corrupt_attestation:
             (fixture_root / "tools/gmail/cloud/bridge_release_attestation.json").write_text(
-                '{"invalid":true}', encoding="utf-8"
+                json.dumps({"invalid": fixture_sentinel or True}), encoding="utf-8"
             )
         pyproject_path = fixture_root / "pyproject.toml"
         pyproject_path.write_text(
@@ -629,6 +637,7 @@ class CodexInstallerTests(unittest.TestCase):
             verify_exits=verify_exits,
             login_exit=login_exit,
             missing_tag=missing_tag,
+            fixture_sentinel=fixture_sentinel,
         )
         installer_arguments = [
             "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
@@ -1154,6 +1163,30 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(state.runtime_version, "1.10.1")
         self.assertNotIn("runtime-build", events)
         self.assertNotIn("marketplace-add", events)
+
+    def test_required_failure_matrix_sanitizes_fixture_sentinels_and_preserves_state(self):
+        scenarios = (
+            ("different-source", {"existing_source": "https://UNSANITIZED_DIFFERENT_SOURCE.invalid/repo", "existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True}, "old-sha", True),
+            ("missing-tag", {"missing_tag": True}, "", False),
+            ("resolved-sha", {"existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True, "fail_stage": "resolved-sha-mismatch"}, "old-sha", True),
+            ("invalid-attestation", {"corrupt_attestation": True, "skip_dependency": False}, "", False),
+            ("capability-mismatch", {"verify_exits": "30"}, "", False),
+            ("auth-required", {"verify_exits": "10"}, "", False),
+            ("dependency-timeout", {"fail_stage": "dependency-timeout", "skip_dependency": False}, "", False),
+            ("plugin-add", {"fail_stage": "new-plugin-add"}, "", False),
+            ("rollback-success", {"existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True, "fail_stage": "new-plugin-add"}, "old-sha", True),
+            ("rollback-failure", {"existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True, "fail_stage": "new-plugin-add+rollback-marketplace-add"}, "", False),
+        )
+        for name, options, expected_marketplace_sha, expected_plugin_installed in scenarios:
+            with self.subTest(name=name):
+                sentinel = f"UNSANITIZED_MATRIX_{name.upper().replace('-', '_')}"
+                result, _, state = self.run_stateful_installer(
+                    fixture_sentinel=sentinel, **options
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn(sentinel, result.stdout + result.stderr)
+                self.assertEqual(state.marketplace_sha, expected_marketplace_sha)
+                self.assertEqual(state.plugin_installed, expected_plugin_installed)
 
     def test_invalid_local_attestation_blocks_before_any_command_or_mutation(self):
         result, events, state = self.run_stateful_installer(
