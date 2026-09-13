@@ -19,8 +19,20 @@ $TestCodexHome = Join-Path $TestRoot ".codex"
 $PreviousCodexHome = $env:CODEX_HOME
 $PreviousLocalAppData = $env:LOCALAPPDATA
 $PreviousPath = $env:PATH
+$PreviousPythonPath = $env:PYTHONPATH
+$PreviousCleanProfileEnvironment = @{}
+Get-ChildItem Env: | Where-Object { $_.Name -like "AVAYA_CLEAN_PROFILE_*" } | ForEach-Object {
+    $PreviousCleanProfileEnvironment[$_.Name] = $_.Value
+}
+$RealPythonCommand = Get-Command python -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($null -eq $RealPythonCommand) {
+    throw "A real Python application is required for the isolated runtime handshake."
+}
+$RealPythonPath = [string]$RealPythonCommand.Path
 $FixtureRepository = Join-Path $TestRoot "repository"
 $AdapterRoot = Join-Path $TestRoot "adapters"
+$RuntimeTarget = Join-Path $TestRoot "runtime-target"
+$HandshakeWorkDirectory = Join-Path $TestRoot "unrelated-working-directory"
 $StatePath = Join-Path $TestRoot "state.json"
 $InstallerLog = Join-Path $TestRoot "installer.log"
 $Summary = $null
@@ -75,7 +87,6 @@ exit 73
     $PythonAdapter = @'
 function Read-State { Get-Content -LiteralPath $env:AVAYA_CLEAN_PROFILE_STATE -Raw -Encoding UTF8 | ConvertFrom-Json }
 function Write-State($State) { $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $env:AVAYA_CLEAN_PROFILE_STATE -Encoding UTF8 }
-function Send-McpResponse($Value) { $Value | ConvertTo-Json -Compress -Depth 8 }
 if ([string]::IsNullOrWhiteSpace($env:CODEX_HOME) -or $env:CODEX_HOME -ne $env:AVAYA_CLEAN_PROFILE_CODEX_HOME) { exit 81 }
 $State = Read-State
 if ($args.Count -eq 1 -and $args[0] -eq "--version") { "Python 3.10.0"; exit 0 }
@@ -95,16 +106,6 @@ if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "pip") {
         Set-Content -LiteralPath (Join-Path $WheelDirectory ("avaya_case_review_runtime-" + $State.plugin_version + "-py3-none-any.whl")) -Value "fixture" -Encoding ASCII
     }
     if ($args[2] -eq "install" -and (@($args | Where-Object { $_ -like "*.whl" }).Count -gt 0)) { $State.runtime_installed = $true; Write-State $State }
-    exit 0
-}
-if ($args.Count -ge 2 -and $args[0] -eq "-m") {
-    $Module = [string]$args[1]
-    $ToolNames = if ($Module -eq "avaya_case_review_runtime.gmail_mcp_server") { @("gmail_search", "gmail_read", "gmail_send", "gmail_list_threads", "gmail_read_thread_page") } elseif ($Module -eq "avaya_case_review_runtime.casetomd_mcp_bridge") { @("get_case_markdown") } else { exit 82 }
-    foreach ($Line in $input) {
-        $Request = $Line | ConvertFrom-Json
-        if ($Request.method -eq "initialize") { Send-McpResponse ([ordered]@{ jsonrpc = "2.0"; id = $Request.id; result = [ordered]@{ protocolVersion = "2024-11-05"; capabilities = @{}; serverInfo = @{ name = "clean-profile-fake"; version = "1" } } }) }
-        if ($Request.method -eq "tools/list") { Send-McpResponse ([ordered]@{ jsonrpc = "2.0"; id = $Request.id; result = @{ tools = @($ToolNames | ForEach-Object { @{ name = $_ } }) } }) }
-    }
     exit 0
 }
 exit 83
@@ -131,9 +132,13 @@ function Invoke-McpHandshake {
         '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}',
         '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
     )
-    $AdapterPython = Join-Path $env:AVAYA_CLEAN_PROFILE_ADAPTER_ROOT "python.ps1"
     $ModuleArguments = @($Transport.args)
-    $AdapterOutput = @($Requests | & $AdapterPython @ModuleArguments 2>&1)
+    Push-Location -LiteralPath $HandshakeWorkDirectory
+    try {
+        $AdapterOutput = @($Requests | & $RealPythonPath @ModuleArguments 2>&1)
+    } finally {
+        Pop-Location
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Installed MCP command exited before completing its handshake."
     }
@@ -151,7 +156,7 @@ function Invoke-McpHandshake {
 }
 
 try {
-    New-Item -ItemType Directory -Path $TestRoot, $TestCodexHome, $FixtureRepository, $AdapterRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $TestRoot, $TestCodexHome, $FixtureRepository, $AdapterRoot, $RuntimeTarget, $HandshakeWorkDirectory -Force | Out-Null
     Get-ChildItem -LiteralPath $ResolvedRepositoryRoot -Force |
         Where-Object { $_.Name -ne ".git" } |
         Copy-Item -Destination $FixtureRepository -Recurse -Force
@@ -177,13 +182,16 @@ try {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Installer -MarketplaceSource $FixtureRepository -MarketplaceRef $MarketplaceRef -AllowUnreleasedRef -SkipLogin -SkipDependencyInstall *> $InstallerLog
     if ($LASTEXITCODE -ne 0) { throw "Automated installer reinstall smoke failed." }
 
+    $env:PYTHONPATH = $RuntimeTarget
+    & $RealPythonPath -m pip install --target $RuntimeTarget --no-deps --no-build-isolation $FixtureRepository *> $InstallerLog
+    if ($LASTEXITCODE -ne 0) { throw "Isolated runtime package installation failed." }
     $GmailTools = Invoke-McpHandshake -Name "gmail" -ExpectedTools @("gmail_search", "gmail_read", "gmail_send", "gmail_list_threads", "gmail_read_thread_page")
     $CaseTools = Invoke-McpHandshake -Name "CaseToMD" -ExpectedTools @("get_case_markdown")
     $State = Get-Content -LiteralPath $StatePath -Raw -Encoding UTF8 | ConvertFrom-Json
     $Summary = [ordered]@{
         automated = $true
         profile_restored = $false
-        runtime = [ordered]@{ installed = [bool]$State.runtime_installed; version = [string]$State.plugin_version }
+        runtime = [ordered]@{ installed = [bool]$State.runtime_installed; version = [string]$State.plugin_version; real_handshake = $true }
         marketplace = [ordered]@{ installed = [bool]$State.marketplace_installed }
         plugin = [ordered]@{ enabled = [bool]$State.plugin_installed }
         tools = [ordered]@{ gmail = @($GmailTools); CaseToMD = @($CaseTools) }
@@ -195,16 +203,29 @@ try {
         $env:CODEX_HOME = $PreviousCodexHome
     }
     $env:PATH = $PreviousPath
+    if ($null -eq $PreviousPythonPath) {
+        Remove-Item -LiteralPath Env:PYTHONPATH -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONPATH = $PreviousPythonPath
+    }
     if ($null -eq $PreviousLocalAppData) {
         Remove-Item -LiteralPath Env:LOCALAPPDATA -ErrorAction SilentlyContinue
     } else {
         $env:LOCALAPPDATA = $PreviousLocalAppData
     }
-    Remove-Item Env:AVAYA_CLEAN_PROFILE_STATE -ErrorAction SilentlyContinue
-    Remove-Item Env:AVAYA_CLEAN_PROFILE_CODEX_HOME -ErrorAction SilentlyContinue
-    Remove-Item Env:AVAYA_CLEAN_PROFILE_ADAPTER_ROOT -ErrorAction SilentlyContinue
+    Get-ChildItem Env: | Where-Object { $_.Name -like "AVAYA_CLEAN_PROFILE_*" } | ForEach-Object {
+        Remove-Item -LiteralPath ("Env:" + $_.Name) -ErrorAction SilentlyContinue
+    }
+    foreach ($Name in $PreviousCleanProfileEnvironment.Keys) {
+        Set-Item -LiteralPath ("Env:" + $Name) -Value $PreviousCleanProfileEnvironment[$Name]
+    }
     if ($null -ne $Summary) {
         $Summary.profile_restored = ($env:CODEX_HOME -eq $PreviousCodexHome)
+        $Summary.clean_profile_environment_restored = @(
+            $PreviousCleanProfileEnvironment.Keys | Where-Object {
+                (Get-Item -LiteralPath ("Env:" + $_)).Value -cne $PreviousCleanProfileEnvironment[$_]
+            }
+        ).Count -eq 0
     }
     if (Test-Path -LiteralPath $TestRoot) {
         Remove-Item -LiteralPath $TestRoot -Recurse -Force

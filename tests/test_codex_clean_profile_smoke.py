@@ -39,6 +39,8 @@ class CodexCleanProfileSmokeTests(unittest.TestCase):
             )
             environment = os.environ.copy()
             environment["CODEX_HOME"] = str(temporary_root / "caller-profile")
+            environment["AVAYA_CLEAN_PROFILE_STATE"] = "caller-owned-state"
+            environment["AVAYA_CLEAN_PROFILE_ADAPTER_ROOT"] = "caller-owned-adapter"
             result = subprocess.run(
                 [
                     "powershell.exe",
@@ -68,6 +70,7 @@ class CodexCleanProfileSmokeTests(unittest.TestCase):
         summary = json.loads(result.stdout)
         self.assertTrue(summary["automated"])
         self.assertTrue(summary["profile_restored"])
+        self.assertTrue(summary["clean_profile_environment_restored"])
         self.assertEqual(
             summary["tools"],
             {
@@ -82,6 +85,7 @@ class CodexCleanProfileSmokeTests(unittest.TestCase):
             },
         )
         self.assertEqual(summary["runtime"]["version"], "1.10.1")
+        self.assertTrue(summary["runtime"]["real_handshake"])
         self.assertTrue(summary["marketplace"]["installed"])
         self.assertTrue(summary["plugin"]["enabled"])
 

@@ -260,6 +260,7 @@ if ($args.Count -ge 3 -and $args[0] -eq "ls-remote") {
     $DisplayRef = $RequestedRef.Replace("refs/tags/", "").Replace("^{}", "")
     Add-TestEvent ("git-ls-remote:" + $DisplayRef)
     if ($RequestedRef.StartsWith("refs/tags/")) {
+        if ($State.missing_tag) { exit 2 }
         $TagRef = $RequestedRef.Replace("^{}", "")
         if ($State.annotated_tag) {
             Write-Output ("tag-object-sha`t" + $TagRef)
@@ -357,6 +358,9 @@ if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[2] -eq "login") {
 }
 if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "pip") {
     $PipCommand = [string]$args[2]
+    if ($PipCommand -eq "install" -and $State.fail_stage -like "*dependency-timeout*" -and (@($args | Where-Object { [string]$_ -like "*.whl" }).Count -eq 0)) {
+        Start-Sleep -Seconds 30
+    }
     if ($PipCommand -eq "wheel") {
         Add-TestEvent "runtime-build"
         $DirectoryIndex = [Array]::IndexOf($args, "--wheel-dir")
@@ -434,6 +438,7 @@ class CodexInstallerTests(unittest.TestCase):
         runtime_version="1.10.1",
         verify_exits="0",
         login_exit=0,
+        missing_tag=False,
     ):
         state = {
             "marketplace_exists": bool(existing_sha),
@@ -455,6 +460,7 @@ class CodexInstallerTests(unittest.TestCase):
             "verify_exits": verify_exits,
             "verify_index": 0,
             "login_exit": login_exit,
+            "missing_tag": missing_tag,
         }
         self.state_path.write_text(json.dumps(state), encoding="utf-8-sig")
 
@@ -509,6 +515,7 @@ class CodexInstallerTests(unittest.TestCase):
         retain_prior_wheel=True,
         verify_exits="0",
         login_exit=0,
+        missing_tag=False,
         skip_dependency=True,
         corrupt_attestation=False,
         local_mcp_variant="",
@@ -536,6 +543,9 @@ class CodexInstallerTests(unittest.TestCase):
             helper_source = helper_path.read_text(encoding="utf-8-sig")
             helper_source = helper_source.replace(
                 "$TimeoutPluginSeconds = 120", "$TimeoutPluginSeconds = 1"
+            )
+            helper_source = helper_source.replace(
+                "$TimeoutPipSeconds = 300", "$TimeoutPipSeconds = 1"
             )
             helper_path.write_text(
                 helper_source, encoding="utf-8-sig", newline="\r\n"
@@ -618,6 +628,7 @@ class CodexInstallerTests(unittest.TestCase):
             runtime_version=runtime_version,
             verify_exits=verify_exits,
             login_exit=login_exit,
+            missing_tag=missing_tag,
         )
         installer_arguments = [
             "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
@@ -872,6 +883,15 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertIn("git-ls-remote:v1.10.1", events)
         self.assertEqual("new-sha", state.marketplace_sha)
 
+    def test_missing_release_tag_blocks_before_marketplace_mutation_with_sanitized_output(self):
+        result, events, state = self.run_stateful_installer(missing_tag=True)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("target ref resolve", result.stderr.lower())
+        self.assertNotIn("UNSANITIZED", result.stderr)
+        self.assertNotIn("marketplace-add", events)
+        self.assertFalse(state.marketplace_exists)
+
     def test_conflicting_source_is_never_removed(self):
         result, events, state = self.run_stateful_installer(
             existing_source="https://example.invalid/other",
@@ -1122,6 +1142,18 @@ class CodexInstallerTests(unittest.TestCase):
             "plugin-add",
         ):
             self.assertNotIn(mutation, events)
+
+    def test_dependency_timeout_blocks_before_runtime_or_codex_mutation_with_sanitized_output(self):
+        result, events, state = self.run_stateful_installer(
+            fail_stage="dependency-timeout", skip_dependency=False
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("dependency install", result.stderr.lower())
+        self.assertNotIn("UNSANITIZED", result.stderr)
+        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertNotIn("runtime-build", events)
+        self.assertNotIn("marketplace-add", events)
 
     def test_invalid_local_attestation_blocks_before_any_command_or_mutation(self):
         result, events, state = self.run_stateful_installer(
