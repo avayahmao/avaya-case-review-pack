@@ -4,6 +4,9 @@ import shutil
 import subprocess
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from tools.gmail.cloud.bridge_identity import write_attestation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,7 +98,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 self.assertTrue((ROOT / canonical).is_file())
                 self.assertIn("../../" + canonical, text)
 
-    def test_installer_is_windows_safe_and_cloud_gated(self):
+    def test_installer_is_windows_safe_and_validates_release_locally_in_dry_run(self):
         raw = INSTALLER.read_bytes()
         self.assertTrue(raw.startswith(b"\xef\xbb\xbf"), "PowerShell file needs UTF-8 BOM")
         self.assertIsNone(re.search(rb"(?<!\r)\n", raw), "PowerShell file needs CRLF")
@@ -103,11 +106,12 @@ class CodexPluginPackagingTests(unittest.TestCase):
         source = raw.decode("utf-8-sig")
         for marker in (
             "$CloudBridgeVerified",
-            "docs/GMAIL_CLOUD_BRIDGE.md",
             "Get-CodexMarketplaceSnapshot",
             "Set-CodexMarketplaceAtRef",
             "Restore-CodexMarketplaceSnapshot",
             "gmail_brokerctl.py",
+            "bridge_release_attestation.json",
+            "runtime_package.py",
         ):
             self.assertIn(marker, source)
         self.assertNotIn("Remove-Item", source)
@@ -115,50 +119,50 @@ class CodexPluginPackagingTests(unittest.TestCase):
         powershell = shutil.which("powershell")
         if powershell is None:
             self.skipTest("Windows PowerShell is unavailable")
-        blocked = subprocess.run(
-            [
-                powershell,
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(INSTALLER),
-                "-SkipDependencyInstall",
-                "-SkipLogin",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=20,
-            check=False,
-        )
-        self.assertNotEqual(0, blocked.returncode)
-        self.assertIn("Cloud bridge verification is required", blocked.stderr)
-
-        dry_run = subprocess.run(
-            [
-                powershell,
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(INSTALLER),
-                "-DryRun",
-                "-SkipDependencyInstall",
-                "-SkipLogin",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=20,
-            check=False,
-        )
+        with TemporaryDirectory() as temporary:
+            fixture = Path(temporary)
+            for relative in (
+                ".codex-plugin/plugin.json",
+                ".agents/plugins/marketplace.json",
+                ".mcp.json",
+                "pyproject.toml",
+                "tools/gmail/gmail_brokerctl.py",
+                "tools/gmail/cloud/GmailMcpBridge.gs",
+                "tools/gmail/cloud/bridge_identity.py",
+                "tools/installer/runtime_package.py",
+                "tools/installer/windows_common.ps1",
+            ):
+                destination = fixture / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / relative, destination)
+            shutil.copy2(INSTALLER, fixture / INSTALLER.name)
+            write_attestation(
+                fixture / "tools/gmail/cloud/GmailMcpBridge.gs",
+                fixture / "tools/gmail/cloud/bridge_release_attestation.json",
+                "1.10.0",
+                "2026-09-09T00:00:00Z",
+            )
+            dry_run = subprocess.run(
+                [
+                    powershell,
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(fixture / INSTALLER.name),
+                    "-DryRun",
+                ],
+                cwd=fixture,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=20,
+                check=False,
+            )
         self.assertEqual(0, dry_run.returncode, dry_run.stderr)
         self.assertIn("Ref:         v1.10.0", dry_run.stdout)
-        self.assertIn("> new marketplace add", dry_run.stdout)
-        self.assertIn("> new plugin add", dry_run.stdout)
+        self.assertIn("Planned stage: new marketplace add", dry_run.stdout)
+        self.assertIn("Planned stage: new plugin add", dry_run.stdout)
         self.assertIn("no state changes were made", dry_run.stdout)
 
     def test_agent_contract_has_both_supported_install_modes(self):

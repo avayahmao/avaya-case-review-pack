@@ -8,6 +8,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
+from tools.gmail.cloud.bridge_identity import write_attestation
+
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "install-codex.ps1"
@@ -27,6 +29,12 @@ function Read-TestState {
 function Write-TestState {
     param([Parameter(Mandatory = $true)][pscustomobject]$State)
     $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Encoding UTF8
+}
+
+if ($args.Count -eq 1 -and $args[0] -eq "--version") {
+    Add-TestEvent "codex-version"
+    Write-Output "codex-cli 0.153.4"
+    exit 0
 }
 
 if ($args.Count -ge 4 -and $args[0] -eq "plugin" -and $args[1] -eq "marketplace" -and $args[2] -eq "add") {
@@ -132,7 +140,7 @@ if ($args.Count -ge 3 -and $args[0] -eq "plugin" -and $args[1] -eq "list") {
                 pluginId = "avaya-case-review@avaya-case-review-pack"
                 name = "avaya-case-review"
                 marketplaceName = "avaya-case-review-pack"
-                version = "1.10.1"
+                version = [string]$State.plugin_version
                 installed = $true
                 enabled = [bool]$State.plugin_enabled
             }
@@ -184,6 +192,29 @@ if ($args.Count -ge 3 -and $args[0] -eq "plugin" -and $args[1] -eq "remove") {
     $State.plugin_installed = $false
     $State.plugin_enabled = $false
     Write-TestState $State
+    exit 0
+}
+
+if ($args.Count -ge 4 -and $args[0] -eq "mcp" -and $args[1] -eq "get") {
+    $State = Read-TestState
+    $Name = [string]$args[2]
+    Add-TestEvent ("mcp-get:" + $Name)
+    $Module = if ($Name -eq "gmail") {
+        "avaya_case_review_runtime.gmail_mcp_server"
+    } else {
+        "avaya_case_review_runtime.casetomd_mcp_bridge"
+    }
+    if ($State.fail_stage -like "*mcp-definition*" -and $Name -eq "gmail") {
+        $Module = '${BROKEN_ROOT}/gmail_mcp_server.py'
+    }
+    [pscustomobject]@{
+        name = $Name
+        transport = [pscustomobject]@{
+            type = "stdio"
+            command = "python"
+            args = @("-m", $Module)
+        }
+    } | ConvertTo-Json -Depth 8
     exit 0
 }
 
@@ -251,8 +282,96 @@ exit 92
 
 
 PYTHON_SHIM = r"""
-Add-Content -LiteralPath $env:AVAYA_INSTALL_TEST_LOG -Value "python" -Encoding UTF8
-exit 0
+function Add-TestEvent {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    Add-Content -LiteralPath $env:AVAYA_INSTALL_TEST_LOG -Value $Name -Encoding UTF8
+}
+function Read-TestState {
+    return Get-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+}
+function Write-TestState {
+    param([Parameter(Mandatory = $true)][pscustomobject]$State)
+    $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $env:AVAYA_INSTALL_TEST_STATE -Encoding UTF8
+}
+
+$State = Read-TestState
+if ($args.Count -eq 1 -and $args[0] -eq "--version") {
+    Add-TestEvent "python-version"
+    Write-Output "Python 3.14.0"
+    exit 0
+}
+if ($args.Count -ge 2 -and $args[0] -like "*runtime_package.py") {
+    $Command = [string]$args[1]
+    if ($Command -eq "installed-version") {
+        Add-TestEvent ("runtime-version:" + [string]$State.runtime_version)
+        if ([string]::IsNullOrWhiteSpace([string]$State.runtime_version)) {
+            Write-Output '{"distribution":"avaya-case-review-runtime","installed":false}'
+        } else {
+            Write-Output ('{"distribution":"avaya-case-review-runtime","installed":true,"version":"' + [string]$State.runtime_version + '"}')
+        }
+        exit 0
+    }
+    if ($Command -eq "validate-wheel") {
+        $WheelIndex = [Array]::IndexOf($args, "--wheel")
+        $Wheel = [string]$args[$WheelIndex + 1]
+        Add-TestEvent ("wheel-validate:" + [IO.Path]::GetFileName($Wheel))
+        if (-not (Test-Path -LiteralPath $Wheel -PathType Leaf)) { exit 41 }
+        exit 0
+    }
+    if ($Command -eq "smoke") {
+        Add-TestEvent "runtime-smoke"
+        exit 0
+    }
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[2] -eq "verify-bridge") {
+    Add-TestEvent "verify-bridge"
+    $Index = [int]$State.verify_index
+    $Exits = @([string]$State.verify_exits -split ',' | ForEach-Object { [int]$_ })
+    $State.verify_index = $Index + 1
+    Write-TestState $State
+    exit $Exits[[Math]::Min($Index, $Exits.Count - 1)]
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[2] -eq "login") {
+    Add-TestEvent "login"
+    exit [int]$State.login_exit
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "pip") {
+    $PipCommand = [string]$args[2]
+    if ($PipCommand -eq "wheel") {
+        Add-TestEvent "runtime-build"
+        $DirectoryIndex = [Array]::IndexOf($args, "--wheel-dir")
+        $Directory = [string]$args[$DirectoryIndex + 1]
+        New-Item -ItemType Directory -Path $Directory -Force | Out-Null
+        $Wheel = Join-Path $Directory ("avaya_case_review_runtime-" + [string]$State.plugin_version + "-py3-none-any.whl")
+        Set-Content -LiteralPath $Wheel -Value "fixture" -Encoding ASCII
+        exit 0
+    }
+    if ($PipCommand -eq "install") {
+        $Wheel = @($args | Where-Object { [string]$_ -like "*.whl" }) | Select-Object -Last 1
+        if ($null -ne $Wheel) {
+            $Leaf = [IO.Path]::GetFileName([string]$Wheel)
+            Add-TestEvent ("runtime-install:" + $Leaf)
+            if ($State.fail_stage -like "*runtime-rollback*" -and $Leaf -like ("*" + [string]$State.original_runtime_version + "*")) {
+                exit 42
+            }
+            if ($Leaf -match '^avaya_case_review_runtime-(.+?)-py') {
+                $State.runtime_version = $Matches[1]
+                Write-TestState $State
+            }
+        } else {
+            Add-TestEvent "dependency-install"
+        }
+        exit 0
+    }
+    if ($PipCommand -eq "uninstall") {
+        Add-TestEvent "runtime-uninstall:avaya-case-review-runtime"
+        $State.runtime_version = ""
+        Write-TestState $State
+        exit 0
+    }
+}
+Write-Error "Unexpected python arguments"
+exit 93
 """
 
 
@@ -291,6 +410,10 @@ class CodexInstallerTests(unittest.TestCase):
         annotated_tag=False,
         ref_collision=False,
         target_source_type="git",
+        plugin_version="1.10.1",
+        runtime_version="1.10.1",
+        verify_exits="0",
+        login_exit=0,
     ):
         state = {
             "marketplace_exists": bool(existing_sha),
@@ -306,6 +429,12 @@ class CodexInstallerTests(unittest.TestCase):
             "annotated_tag": annotated_tag,
             "ref_collision": ref_collision,
             "target_source_type": target_source_type,
+            "plugin_version": plugin_version,
+            "runtime_version": runtime_version,
+            "original_runtime_version": runtime_version,
+            "verify_exits": verify_exits,
+            "verify_index": 0,
+            "login_exit": login_exit,
         }
         self.state_path.write_text(json.dumps(state), encoding="utf-8-sig")
 
@@ -322,6 +451,7 @@ class CodexInstallerTests(unittest.TestCase):
         environment["AVAYA_INSTALL_TEST_MARKETPLACE_ROOT"] = str(
             self.marketplace_root
         )
+        environment["LOCALAPPDATA"] = str(self.temp_root / "local")
         return environment
 
     def _events(self):
@@ -334,31 +464,11 @@ class CodexInstallerTests(unittest.TestCase):
         ]
 
     def run_installer(self, *extra_arguments, source="https://example.invalid/repo"):
-        command = [
-            "powershell.exe",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(INSTALLER),
-            "-CloudBridgeVerified",
-            "-SkipDependencyInstall",
-            "-SkipLogin",
-            "-MarketplaceSource",
-            source,
-            *extra_arguments,
-        ]
-        result = subprocess.run(
-            command,
-            cwd=ROOT,
-            env=self._environment(),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=15,
-            check=False,
+        result, events, _ = self.run_stateful_installer(
+            source=source,
+            extra_arguments=extra_arguments,
         )
-        return result, self._events()
+        return result, events
 
     def run_stateful_installer(
         self,
@@ -375,12 +485,23 @@ class CodexInstallerTests(unittest.TestCase):
         ref_collision=False,
         source="https://example.invalid/repo",
         extra_arguments=(),
+        runtime_version=None,
+        retain_prior_wheel=True,
+        verify_exits="0",
+        login_exit=0,
+        skip_dependency=True,
+        corrupt_attestation=False,
     ):
         fixture_root = self.temp_root / "stateful-installer"
         for relative_path in (
             ".codex-plugin/plugin.json",
             ".agents/plugins/marketplace.json",
+            ".mcp.json",
+            "pyproject.toml",
             "tools/gmail/gmail_brokerctl.py",
+            "tools/gmail/cloud/GmailMcpBridge.gs",
+            "tools/gmail/cloud/bridge_identity.py",
+            "tools/installer/runtime_package.py",
             "tools/installer/windows_common.ps1",
         ):
             destination = fixture_root / relative_path
@@ -404,6 +525,31 @@ class CodexInstallerTests(unittest.TestCase):
         manifest_path.write_text(
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8-sig"
         )
+        write_attestation(
+            fixture_root / "tools/gmail/cloud/GmailMcpBridge.gs",
+            fixture_root / "tools/gmail/cloud/bridge_release_attestation.json",
+            plugin_version,
+            "2026-09-09T00:00:00Z",
+        )
+        if corrupt_attestation:
+            (fixture_root / "tools/gmail/cloud/bridge_release_attestation.json").write_text(
+                '{"invalid":true}', encoding="utf-8"
+            )
+        pyproject_path = fixture_root / "pyproject.toml"
+        pyproject_path.write_text(
+            pyproject_path.read_text(encoding="utf-8").replace(
+                'version = "1.10.0"', f'version = "{plugin_version}"'
+            ),
+            encoding="utf-8",
+        )
+        if runtime_version is None:
+            runtime_version = plugin_version
+        wheel_store = self.temp_root / "local" / "AvayaCaseReview" / "runtime-wheels"
+        if runtime_version and runtime_version != plugin_version and retain_prior_wheel:
+            wheel_store.mkdir(parents=True, exist_ok=True)
+            (wheel_store / f"avaya_case_review_runtime-{runtime_version}-py3-none-any.whl").write_text(
+                "retained fixture", encoding="ascii"
+            )
         target_ref = f"v{plugin_version}"
         if "-MarketplaceRef" in extra_arguments:
             target_ref = extra_arguments[extra_arguments.index("-MarketplaceRef") + 1]
@@ -419,22 +565,23 @@ class CodexInstallerTests(unittest.TestCase):
             annotated_tag=annotated_tag,
             ref_collision=ref_collision,
             target_source_type="local" if Path(source).exists() else "git",
+            plugin_version=plugin_version,
+            runtime_version=runtime_version,
+            verify_exits=verify_exits,
+            login_exit=login_exit,
         )
+        installer_arguments = [
+            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            str(fixture_root / INSTALLER.name), "-CloudBridgeVerified",
+        ]
+        if skip_dependency:
+            installer_arguments.append("-SkipDependencyInstall")
+        if "-AllowLogin" not in extra_arguments:
+            installer_arguments.append("-SkipLogin")
+        extra_arguments = tuple(value for value in extra_arguments if value != "-AllowLogin")
+        installer_arguments.extend(("-MarketplaceSource", source, *extra_arguments))
         result = subprocess.run(
-            [
-                "powershell.exe",
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(fixture_root / INSTALLER.name),
-                "-CloudBridgeVerified",
-                "-SkipDependencyInstall",
-                "-SkipLogin",
-                "-MarketplaceSource",
-                source,
-                *extra_arguments,
-            ],
+            installer_arguments,
             cwd=fixture_root,
             env=self._environment(),
             capture_output=True,
@@ -450,11 +597,26 @@ class CodexInstallerTests(unittest.TestCase):
         for relative_path in (
             ".codex-plugin/plugin.json",
             ".agents/plugins/marketplace.json",
+            ".mcp.json",
+            "pyproject.toml",
             "tools/gmail/gmail_brokerctl.py",
+            "tools/gmail/cloud/GmailMcpBridge.gs",
+            "tools/gmail/cloud/bridge_identity.py",
+            "tools/installer/runtime_package.py",
         ):
             destination = fixture_root / relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / relative_path, destination)
+
+        write_attestation(
+            fixture_root / "tools/gmail/cloud/GmailMcpBridge.gs",
+            fixture_root / "tools/gmail/cloud/bridge_release_attestation.json",
+            "1.10.0",
+            "2026-09-09T00:00:00Z",
+        )
+        self._write_state(
+            plugin_version="1.10.0", runtime_version="1.10.0", target_ref="v1.10.0"
+        )
 
         shutil.copy2(INSTALLER, fixture_root / INSTALLER.name)
         helper_destination = fixture_root / "tools" / "installer" / WINDOWS_COMMON.name
@@ -510,7 +672,7 @@ class CodexInstallerTests(unittest.TestCase):
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=10,
+            timeout=20,
             check=False,
         )
 
@@ -896,6 +1058,191 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertIn("validate release attestation", result.stdout.lower())
         self.assertIn("verify-bridge", result.stdout)
         self.assertIn("plugin add", result.stdout)
+
+    def test_live_preflight_blocks_before_runtime_or_codex_mutation(self):
+        result, events, _ = self.run_stateful_installer(
+            verify_exits="20", skip_dependency=False
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("verify-bridge", events)
+        for mutation in (
+            "dependency-install",
+            "runtime-build",
+            "marketplace-add",
+            "plugin-add",
+        ):
+            self.assertNotIn(mutation, events)
+
+    def test_invalid_local_attestation_blocks_before_any_command_or_mutation(self):
+        result, events, state = self.run_stateful_installer(
+            corrupt_attestation=True, skip_dependency=False
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("attestation", result.stderr.lower())
+        self.assertEqual(events, [])
+        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertFalse(state.marketplace_exists)
+
+    def test_fresh_runtime_build_validate_install_and_smoke_precede_plugin_add(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="", skip_dependency=False
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ordered = (
+            "verify-bridge",
+            "runtime-build",
+            "wheel-validate:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
+            "runtime-install:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
+            "runtime-smoke",
+            "plugin-add",
+        )
+        for name in ordered:
+            self.assertTrue(
+                any(event.startswith(name) for event in events),
+                f"missing event {name}: {events}",
+            )
+        positions = [next(i for i, event in enumerate(events) if event.startswith(name)) for name in ordered]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(state.runtime_version, "1.10.1")
+
+    def test_skip_dependency_requires_exact_runtime_without_pip_mutation(self):
+        success, success_events, _ = self.run_stateful_installer(
+            runtime_version="1.10.1", skip_dependency=True
+        )
+        self.assertEqual(success.returncode, 0, success.stderr)
+        self.assertIn("runtime-smoke", success_events)
+        self.assertFalse(any(event.startswith("runtime-install") for event in success_events))
+
+        self.log_path.unlink(missing_ok=True)
+        mismatch, mismatch_events, state = self.run_stateful_installer(
+            runtime_version="1.9.9", skip_dependency=True
+        )
+        self.assertNotEqual(mismatch.returncode, 0)
+        self.assertEqual(state.runtime_version, "1.9.9")
+        self.assertNotIn("marketplace-add", mismatch_events)
+        self.assertFalse(any(event.startswith("runtime-install") for event in mismatch_events))
+
+    def test_prior_runtime_without_retained_wheel_blocks_before_mutation(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            retain_prior_wheel=False,
+            skip_dependency=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(state.runtime_version, "1.9.9")
+        self.assertNotIn("runtime-build", events)
+        self.assertNotIn("marketplace-add", events)
+
+    def test_successful_upgrade_retains_current_runtime_wheel(self):
+        result, _, state = self.run_stateful_installer(
+            runtime_version="1.9.9", skip_dependency=False
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        retained = self.temp_root / "local/AvayaCaseReview/runtime-wheels"
+        self.assertTrue(
+            (retained / "avaya_case_review_runtime-1.10.1-py3-none-any.whl").is_file()
+        )
+        self.assertEqual(state.runtime_version, "1.10.1")
+
+    def test_plugin_failure_restores_codex_then_prior_runtime(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            skip_dependency=False,
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=True,
+            fail_stage="new-plugin-add",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(state.marketplace_sha, "old-sha")
+        self.assertEqual(state.runtime_version, "1.9.9")
+        self.assertIn(
+            "runtime-install:avaya_case_review_runtime-1.9.9-py3-none-any.whl",
+            events,
+        )
+        self.assertLess(
+            events.index("marketplace-add:old-sha"),
+            events.index("runtime-install:avaya_case_review_runtime-1.9.9-py3-none-any.whl"),
+        )
+
+    def test_post_install_mcp_mismatch_restores_codex_before_runtime(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            skip_dependency=False,
+            existing_sha="old-sha",
+            plugin_installed=True,
+            plugin_enabled=True,
+            fail_stage="mcp-definition",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mcp", result.stderr.lower())
+        self.assertEqual(state.marketplace_sha, "old-sha")
+        self.assertEqual(state.runtime_version, "1.9.9")
+        self.assertLess(
+            events.index("marketplace-add:old-sha"),
+            events.index("runtime-install:avaya_case_review_runtime-1.9.9-py3-none-any.whl"),
+        )
+
+    def test_failure_with_no_prior_runtime_uninstalls_only_named_distribution(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="",
+            skip_dependency=False,
+            fail_stage="new-plugin-add",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(state.runtime_version, "")
+        self.assertEqual(events.count("runtime-uninstall:avaya-case-review-runtime"), 1)
+
+    def test_runtime_rollback_failure_combines_sanitized_primary_and_rollback_stages(self):
+        result, _, _ = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            skip_dependency=False,
+            fail_stage="new-plugin-add+runtime-rollback",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("new plugin add", result.stderr.lower())
+        self.assertIn("runtime rollback", result.stderr.lower())
+        self.assertNotIn("UNSANITIZED", result.stderr)
+
+    def test_bridge_auth_retry_contract_precedes_codex_state(self):
+        scenarios = (
+            ("10,0", 0, False, ["verify-bridge", "login", "verify-bridge"]),
+            ("10,10", 0, True, ["verify-bridge", "login", "verify-bridge"]),
+            ("30", 0, True, ["verify-bridge"]),
+            ("10", 30, True, ["verify-bridge", "login"]),
+        )
+        for verify_exits, login_exit, fails, expected_prefix in scenarios:
+            with self.subTest(verify_exits=verify_exits, login_exit=login_exit):
+                self.log_path.unlink(missing_ok=True)
+                result, events, _ = self.run_stateful_installer(
+                    verify_exits=verify_exits,
+                    login_exit=login_exit,
+                    extra_arguments=("-AllowLogin",),
+                )
+                self.assertEqual(result.returncode != 0, fails, result.stderr)
+                bridge_events = [
+                    event for event in events if event in {"verify-bridge", "login"}
+                ]
+                self.assertEqual(bridge_events, expected_prefix)
+                if fails:
+                    self.assertNotIn("marketplace-add", events)
+
+    def test_skip_login_still_runs_preflight_and_fails_on_auth_required(self):
+        result, events, _ = self.run_stateful_installer(verify_exits="10")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(events.count("verify-bridge"), 1)
+        self.assertNotIn("login", events)
+        self.assertNotIn("marketplace-add", events)
 
 
 if __name__ == "__main__":

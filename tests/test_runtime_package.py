@@ -3,12 +3,14 @@ import os
 import subprocess
 import sys
 import unittest
+import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "avaya_case_review_runtime"
+RUNTIME_HELPER = ROOT / "tools" / "installer" / "runtime_package.py"
 CANONICAL_MODULES = (
     "bridge_identity",
     "casetomd_mcp_bridge",
@@ -294,6 +296,125 @@ class RuntimePackageTests(unittest.TestCase):
         )
         self.assertEqual(overridden.returncode, 0, overridden.stderr)
         self.assertEqual(Path(overridden.stdout.strip()), override)
+
+
+class RuntimePackageInstallerHelperTests(unittest.TestCase):
+    def run_helper(self, *arguments, environment=None):
+        return subprocess.run(
+            [sys.executable, str(RUNTIME_HELPER), *arguments],
+            cwd=ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=20,
+            check=False,
+        )
+
+    @staticmethod
+    def write_wheel(path, *, name="avaya-case-review-runtime", version="1.10.0", members=()):
+        distribution = name.replace("-", "_")
+        metadata = f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
+        with zipfile.ZipFile(path, "w") as wheel:
+            wheel.writestr(f"{distribution}-{version}.dist-info/METADATA", metadata)
+            for member in members:
+                wheel.writestr(member, "# fixture\n")
+
+    def test_installed_version_reports_explicit_absence(self):
+        with TemporaryDirectory() as temporary:
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = temporary
+            completed = self.run_helper("installed-version", environment=environment)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            json.loads(completed.stdout),
+            {"distribution": "avaya-case-review-runtime", "installed": False},
+        )
+
+    def test_validate_wheel_accepts_exact_runtime_and_rejects_contract_violations(self):
+        required = {
+            "avaya_case_review_runtime/gmail_mcp_server.py",
+            "avaya_case_review_runtime/casetomd_mcp_bridge.py",
+        }
+        cases = (
+            ("valid", "avaya-case-review-runtime", "1.10.0", required, True),
+            ("wrong-name", "different-runtime", "1.10.0", required, False),
+            ("wrong-version", "avaya-case-review-runtime", "9.9.9", required, False),
+            (
+                "missing-module",
+                "avaya-case-review-runtime",
+                "1.10.0",
+                {"avaya_case_review_runtime/gmail_mcp_server.py"},
+                False,
+            ),
+            (
+                "repository-tools",
+                "avaya-case-review-runtime",
+                "1.10.0",
+                required | {"tools/gmail/gmail_mcp_server.py"},
+                False,
+            ),
+        )
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for label, name, version, members, accepted in cases:
+                with self.subTest(label=label):
+                    wheel = directory / f"{label}.whl"
+                    self.write_wheel(wheel, name=name, version=version, members=members)
+                    completed = self.run_helper(
+                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+                    )
+                    self.assertEqual(completed.returncode == 0, accepted, completed.stderr)
+                    combined = completed.stdout + completed.stderr
+                    self.assertNotIn("tools/gmail/gmail_mcp_server.py", combined)
+
+    def test_smoke_verifies_both_exact_mcp_tool_sets_from_unrelated_cwd(self):
+        fake_module = '''\
+import json
+import sys
+
+module = "MODULE_NAME"
+tools = {
+    "gmail_mcp_server": [
+        "gmail_search", "gmail_read", "gmail_send",
+        "gmail_list_threads", "gmail_read_thread_page",
+    ],
+    "casetomd_mcp_bridge": ["get_case_markdown"],
+}[module]
+for line in sys.stdin:
+    request = json.loads(line)
+    if request.get("method") == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {"name": module, "version": "1"}}}), flush=True)
+    elif request.get("method") == "tools/list":
+        print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": {"tools": [{"name": name} for name in tools]}}), flush=True)
+        break
+'''
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            package = directory / "site" / "avaya_case_review_runtime"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("", encoding="utf-8")
+            for module in ("gmail_mcp_server", "casetomd_mcp_bridge"):
+                (package / f"{module}.py").write_text(
+                    fake_module.replace("MODULE_NAME", module), encoding="utf-8"
+                )
+            outside = directory / "outside"
+            outside.mkdir()
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(directory / "site")
+
+            completed = self.run_helper(
+                "smoke",
+                "--python",
+                sys.executable,
+                "--work-dir",
+                str(outside),
+                environment=environment,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout), {"smoke": "ok"})
 
 
 if __name__ == "__main__":

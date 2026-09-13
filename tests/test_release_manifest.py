@@ -42,6 +42,7 @@ REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
         "docs/GMAIL_CLOUD_BRIDGE.md",
         "docs/GMAIL_EDGE_BROKER.md",
         "tools/casetomd/casetomd_mcp_bridge.py",
+        "tools/installer/runtime_package.py",
         "plugins/avaya-case-review/plugin.json",
         "plugins/avaya-case-review/skills/case-review/SKILL.md",
         "plugins/avaya-case-review/skills/gmail-capability/SKILL.md",

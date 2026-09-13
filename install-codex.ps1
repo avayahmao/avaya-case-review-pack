@@ -87,6 +87,123 @@ function ConvertFrom-CommandJson {
     }
 }
 
+function Test-VersionAtLeast {
+    param(
+        [Parameter(Mandatory = $true)][string]$Actual,
+        [Parameter(Mandatory = $true)][version]$Minimum,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $Match = [regex]::Match($Actual, '(?<!\d)(\d+\.\d+(?:\.\d+)?)(?!\d)')
+    if (-not $Match.Success) {
+        throw "Stage '$Label version' returned an unrecognized version."
+    }
+    if ([version]$Match.Groups[1].Value -lt $Minimum) {
+        throw "$Label $Minimum or newer is required."
+    }
+}
+
+function Assert-ExactPropertyNames {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject]$Value,
+        [Parameter(Mandatory = $true)][string[]]$Expected,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $Actual = @($Value.PSObject.Properties.Name | Sort-Object)
+    $Wanted = @($Expected | Sort-Object)
+    if (@(Compare-Object -ReferenceObject $Wanted -DifferenceObject $Actual).Count -ne 0) {
+        throw "Local bridge attestation $Label does not match the required contract."
+    }
+}
+
+function Test-LocalBridgeAttestation {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$AttestationPath,
+        [Parameter(Mandatory = $true)][string]$PluginVersion
+    )
+
+    try {
+        $Utf8 = New-Object System.Text.UTF8Encoding($false)
+        $Source = [IO.File]::ReadAllText($SourcePath, $Utf8).Replace("`r`n", "`n").Replace("`r", "`n")
+        $IdentityPattern = '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "([0-9a-f]{64})";$'
+        $IdentityMatches = [regex]::Matches($Source, $IdentityPattern)
+        if ($IdentityMatches.Count -ne 1) {
+            throw "identity"
+        }
+        $IdentityMatch = $IdentityMatches[0]
+        $EmbeddedDigest = $IdentityMatch.Groups[1].Value
+        $Canonical = $Source.Substring(0, $IdentityMatch.Groups[1].Index) + ('0' * 64) +
+            $Source.Substring($IdentityMatch.Groups[1].Index + $IdentityMatch.Groups[1].Length)
+        $Hasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            $ComputedDigest = ([BitConverter]::ToString($Hasher.ComputeHash($Utf8.GetBytes($Canonical)))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $Hasher.Dispose()
+        }
+        if ($EmbeddedDigest -ne $ComputedDigest) {
+            throw "digest"
+        }
+
+        $Attestation = Get-Content -LiteralPath $AttestationPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-ExactPropertyNames -Value $Attestation -Expected @(
+            'schema_version', 'plugin_version', 'bridge_version', 'contract_revision',
+            'bridge_source_sha256', 'verified_at_utc', 'checks'
+        ) -Label 'schema'
+        if (
+            [int]$Attestation.schema_version -ne 1 -or
+            [int]$Attestation.bridge_version -ne 4 -or
+            [int]$Attestation.contract_revision -ne 1 -or
+            [string]$Attestation.plugin_version -cne $PluginVersion -or
+            [string]$Attestation.bridge_source_sha256 -cne $ComputedDigest -or
+            [string]$Attestation.verified_at_utc -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$'
+        ) {
+            throw "values"
+        }
+        Assert-ExactPropertyNames -Value $Attestation.checks -Expected @(
+            'advanced_gmail_v1', 'zero_result_complete', 'stable_snapshot_pagination',
+            'cursor_exhaustion', 'manifest_message_count_hashes', 'sensitive_output_absent'
+        ) -Label 'checks'
+        foreach ($Property in $Attestation.checks.PSObject.Properties) {
+            if ($Property.Value -isnot [bool] -or -not $Property.Value) {
+                throw "checks"
+            }
+        }
+    } catch {
+        throw "Local bridge attestation validation failed. Use an intact verified release checkout."
+    }
+}
+
+function Test-McpManifestContract {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    try {
+        $Manifest = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+        $Expected = @{
+            gmail = 'avaya_case_review_runtime.gmail_mcp_server'
+            CaseToMD = 'avaya_case_review_runtime.casetomd_mcp_bridge'
+        }
+        foreach ($Name in $Expected.Keys) {
+            $Server = $Manifest.mcpServers.$Name
+            if (
+                $null -eq $Server -or
+                [string]$Server.command -cne 'python' -or
+                @($Server.args).Count -ne 2 -or
+                [string]$Server.args[0] -cne '-m' -or
+                [string]$Server.args[1] -cne $Expected[$Name]
+            ) {
+                throw "definition"
+            }
+        }
+        if ((Get-Content -LiteralPath $Path -Raw -Encoding UTF8).Contains('${')) {
+            throw "placeholder"
+        }
+    } catch {
+        throw "Codex MCP definitions do not match the packaged runtime contract."
+    }
+}
+
 function Get-CodexMarketplaceSnapshot {
     param(
         [Parameter(Mandatory = $true)][string]$MarketplaceName,
@@ -157,6 +274,7 @@ function Get-CodexMarketplaceSnapshot {
         Commit = $Commit
         PluginInstalled = $null -ne $ExistingPlugin -and [bool]$ExistingPlugin.installed
         PluginEnabled = $null -ne $ExistingPlugin -and [bool]$ExistingPlugin.enabled
+        PluginVersion = if ($null -ne $ExistingPlugin) { [string]$ExistingPlugin.version } else { "" }
     }
 }
 
@@ -346,6 +464,51 @@ function Restore-CodexMarketplaceSnapshot {
     }
 }
 
+function Test-InstalledCodexPlugin {
+    param(
+        [Parameter(Mandatory = $true)][string]$MarketplaceName,
+        [Parameter(Mandatory = $true)][string]$PluginName,
+        [Parameter(Mandatory = $true)][string]$PluginVersion
+    )
+
+    $Installed = Get-CodexMarketplaceSnapshot `
+        -MarketplaceName $MarketplaceName `
+        -PluginName $PluginName
+    if (
+        -not $Installed.PluginInstalled -or
+        -not $Installed.PluginEnabled -or
+        $Installed.PluginVersion -cne $PluginVersion
+    ) {
+        throw "Stage 'installed plugin verification' failed."
+    }
+
+    $ExpectedModules = @{
+        gmail = 'avaya_case_review_runtime.gmail_mcp_server'
+        CaseToMD = 'avaya_case_review_runtime.casetomd_mcp_bridge'
+    }
+    foreach ($Name in $ExpectedModules.Keys) {
+        $Result = Invoke-CheckedCommand `
+            -Stage "installed MCP verification ($Name)" `
+            -Command "codex" `
+            -Arguments @("mcp", "get", $Name, "--json") `
+            -Description "Verifying the installed $Name MCP definition" `
+            -TimeoutSeconds $TimeoutLocalSeconds
+        $Definition = ConvertFrom-CommandJson `
+            -Result $Result `
+            -Stage "installed MCP verification ($Name)"
+        $Transport = if ($null -ne $Definition.transport) { $Definition.transport } else { $Definition }
+        if (
+            [string]$Transport.command -cne 'python' -or
+            @($Transport.args).Count -ne 2 -or
+            [string]$Transport.args[0] -cne '-m' -or
+            [string]$Transport.args[1] -cne $ExpectedModules[$Name] -or
+            ($Result.StdOut).Contains('${')
+        ) {
+            throw "Stage 'installed MCP verification ($Name)' failed."
+        }
+    }
+}
+
 function Set-CodexMarketplaceAtRef {
     param(
         [Parameter(Mandatory = $true)][pscustomobject]$Before,
@@ -400,6 +563,10 @@ function Set-CodexMarketplaceAtRef {
         throw "The installed plugin is disabled; this Codex CLI cannot safely preserve disabled state. No changes were made."
     }
     if ($MarketplaceAtTarget -and $Before.PluginInstalled) {
+        Test-InstalledCodexPlugin `
+            -MarketplaceName $script:MarketplaceName `
+            -PluginName $script:PluginName `
+            -PluginVersion $script:PluginVersion
         return $Transaction
     }
 
@@ -444,6 +611,10 @@ function Set-CodexMarketplaceAtRef {
             -Arguments @("plugin", "add", $script:PluginSelector, "--json") `
             -Description "Installing the Codex plugin" `
             -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
+        Test-InstalledCodexPlugin `
+            -MarketplaceName $script:MarketplaceName `
+            -PluginName $script:PluginName `
+            -PluginVersion $script:PluginVersion
         return $Transaction
     } catch {
         $PrimaryMessage = $_.Exception.Message
@@ -466,9 +637,17 @@ function Set-CodexMarketplaceAtRef {
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $CodexManifestPath = Join-Path $ScriptDir ".codex-plugin\plugin.json"
 $MarketplaceManifestPath = Join-Path $ScriptDir ".agents\plugins\marketplace.json"
+$McpManifestPath = Join-Path $ScriptDir ".mcp.json"
 $BrokerCtlPath = Join-Path $ScriptDir "tools\gmail\gmail_brokerctl.py"
+$BridgeSourcePath = Join-Path $ScriptDir "tools\gmail\cloud\GmailMcpBridge.gs"
+$BridgeAttestationPath = Join-Path $ScriptDir "tools\gmail\cloud\bridge_release_attestation.json"
+$RuntimeHelperPath = Join-Path $ScriptDir "tools\installer\runtime_package.py"
+$PyProjectPath = Join-Path $ScriptDir "pyproject.toml"
 
-foreach ($RequiredFile in @($CodexManifestPath, $MarketplaceManifestPath, $BrokerCtlPath)) {
+foreach ($RequiredFile in @(
+    $CodexManifestPath, $MarketplaceManifestPath, $McpManifestPath, $BrokerCtlPath,
+    $BridgeSourcePath, $BridgeAttestationPath, $RuntimeHelperPath, $PyProjectPath
+)) {
     if (-not (Test-Path -LiteralPath $RequiredFile -PathType Leaf)) {
         throw "Required installation file is missing: $RequiredFile"
     }
@@ -496,13 +675,26 @@ if ($TargetRef -ne $ReleaseRef -and -not $AllowUnreleasedRef) {
 }
 $PluginSelector = "$PluginName@$MarketplaceName"
 
-if (-not $DryRun -and -not $CloudBridgeVerified) {
-    throw "Cloud bridge verification is required. Complete docs/GMAIL_CLOUD_BRIDGE.md, then rerun with -CloudBridgeVerified."
+if ($CloudBridgeVerified) {
+    Write-Warning "-CloudBridgeVerified is deprecated and does not bypass local or live bridge verification."
 }
 
-foreach ($RequiredCommand in @("python", "codex", "git")) {
-    if (-not (Get-Command $RequiredCommand -ErrorAction SilentlyContinue)) {
-        throw "$RequiredCommand was not found in PATH."
+$PyProject = Get-Content -LiteralPath $PyProjectPath -Raw -Encoding UTF8
+$ProjectVersion = [regex]::Match($PyProject, '(?m)^version\s*=\s*"([^"]+)"\s*$')
+if (-not $ProjectVersion.Success -or $ProjectVersion.Groups[1].Value -cne $PluginVersion) {
+    throw "Runtime package version does not match the Codex plugin version."
+}
+Test-McpManifestContract -Path $McpManifestPath
+Test-LocalBridgeAttestation `
+    -SourcePath $BridgeSourcePath `
+    -AttestationPath $BridgeAttestationPath `
+    -PluginVersion $PluginVersion
+
+if (-not $DryRun) {
+    foreach ($RequiredCommand in @("python", "codex", "git")) {
+        if (-not (Get-Command $RequiredCommand -ErrorAction SilentlyContinue)) {
+            throw "$RequiredCommand was not found in PATH."
+        }
     }
 }
 
@@ -515,88 +707,213 @@ Write-Host "  Source:      $MarketplaceSource"
 Write-Host "  Ref:         $TargetRef"
 if ($DryRun) {
     Write-Host "  Mode:        dry run (no state changes)" -ForegroundColor DarkGray
-    Write-Host "  Planned gate: validate release attestation" -ForegroundColor DarkGray
-    Write-Host "  Planned gate: verify-bridge" -ForegroundColor DarkGray
-}
-
-if (-not $SkipDependencyInstall) {
-    $PipArguments = @(
-        "-m", "pip", "install", "mcp", "playwright", "--quiet",
-        "--trusted-host", "pypi.org",
-        "--trusted-host", "pypi.python.org",
-        "--trusted-host", "files.pythonhosted.org"
-    )
-    $null = Invoke-CheckedCommand `
-        -Stage "pip install" `
-        -Command "python" `
-        -Arguments $PipArguments `
-        -Description "Installing Python MCP and Playwright dependencies" `
-        -TimeoutSeconds $TimeoutPipSeconds
-
-    if ($IncludeLegacyChromium) {
-        $PreviousNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
-        try {
-            if (-not $env:NODE_EXTRA_CA_CERTS) {
-                $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
-            }
-            Invoke-CheckedCommand `
-                -Stage "playwright install" `
-                -Command "python" `
-                -Arguments @("-m", "playwright", "install", "chromium") `
-                -Description "Installing optional legacy Chromium rollback runtime" `
-                -TimeoutSeconds $TimeoutPipSeconds | Out-Null
-        } finally {
-            $env:NODE_TLS_REJECT_UNAUTHORIZED = $PreviousNodeTls
-        }
+    foreach ($Stage in @(
+        "validate release attestation", "check Python and Codex versions",
+        "inspect installed runtime", "verify retained rollback wheel", "verify-bridge",
+        "install dependencies and build runtime wheel", "validate runtime wheel",
+        "install runtime wheel", "smoke runtime MCP modules", "new marketplace add",
+        "new plugin add", "verify plugin identity, version, and MCP definitions"
+    )) {
+        Write-Host "  Planned stage: $Stage" -ForegroundColor DarkGray
     }
+    Write-Host ""
+    Write-Host "Codex installation dry run complete; no state changes were made." -ForegroundColor Green
+    exit 0
 }
 
-if ($DryRun) {
-    Add-CodexMarketplace `
-        -Stage "new marketplace add" `
-        -Source $MarketplaceSource `
-        -Ref $TargetRef
+$PythonVersion = Invoke-CheckedCommand `
+    -Stage "Python version" `
+    -Command "python" `
+    -Arguments @("--version") `
+    -Description "Checking Python" `
+    -TimeoutSeconds $TimeoutLocalSeconds
+Test-VersionAtLeast -Actual ($PythonVersion.StdOut + $PythonVersion.StdErr) -Minimum ([version]'3.10') -Label 'Python'
+$CodexVersion = Invoke-CheckedCommand `
+    -Stage "Codex version" `
+    -Command "codex" `
+    -Arguments @("--version") `
+    -Description "Checking Codex CLI" `
+    -TimeoutSeconds $TimeoutLocalSeconds
+Test-VersionAtLeast -Actual ($CodexVersion.StdOut + $CodexVersion.StdErr) -Minimum ([version]'0.153.4') -Label 'Codex CLI'
+
+$InstalledVersionResult = Invoke-CheckedCommand `
+    -Stage "runtime version inspection" `
+    -Command "python" `
+    -Arguments @($RuntimeHelperPath, "installed-version") `
+    -Description "Recording the installed MCP runtime version" `
+    -TimeoutSeconds $TimeoutLocalSeconds
+$InstalledRuntime = ConvertFrom-CommandJson -Result $InstalledVersionResult -Stage "runtime version inspection"
+$PreviousRuntimePresent = [bool]$InstalledRuntime.installed
+$PreviousRuntimeVersion = if ($PreviousRuntimePresent) { [string]$InstalledRuntime.version } else { "" }
+$WheelStore = Join-Path $env:LOCALAPPDATA "AvayaCaseReview\runtime-wheels"
+$PreviousRuntimeWheel = $null
+if ($PreviousRuntimePresent -and $PreviousRuntimeVersion -cne $PluginVersion -and -not $SkipDependencyInstall) {
+    $PriorWheels = @(Get-ChildItem -LiteralPath $WheelStore -Filter "avaya_case_review_runtime-$PreviousRuntimeVersion-*.whl" -File -ErrorAction SilentlyContinue)
+    if ($PriorWheels.Count -ne 1) {
+        throw "A retained wheel for the installed runtime version is required before upgrade."
+    }
+    $PreviousRuntimeWheel = $PriorWheels[0].FullName
     Invoke-CheckedCommand `
-        -Stage "new plugin add" `
-        -Command "codex" `
-        -Arguments @("plugin", "add", $PluginSelector, "--json") `
-        -Description "Installing the Codex plugin" `
-        -TimeoutSeconds $TimeoutPluginSeconds | Out-Null
-} else {
-    $Before = Get-CodexMarketplaceSnapshot `
-        -MarketplaceName $MarketplaceName `
-        -PluginName $PluginName
-    $null = Set-CodexMarketplaceAtRef `
-        -Before $Before `
-        -TargetSource $MarketplaceSource `
-        -TargetRef $TargetRef
+        -Stage "prior runtime wheel validation" `
+        -Command "python" `
+        -Arguments @($RuntimeHelperPath, "validate-wheel", "--wheel", $PreviousRuntimeWheel, "--version", $PreviousRuntimeVersion) `
+        -Description "Validating the retained rollback wheel" `
+        -TimeoutSeconds $TimeoutLocalSeconds | Out-Null
 }
 
-if (-not $SkipLogin -and -not $DryRun) {
-    Write-Host "  Checking the shared Gmail Edge broker..." -ForegroundColor Yellow
-    $BrokerStatus = Invoke-BoundedCommand `
-        -Stage "Gmail broker status" `
+$VerifyArguments = @(
+    "-B", $BrokerCtlPath, "verify-bridge",
+    "--source", $BridgeSourcePath,
+    "--attestation", $BridgeAttestationPath,
+    "--plugin-version", $PluginVersion
+)
+$BridgeResult = Invoke-CheckedCommand `
+    -Stage "verify-bridge" `
+    -Command "python" `
+    -Arguments $VerifyArguments `
+    -Description "Verifying the live Gmail Cloud Bridge" `
+    -TimeoutSeconds $TimeoutBridgeSeconds `
+    -AllowFailure
+if ($BridgeResult.ExitCode -eq 10) {
+    if ($SkipLogin) {
+        throw "Gmail authentication is required; rerun without -SkipLogin to open Managed Edge."
+    }
+    Invoke-CheckedCommand `
+        -Stage "Gmail login" `
         -Command "python" `
-        -Arguments @($BrokerCtlPath, "status") `
+        -Arguments @("-B", $BrokerCtlPath, "login") `
+        -Description "Opening Managed Edge for SSO/MFA" `
+        -TimeoutSeconds 330 | Out-Null
+    $BridgeResult = Invoke-CheckedCommand `
+        -Stage "verify-bridge retry" `
+        -Command "python" `
+        -Arguments $VerifyArguments `
+        -Description "Retrying live Gmail Cloud Bridge verification" `
         -TimeoutSeconds $TimeoutBridgeSeconds `
         -AllowFailure
-    $BrokerStatusExit = $BrokerStatus.ExitCode
-    if ($BrokerStatusExit -eq 10) {
-        Write-Host "  Gmail authentication is required. Opening Managed Edge for SSO/MFA..." -ForegroundColor Cyan
-        & python $BrokerCtlPath login
-        if ($LASTEXITCODE -ne 0) {
-            throw "Gmail authentication did not complete successfully."
+}
+if ($BridgeResult.ExitCode -eq 10) {
+    throw "Gmail authentication remains required after one login attempt."
+}
+if ($BridgeResult.ExitCode -eq 20) {
+    throw "The Gmail Cloud Bridge is unavailable."
+}
+if ($BridgeResult.ExitCode -ne 0) {
+    throw "The Gmail Cloud Bridge is incompatible with this release."
+}
+
+$RuntimeMutated = $false
+$CurrentRuntimeWheel = $null
+try {
+    if ($SkipDependencyInstall) {
+        if (-not $PreviousRuntimePresent -or $PreviousRuntimeVersion -cne $PluginVersion) {
+            throw "-SkipDependencyInstall requires runtime version $PluginVersion to already be installed."
         }
-    } elseif ($BrokerStatusExit -ne 0) {
-        throw "Gmail broker validation failed with exit code $BrokerStatusExit."
+    } else {
+        $PipArguments = @(
+            "-m", "pip", "install", "mcp", "playwright", "setuptools>=68", "--quiet",
+            "--trusted-host", "pypi.org", "--trusted-host", "pypi.python.org",
+            "--trusted-host", "files.pythonhosted.org"
+        )
+        Invoke-CheckedCommand `
+            -Stage "dependency install" `
+            -Command "python" `
+            -Arguments $PipArguments `
+            -Description "Installing Python MCP dependencies and the local build backend" `
+            -TimeoutSeconds $TimeoutPipSeconds | Out-Null
+
+        if ($IncludeLegacyChromium) {
+            $PreviousNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
+            try {
+                if (-not $env:NODE_EXTRA_CA_CERTS) { $env:NODE_TLS_REJECT_UNAUTHORIZED = "0" }
+                Invoke-CheckedCommand `
+                    -Stage "playwright install" `
+                    -Command "python" `
+                    -Arguments @("-m", "playwright", "install", "chromium") `
+                    -Description "Installing optional legacy Chromium rollback runtime" `
+                    -TimeoutSeconds $TimeoutPipSeconds | Out-Null
+            } finally {
+                $env:NODE_TLS_REJECT_UNAUTHORIZED = $PreviousNodeTls
+            }
+        }
+
+        New-Item -ItemType Directory -Path $WheelStore -Force | Out-Null
+        Invoke-CheckedCommand `
+            -Stage "runtime wheel build" `
+            -Command "python" `
+            -Arguments @("-m", "pip", "wheel", "--no-deps", "--no-build-isolation", "--wheel-dir", $WheelStore, $ScriptDir) `
+            -Description "Building the packaged MCP runtime" `
+            -TimeoutSeconds $TimeoutPipSeconds | Out-Null
+        $CurrentWheels = @(Get-ChildItem -LiteralPath $WheelStore -Filter "avaya_case_review_runtime-$PluginVersion-*.whl" -File)
+        if ($CurrentWheels.Count -ne 1) {
+            throw "Stage 'runtime wheel discovery' did not find exactly one current runtime wheel."
+        }
+        $CurrentRuntimeWheel = $CurrentWheels[0].FullName
+        Invoke-CheckedCommand `
+            -Stage "runtime wheel validation" `
+            -Command "python" `
+            -Arguments @($RuntimeHelperPath, "validate-wheel", "--wheel", $CurrentRuntimeWheel, "--version", $PluginVersion) `
+            -Description "Validating the packaged MCP runtime wheel" `
+            -TimeoutSeconds $TimeoutLocalSeconds | Out-Null
+        $RuntimeMutated = $true
+        Invoke-CheckedCommand `
+            -Stage "runtime install" `
+            -Command "python" `
+            -Arguments @("-m", "pip", "install", "--no-index", "--no-deps", "--force-reinstall", $CurrentRuntimeWheel) `
+            -Description "Installing the packaged MCP runtime" `
+            -TimeoutSeconds $TimeoutPipSeconds | Out-Null
     }
+
+    Invoke-CheckedCommand `
+        -Stage "runtime smoke" `
+        -Command "python" `
+        -Arguments @($RuntimeHelperPath, "smoke", "--python", "python", "--work-dir", ([IO.Path]::GetTempPath())) `
+        -Description "Checking both installed MCP modules" `
+        -TimeoutSeconds $TimeoutBridgeSeconds | Out-Null
+
+    $Before = Get-CodexMarketplaceSnapshot -MarketplaceName $MarketplaceName -PluginName $PluginName
+    $null = Set-CodexMarketplaceAtRef -Before $Before -TargetSource $MarketplaceSource -TargetRef $TargetRef
+} catch {
+    $PrimaryMessage = $_.Exception.Message
+    if ($RuntimeMutated) {
+        try {
+            if ($PreviousRuntimePresent) {
+                $RestoreWheel = if ($PreviousRuntimeVersion -ceq $PluginVersion) { $CurrentRuntimeWheel } else { $PreviousRuntimeWheel }
+                Invoke-CheckedCommand `
+                    -Stage "runtime rollback install" `
+                    -Command "python" `
+                    -Arguments @("-m", "pip", "install", "--no-index", "--no-deps", "--force-reinstall", $RestoreWheel) `
+                    -Description "Restoring the prior MCP runtime" `
+                    -TimeoutSeconds $TimeoutPipSeconds | Out-Null
+            } else {
+                Invoke-CheckedCommand `
+                    -Stage "runtime rollback uninstall" `
+                    -Command "python" `
+                    -Arguments @("-m", "pip", "uninstall", "--yes", "avaya-case-review-runtime") `
+                    -Description "Removing the newly installed MCP runtime" `
+                    -TimeoutSeconds $TimeoutPipSeconds | Out-Null
+            }
+            $RestoredResult = Invoke-CheckedCommand `
+                -Stage "runtime rollback verification" `
+                -Command "python" `
+                -Arguments @($RuntimeHelperPath, "installed-version") `
+                -Description "Verifying the restored MCP runtime state" `
+                -TimeoutSeconds $TimeoutLocalSeconds
+            $RestoredRuntime = ConvertFrom-CommandJson -Result $RestoredResult -Stage "runtime rollback verification"
+            if (
+                [bool]$RestoredRuntime.installed -ne $PreviousRuntimePresent -or
+                ($PreviousRuntimePresent -and [string]$RestoredRuntime.version -cne $PreviousRuntimeVersion)
+            ) {
+                throw "Stage 'runtime rollback verification' failed."
+            }
+        } catch {
+            throw "Installation failed: $PrimaryMessage Runtime rollback failed: $($_.Exception.Message)"
+        }
+    }
+    throw $PrimaryMessage
 }
 
 Write-Host ""
-if ($DryRun) {
-    Write-Host "Codex installation dry run complete; no state changes were made." -ForegroundColor Green
-} else {
-    Write-Host "Codex installation complete." -ForegroundColor Green
-    Write-Host "Start a new Codex task so the plugin skills and MCP servers are loaded." -ForegroundColor White
-    Write-Host "Example: Provide a case review for SR 1-23659220672" -ForegroundColor White
-}
+Write-Host "Codex installation complete." -ForegroundColor Green
+Write-Host "Start a new Codex task so the plugin skills and MCP servers are loaded." -ForegroundColor White
+Write-Host "Example: Provide a case review for SR 1-23659220672" -ForegroundColor White

@@ -62,6 +62,7 @@ skills/qa/SKILL.md
 skills/gmail-capability/SKILL.md
 tools/casetomd/casetomd_mcp_bridge.py
 tools/installer/windows_common.ps1
+tools/installer/runtime_package.py
 tools/gmail/cloud/GmailMcpBridge.gs
 tools/gmail/cloud/bridge_identity.py
 tools/gmail/cloud/rollback_bridge_v3.appsscript.txt
