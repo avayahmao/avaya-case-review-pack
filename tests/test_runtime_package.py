@@ -128,7 +128,7 @@ class RuntimePackageTests(unittest.TestCase):
     def test_distribution_metadata_and_package_are_installable(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('name = "avaya-case-review-runtime"', pyproject)
-        self.assertIn('version = "1.10.0"', pyproject)
+        self.assertIn('version = "1.10.1"', pyproject)
         self.assertIn('requires-python = ">=3.10"', pyproject)
         self.assertIn('packages = ["avaya_case_review_runtime"]', pyproject)
         self.assertNotIn("dependencies", pyproject)
@@ -312,7 +312,7 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
         )
 
     @staticmethod
-    def write_wheel(path, *, name="avaya-case-review-runtime", version="1.10.0", members=()):
+    def write_wheel(path, *, name="avaya-case-review-runtime", version="1.10.1", members=()):
         distribution = name.replace("-", "_")
         metadata = f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n"
         with zipfile.ZipFile(path, "w") as wheel:
@@ -338,20 +338,20 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
             "avaya_case_review_runtime/casetomd_mcp_bridge.py",
         }
         cases = (
-            ("valid", "avaya-case-review-runtime", "1.10.0", required, True),
-            ("wrong-name", "different-runtime", "1.10.0", required, False),
+            ("valid", "avaya-case-review-runtime", "1.10.1", required, True),
+            ("wrong-name", "different-runtime", "1.10.1", required, False),
             ("wrong-version", "avaya-case-review-runtime", "9.9.9", required, False),
             (
                 "missing-module",
                 "avaya-case-review-runtime",
-                "1.10.0",
+                "1.10.1",
                 {"avaya_case_review_runtime/gmail_mcp_server.py"},
                 False,
             ),
             (
                 "repository-tools",
                 "avaya-case-review-runtime",
-                "1.10.0",
+                "1.10.1",
                 required | {"tools/gmail/gmail_mcp_server.py"},
                 False,
             ),
@@ -363,7 +363,7 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
                     wheel = directory / f"{label}.whl"
                     self.write_wheel(wheel, name=name, version=version, members=members)
                     completed = self.run_helper(
-                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.1"
                     )
                     self.assertEqual(completed.returncode == 0, accepted, completed.stderr)
                     combined = completed.stdout + completed.stderr
@@ -397,7 +397,7 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
                     wheel = directory / f"unsafe-{index}.whl"
                     self.write_wheel(wheel, members=required | {member})
                     completed = self.run_helper(
-                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.1"
                     )
                     self.assertNotEqual(completed.returncode, 0)
                     combined = completed.stdout + completed.stderr
@@ -418,7 +418,7 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
                 "--wheel",
                 str(backslash_wheel),
                 "--version",
-                "1.10.0",
+                "1.10.1",
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertNotIn("Traceback", completed.stdout + completed.stderr)
@@ -436,7 +436,7 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
                 | {"AVAYA_CASE_REVIEW_RUNTIME/GMAIL_MCP_SERVER.PY"},
             )
             completed = self.run_helper(
-                "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+                "validate-wheel", "--wheel", str(wheel), "--version", "1.10.1"
             )
 
         self.assertNotEqual(completed.returncode, 0)
@@ -472,7 +472,7 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
             encrypted.write_bytes(encrypted_bytes)
 
             invalid_utf8 = directory / "SENTINEL_UTF8.whl"
-            distribution = "avaya_case_review_runtime-1.10.0.dist-info/METADATA"
+            distribution = "avaya_case_review_runtime-1.10.1.dist-info/METADATA"
             with zipfile.ZipFile(invalid_utf8, "w") as wheel:
                 wheel.writestr(distribution, b"Name: avaya-case-review-runtime\nVersion: \xffSENTINEL\n")
                 for member in required:
@@ -481,7 +481,7 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
             for wheel in (malformed, encrypted, invalid_utf8):
                 with self.subTest(wheel=wheel.name):
                     completed = self.run_helper(
-                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.1"
                     )
                     self.assertNotEqual(completed.returncode, 0)
                     combined = completed.stdout + completed.stderr

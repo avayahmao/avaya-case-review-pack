@@ -1,6 +1,9 @@
 # Agent Installation Contract
 
 This repository supports **Codex** and **Antigravity**. Claude Code is not an installation target.
+It is a Codex plugin marketplace, not a standalone skill. Do not use a skill
+installer or search for a root `SKILL.md`; the repository root is the plugin
+selected by its marketplace manifest.
 
 When a user says:
 
@@ -8,59 +11,53 @@ When a user says:
 install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 ```
 
-the agent should complete the applicable flow below. Do not execute a remote script directly. Clone the repository, inspect this file and the installer, then run the local entry point.
+the agent should complete the applicable flow below. Do not execute a remote
+script directly. Clone the published stable tag, inspect this file and the
+selected installer, then run the local entry point.
 
-## Mandatory cloud gate
+## Stable release checkout
 
-Before either local installation, deploy and verify the existing Gmail Apps Script Web App by following [`docs/GMAIL_CLOUD_BRIDGE.md`](docs/GMAIL_CLOUD_BRIDGE.md). The Advanced Gmail Service must be named **Gmail**, API version **v1**. Do not activate the local skill if the snapshot, pagination, cursor, manifest, count, or hash checks fail.
-
-This step may require the user to complete Google/Microsoft authorization. An agent must pause for that interaction and must not claim the gate passed without the documented evidence.
-
-## Safe checkout
-
-Use a unique temporary directory so an existing checkout is never overwritten:
+Install **v1.10.1**, not `main`, a branch, or an arbitrary commit. Use a unique
+temporary directory so an existing checkout is never overwritten:
 
 ```powershell
 $Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
-git clone --depth 1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
+git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
 Set-Location $Checkout
+if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }
 ```
+
+If the tag cannot be fetched or verified, stop with an actionable error; do not
+fall back to `main`.
 
 ## Codex installation
 
-After the cloud gate passes, run:
+Run the checked-out installer with no cloud-verification flag:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
 ```
 
-The installer performs the supported Codex sequence:
-
-```powershell
-codex plugin marketplace add https://github.com/avayahmao/avaya-case-review-pack --ref main
-codex plugin add avaya-case-review@avaya-case-review-pack
-```
-
-It also installs the required Python packages and completes the shared Managed Edge Gmail login when required. Use `-IncludeLegacyChromium` only when the explicit one-release `legacy_playwright` rollback runtime is required.
-
-Verify with:
-
-```powershell
-codex plugin list --json
-python .\tools\gmail\gmail_brokerctl.py status
-```
-
-The plugin list must contain `avaya-case-review@avaya-case-review-pack`, and broker status must succeed without exposing credentials. Start a new Codex task after installation.
+The installer installs the runtime package, performs local release-attestation
+and live Gmail cloud compatibility checks, refreshes the marketplace at the
+immutable release tag, installs `avaya-case-review@avaya-case-review-pack`,
+and verifies both MCP definitions. It may pause only for Managed Edge SSO/MFA.
+It does not require an end user to deploy Apps Script. Start a new Codex task
+after installation.
 
 ## Antigravity installation
 
-After the same cloud gate passes, run:
+Run the checked-out installer:
 
 ```powershell
 .\install.bat
 ```
 
-The installer deploys the plugin and MCP tools under `%USERPROFILE%\.gemini\`, preserves unrelated MCP configuration, and opens Managed Edge for SSO/MFA only when required. Restart Antigravity after installation.
+The installer performs the same local attestation and live compatibility checks,
+deploys the plugin and MCP tools under `%USERPROFILE%\.gemini\`, preserves
+unrelated MCP configuration, and opens Managed Edge for SSO/MFA only when
+required. It does not deploy the Gmail cloud source. Restart Antigravity after
+installation.
 
 Verify that these files exist and that the broker status succeeds:
 
@@ -74,7 +71,7 @@ python "$env:USERPROFILE\.gemini\tools\gmail\gmail_brokerctl.py" status
 
 Installation is complete only when:
 
-1. The Gmail cloud bridge verification passed.
+1. The installer passed its local attestation and live Gmail cloud compatibility checks.
 2. The selected host reports the plugin installed.
 3. Both CaseToMD and Gmail MCP definitions are present.
 4. The Gmail broker is healthy or the required interactive login completed.

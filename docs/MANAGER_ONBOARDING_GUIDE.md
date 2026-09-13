@@ -20,23 +20,38 @@ Before starting local setup, ensure your workstation meets the following require
 
 ## 2. Quick Start: One-Click Automated Setup
 
-### Required Cloud Prerequisite (Before Local Installation)
+### GitHub URL Installation (Codex and Antigravity)
 
-Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow [GMAIL_CLOUD_BRIDGE.md](GMAIL_CLOUD_BRIDGE.md). Enable the **Advanced Gmail Service** named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any `install-codex.ps1`, `install.bat`, `setup_env.ps1`, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.
+Use the exact AI-agent request below. This repository is a Codex plugin marketplace, not a standalone skill: do not use a skill installer or look for a root `SKILL.md`.
+
+```text
+install this plugin: https://github.com/avayahmao/avaya-case-review-pack
+```
+
+Clone the stable **v1.10.1** tag into a unique temporary directory and verify it before running an installer:
+
+```powershell
+$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
+git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
+Set-Location $Checkout
+if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }
+```
+
+The installers perform release-attestation and live Gmail cloud compatibility checks automatically. End users do not deploy the Gmail Apps Script Web App; that is a maintainer release responsibility.
 
 ### Codex Setup
 
-For Codex, follow [`../INSTALL.md`](../INSTALL.md) or run the checked-out installer after the cloud gate passes:
+For Codex, follow [`../INSTALL.md`](../INSTALL.md) or run the checked-out installer:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
 ```
 
 Start a new Codex task after the installer reports success. The Antigravity-specific steps below are not required for a Codex-only installation.
 
 ### Antigravity Local Component Setup
 
-After the cloud deployment and verification gate passes, configure the local components using the included PowerShell script (`setup_env.ps1`).
+Configure the local components using the checked-out `install.bat` entry point.
 
 ### Step-by-Step Execution
 
@@ -47,14 +62,14 @@ After the cloud deployment and verification gate passes, configure the local com
    ```
 3. Run the installer script:
    ```powershell
-   .\setup_env.ps1
+   .\install.bat
    ```
 
 > [!TIP]
 > If PowerShell displays a script execution policy restriction, run:
 > ```powershell
 > Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-> .\setup_env.ps1
+> .\install.bat
 > ```
 
 ### What the Automated Script Does
@@ -102,7 +117,7 @@ Every case review must pass **Complete Context Before Analysis**. CaseToMD is fe
 
 The first list call may bootstrap with an empty `snapshot_before`, but it must return a non-empty snapshot. Every later list/read call reuses that exact same snapshot. If any source or coverage step fails, the output is only `Context collection incomplete` with sanitized counts and the blocker; no Executive Summary, RCA, ownership conclusion, or Evidence Appendix is produced. `gmail_search` and `gmail_read` remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate completeness workflow.
 
-The exhaustive endpoint runs in the existing Gmail MCP Apps Script project and requires the **Advanced Gmail Service** named Gmail, API version v1. An administrator must deploy and verify that cloud source before installing the updated local MCP modules and Agent SKILL; `setup_env.ps1` does not deploy Apps Script. See [GMAIL_CLOUD_BRIDGE.md](GMAIL_CLOUD_BRIDGE.md). This operational source is separate from the optional Sheets/Docs governance example, and attachment bodies remain outside the collection contract.
+The exhaustive endpoint runs in the existing Gmail MCP Apps Script project and requires the **Advanced Gmail Service** named Gmail, API version v1. Maintainers deploy and verify that cloud source as a release gate; the installer validates its release attestation and live compatibility before activation, and `setup_env.ps1` does not deploy Apps Script. See [GMAIL_CLOUD_BRIDGE.md](GMAIL_CLOUD_BRIDGE.md). This operational source is separate from the optional Sheets/Docs governance example, and attachment bodies remain outside the collection contract.
 
 ---
 

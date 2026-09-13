@@ -258,12 +258,12 @@ This payload applies only to a manually deployed optional extension and a separa
 
 ## 5. Deployment & Installation Architecture
 
-The cloud deployment is an explicit prerequisite: deploy and verify the existing Gmail MCP Apps Script with the Advanced Gmail Service named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any local install or local Agent SKILL activation. The checked-out repository then exposes two supported local installation modes; neither installer deploys the cloud source:
+The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source. For a production URL installation, clone and verify the immutable `v1.10.1` tag (`git clone --depth 1 --branch v1.10.1` followed by `git describe --exact-match --tags HEAD`) before inspecting and running the selected local installer. The installers validate the local release attestation and live cloud compatibility before activation. The checked-out repository then exposes two supported local installation modes; neither installer deploys the cloud source:
 
 ```powershell
-# Codex: validate the acknowledgement, install dependencies, add the Git marketplace,
-# install avaya-case-review@avaya-case-review-pack, and complete broker login if required.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified
+# Codex: install the runtime package, validate attestation and compatibility,
+# add the immutable Git marketplace, install the plugin, and complete login if required.
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
 
 # Antigravity: install.bat invokes setup_env.ps1 to deploy the plugin and MCP runtime
 # under %USERPROFILE%\.gemini\.

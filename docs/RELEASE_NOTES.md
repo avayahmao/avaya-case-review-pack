@@ -10,6 +10,21 @@ No unreleased changes.
 
 ---
 
+## [v1.10.1] - 2026-09-09: GitHub URL Plugin Bootstrap Repair
+
+### Deterministic AI Agent Installation
+
+* Publishes a first-screen GitHub URL bootstrap pinned to the immutable `v1.10.1` tag, with unique temporary checkout and exact-tag verification before any local installer runs.
+* Corrects incorrect skill-installer routing: the repository root is a Codex plugin marketplace, not a standalone skill, and end users are not instructed to search for a root `SKILL.md`.
+* Removes the end-user manual Gmail cloud deployment gate. Maintainers deploy and verify the Apps Script bridge as a release gate; local installers perform release-attestation and live compatibility checks.
+
+### Codex Runtime Launch Repair
+
+* Resolves Codex MCP launch paths by running Gmail and CaseToMD from the installed `avaya-case-review-runtime` Python package rather than relative plugin scripts.
+* Bumps the shared plugin and runtime metadata to `1.10.1` and keeps the Codex and Antigravity manifests aligned.
+
+---
+
 ## [v1.10.0] - 2026-08-27: Investigation-Complete Reviews and Quality Audits
 
 ### Durable Case Follow-up and Approved Learning

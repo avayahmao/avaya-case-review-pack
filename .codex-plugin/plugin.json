@@ -1,6 +1,6 @@
 {
   "name": "avaya-case-review",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "description": "Evidence-grounded Avaya Siebel SR and ServiceNow incident reviews with exhaustive Gmail correlation, explicit QA scoring, and alarm auditing.",
   "author": {
     "name": "Avaya Support Management",

@@ -117,6 +117,24 @@
         <p>No unreleased changes.</p>
     </div>
 
+    <!-- VERSION 1.10.1 -->
+    <div>
+        <span class="version-tag">v1.10.1</span>
+        <span class="version-date">2026-09-09 - GitHub URL Plugin Bootstrap Repair</span>
+        <h3>GitHub URL Plugin Bootstrap Repair</h3>
+        <h3>Deterministic AI Agent Installation</h3>
+        <ul>
+            <li>Publishes a first-screen GitHub URL bootstrap pinned to the immutable <code>v1.10.1</code> tag, with unique temporary checkout and exact-tag verification before any local installer runs.</li>
+            <li>Corrects incorrect skill-installer routing: the repository root is a Codex plugin marketplace, not a standalone skill, and end users are not instructed to search for a root <code>SKILL.md</code>.</li>
+            <li>Removes the end-user manual Gmail cloud deployment gate. Maintainers deploy and verify the Apps Script bridge as a release gate; local installers perform release-attestation and live compatibility checks.</li>
+        </ul>
+        <h3>Codex Runtime Launch Repair</h3>
+        <ul>
+            <li>Resolves Codex MCP launch paths by running Gmail and CaseToMD from the installed <code>avaya-case-review-runtime</code> Python package rather than relative plugin scripts.</li>
+            <li>Bumps the shared plugin and runtime metadata to <code>1.10.1</code> and keeps the Codex and Antigravity manifests aligned.</li>
+        </ul>
+    </div>
+
     <!-- VERSION 1.10.0 -->
     <div>
         <span class="version-tag">v1.10.0</span>

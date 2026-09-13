@@ -24,6 +24,16 @@ MANAGER_MD = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.md"
 MANAGER_HTML = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.html"
 TDD_MD = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.md"
 TDD_HTML = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.html"
+URL_INSTALL_DOCS = (
+    README_MD,
+    README_HTML,
+    AGENTS,
+    INSTALL_CONTRACT,
+    MANAGER_MD,
+    MANAGER_HTML,
+    TDD_MD,
+    TDD_HTML,
+)
 
 
 def load_json(path: Path):
@@ -139,7 +149,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
             write_attestation(
                 fixture / "tools/gmail/cloud/GmailMcpBridge.gs",
                 fixture / "tools/gmail/cloud/bridge_release_attestation.json",
-                "1.10.0",
+                "1.10.1",
                 "2026-09-09T00:00:00Z",
             )
             dry_run = subprocess.run(
@@ -160,51 +170,38 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 check=False,
             )
         self.assertEqual(0, dry_run.returncode, dry_run.stderr)
-        self.assertIn("Ref:         v1.10.0", dry_run.stdout)
+        self.assertIn("Ref:         v1.10.1", dry_run.stdout)
         self.assertIn("Planned stage: new marketplace add", dry_run.stdout)
         self.assertIn("Planned stage: new plugin add", dry_run.stdout)
         self.assertIn("no state changes were made", dry_run.stdout)
 
-    def test_agent_contract_has_both_supported_install_modes(self):
-        contract = INSTALL_CONTRACT.read_text(encoding="utf-8")
-        for marker in (
-            "install this plugin: https://github.com/avayahmao/avaya-case-review-pack",
-            "install-codex.ps1 -CloudBridgeVerified",
-            "codex plugin marketplace add https://github.com/avayahmao/avaya-case-review-pack --ref main",
-            "codex plugin add avaya-case-review@avaya-case-review-pack",
-            ".\\install.bat",
-            "Claude Code is not an installation target",
-        ):
-            self.assertIn(marker, contract)
+    def test_github_bootstrap_is_first_and_rejects_skill_installer(self):
+        readme = README_MD.read_text(encoding="utf-8")
+        bootstrap = readme.index("AI Agent Installation")
+        overview = readme.index("Overview")
+        self.assertLess(bootstrap, overview)
+        self.assertIn("Codex plugin marketplace, not a standalone skill", readme)
+        self.assertIn("git clone --depth 1 --branch v1.10.1", readme)
+        self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", readme)
 
-        for path in (README_MD, README_HTML, AGENTS):
+        for path in (README_MD, README_HTML, AGENTS, INSTALL_CONTRACT, MANAGER_MD, MANAGER_HTML):
             with self.subTest(document=path.name):
-                content = path.read_text(encoding="utf-8")
+                content = path.read_text(encoding="utf-8-sig")
                 self.assertIn(
                     "install this plugin: https://github.com/avayahmao/avaya-case-review-pack",
                     content,
                 )
-                self.assertIn("install-codex.ps1", content)
-                self.assertIn("install.bat", content)
+                self.assertNotIn("Use a skill-only install for the full product", content)
 
-        self.assertLess(
-            contract.index("Mandatory cloud gate"),
-            contract.index("Codex installation"),
-        )
-        self.assertLess(
-            contract.index("Mandatory cloud gate"),
-            contract.index("Antigravity installation"),
-        )
+        self.assertFalse((ROOT / "SKILL.md").exists())
 
-        for path in (MANAGER_MD, MANAGER_HTML, TDD_MD, TDD_HTML):
-            with self.subTest(dual_host_document=path.name):
-                content = path.read_text(encoding="utf-8")
-                self.assertIn("install-codex.ps1", content)
-                self.assertIn("install.bat", content)
-                self.assertLess(
-                    content.index("Cloud deployment and verification"),
-                    content.index("install-codex.ps1"),
-                )
+    def test_docs_share_stable_tag_and_no_end_user_cloud_deployment(self):
+        for path in URL_INSTALL_DOCS:
+            with self.subTest(document=path.name):
+                text = path.read_text(encoding="utf-8-sig")
+                self.assertIn("v1.10.1", text)
+                self.assertIn("install-codex.ps1", text)
+                self.assertNotIn("Before either local installation, deploy", text)
 
     def test_readme_has_a_github_mermaid_workflow_and_html_equivalent(self):
         markdown = README_MD.read_text(encoding="utf-8")

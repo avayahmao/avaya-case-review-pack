@@ -41,14 +41,21 @@
 </ul>
 <hr />
 <h2>2. Quick Start: One-Click Automated Setup</h2>
-<h3>Required Cloud Prerequisite (Before Local Installation)</h3>
-<p>Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow <a href="GMAIL_CLOUD_BRIDGE.md">GMAIL_CLOUD_BRIDGE.md</a>. Enable the <strong>Advanced Gmail Service</strong> named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any <code>install-codex.ps1</code>, <code>install.bat</code>, <code>setup_env.ps1</code>, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.</p>
+<h3>GitHub URL Installation (Codex and Antigravity)</h3>
+<p>Use the exact AI-agent request below. This repository is a Codex plugin marketplace, not a standalone skill: do not use a skill installer or look for a root <code>SKILL.md</code>.</p>
+<pre><code>install this plugin: https://github.com/avayahmao/avaya-case-review-pack</code></pre>
+<p>Clone the stable <strong>v1.10.1</strong> tag into a unique temporary directory and verify it before running an installer:</p>
+<pre><code>$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
+git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
+Set-Location $Checkout
+if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }</code></pre>
+<p>The installers perform release-attestation and live Gmail cloud compatibility checks automatically. End users do not deploy the Gmail Apps Script Web App; that is a maintainer release responsibility.</p>
 <h3>Codex Setup</h3>
-<p>For Codex, follow <a href="../INSTALL.md">../INSTALL.md</a> or run the checked-out installer after the cloud gate passes:</p>
-<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified</code></pre>
+<p>For Codex, follow <a href="../INSTALL.md">../INSTALL.md</a> or run the checked-out installer:</p>
+<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1</code></pre>
 <p>Start a new Codex task after the installer reports success. The Antigravity-specific steps below are not required for a Codex-only installation.</p>
 <h3>Antigravity Local Component Setup</h3>
-<p>After the cloud deployment and verification gate passes, configure the local components using the included PowerShell script (<code>setup_env.ps1</code>).</p>
+<p>Configure the local components using the checked-out <code>install.bat</code> entry point.</p>
 <h3>Step-by-Step Execution</h3>
 <ol>
 <li>Open <strong>PowerShell</strong> on your workstation.</li>
@@ -57,14 +64,14 @@
    cd Path\To\avaya-case-review-pack</code></li>
 <li>Run the installer script:<br />
 <code>powershell
-   .\setup_env.ps1</code></li>
+   .\install.bat</code></li>
 </ol>
 <blockquote>
 <p>[!TIP]<br />
 If PowerShell displays a script execution policy restriction, run:<br />
 <code>powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\setup_env.ps1</code></p>
+.\install.bat</code></p>
 </blockquote>
 <h3>What the Automated Script Does</h3>
 <ol>
@@ -103,7 +110,7 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 <h3>Current Case-Review Collection Gate</h3>
 <p>Every case review must pass <strong>Complete Context Before Analysis</strong>. CaseToMD is fetched first; every Case note is processed, supported related IDs are retained as Case context, and only the primary raw Case ID is enumerated with <code>gmail_list_threads</code> through every <code>next_page_token</code>. Each unique matched thread is then read with <code>gmail_read_thread_page</code> through every <code>next_cursor</code>, including every message in every primary-ID-matched Gmail thread that is eligible for the shared snapshot and every body chunk. The Context Coverage Ledger requires exactly one completed record-ID query and must pass its note, thread, message, chunk, hash, manifest, and shared-snapshot equalities before analysis or report generation.</p>
 <p>The first list call may bootstrap with an empty <code>snapshot_before</code>, but it must return a non-empty snapshot. Every later list/read call reuses that exact same snapshot. If any source or coverage step fails, the output is only <code>Context collection incomplete</code> with sanitized counts and the blocker; no Executive Summary, RCA, ownership conclusion, or Evidence Appendix is produced. <code>gmail_search</code> and <code>gmail_read</code> remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate completeness workflow.</p>
-<p>The exhaustive endpoint runs in the existing Gmail MCP Apps Script project and requires the <strong>Advanced Gmail Service</strong> named Gmail, API version v1. An administrator must deploy and verify that cloud source before installing the updated local MCP modules and Agent SKILL; <code>setup_env.ps1</code> does not deploy Apps Script. See <a href="GMAIL_CLOUD_BRIDGE.md">GMAIL_CLOUD_BRIDGE.md</a>. This operational source is separate from the optional Sheets/Docs governance example, and attachment bodies remain outside the collection contract.</p>
+<p>The exhaustive endpoint runs in the existing Gmail MCP Apps Script project and requires the <strong>Advanced Gmail Service</strong> named Gmail, API version v1. Maintainers deploy and verify that cloud source as a release gate; the installer validates its release attestation and live compatibility before activation, and <code>setup_env.ps1</code> does not deploy Apps Script. See <a href="GMAIL_CLOUD_BRIDGE.md">GMAIL_CLOUD_BRIDGE.md</a>. This operational source is separate from the optional Sheets/Docs governance example, and attachment bodies remain outside the collection contract.</p>
 <hr />
 <h2>5. Using the Case Review Capability</h2>
 <p>To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigravity in plain natural language.</p>

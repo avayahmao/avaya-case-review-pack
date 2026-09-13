@@ -165,6 +165,24 @@
 
 <div class="main-container">
 
+    <h2>AI Agent Installation</h2>
+    <p>Use this exact request with an AI agent:</p>
+    <pre><code>install this plugin: https://github.com/avayahmao/avaya-case-review-pack</code></pre>
+    <p>This repository is a <strong>Codex plugin marketplace, not a standalone skill</strong>. Do not use a skill installer; the repository root is the plugin selected by its marketplace manifest. Do not search for a root <code>SKILL.md</code> or route this URL to a skill-only install.</p>
+    <p>Install the published stable release <strong>v1.10.1</strong>, never the moving default branch. Clone it into a unique temporary directory, verify the checked-out tag, then inspect <a href="INSTALL.md">INSTALL.md</a> and the selected local installer before running it:</p>
+<pre><code>$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
+git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
+Set-Location $Checkout
+if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }</code></pre>
+    <p>Choose the host entry point from that tagged checkout:</p>
+<pre><code># Codex
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
+
+# Antigravity
+.\install.bat</code></pre>
+    <p>The installers perform the local release-attestation and live Gmail cloud compatibility checks automatically. Pause only if Managed Edge opens for SSO/MFA; otherwise the installer continues, verifies the plugin and MCP definitions, then requires a new Codex task or an Antigravity restart.</p>
+
+    <h2>Overview</h2>
     <p>This package provides an automated <strong>Case Review Suite</strong> for Avaya Support & Operations Managers. It supports <strong>Codex</strong> and <strong>Antigravity</strong> and integrates <strong>CaseToMD</strong>, <strong>Gmail</strong>, and the <strong>Embedded 10-Domain Avaya Debugger Knowledge Base</strong> to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with evidence-grounded technical direction checks.</p>
 
     <h2>How does it work</h2>
@@ -232,19 +250,6 @@
     </ul>
     <p><strong>Complete Context Before Analysis</strong> uses the Advanced Gmail Service cloud bridge to process every Case note, query Gmail using the primary raw Case ID only, and process every message in every primary-ID-matched Gmail thread under one stable snapshot. Note-derived related IDs remain available for Case analysis but do not trigger Gmail queries; attachment bodies are excluded. If any source, page-token, cursor, count, hash, manifest, or snapshot check fails, the only result is <code>Context collection incomplete</code> with sanitized coverage counts and the blocker. <code>gmail_search</code>, <code>gmail_read</code>, and <code>gmail_send</code> remain backward-compatible APIs, but search and read cannot satisfy this exhaustive gate.</p>
 
-    <h2>Cloud Prerequisite (Complete Before Local Setup)</h2>
-    <p>Before unpacking or running the local installer, open the existing Gmail MCP Apps Script project and follow <a href="docs/GMAIL_CLOUD_BRIDGE.md">docs/GMAIL_CLOUD_BRIDGE.md</a>. Enable the Advanced Gmail Service named Gmail, API version v1; deploy the new Web App version at the existing URL; and verify the zero-result, real-case snapshot/page-token, and multi-message cursor checks. Cloud deployment and verification must complete before any <code>install-codex.ps1</code>, <code>install.bat</code>, <code>setup_env.ps1</code>, or local Agent SKILL activation. If the gate is not satisfied, keep the exhaustive Agent gate inactive.</p>
-
-    <h2>Install Directly from the GitHub URL</h2>
-    <p>Codex and Antigravity agents can follow this request:</p>
-    <pre><code>install this plugin: https://github.com/avayahmao/avaya-case-review-pack</code></pre>
-    <p>The normative machine-actionable steps are in <a href="INSTALL.md">INSTALL.md</a>. The agent clones the repository into a unique temporary directory, verifies the cloud prerequisite above, selects the current host, runs the checked-out installer, completes SSO/MFA when requested, and verifies the installed plugin. Remote scripts are never executed without first checking out and inspecting them.</p>
-
-    <h3>Codex</h3>
-    <p>After cloud verification, run:</p>
-    <pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1 -CloudBridgeVerified</code></pre>
-    <p>This uses the native Codex marketplace flow (<code>codex plugin marketplace add</code> followed by <code>codex plugin add</code>), installs the bundled Gmail and CaseToMD MCP definitions, and shares the existing per-user Managed Edge broker. Start a new Codex task after installation.</p>
-
     <h2>Antigravity Quick Setup (1-Click)</h2>
     <p><strong>Recommended (works under corporate Group Policy):</strong></p>
     <ol>
@@ -270,7 +275,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
 .\install.bat</pre>
     <p>When that variable is set, the installer uses your CA bundle instead of the bypass. Chromium remains installed for the explicit one-release <code>legacy_playwright</code> rollback; normal Gmail traffic uses the Edge broker.</p>
     <h3>Gmail broker operations</h3>
-    <p>The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> from <code>gmail_brokerctl.py</code>; see <a href="docs/GMAIL_EDGE_BROKER.md">docs/GMAIL_EDGE_BROKER.md</a>. The rollback switch is explicit (<code>GMAIL_BACKEND=legacy_playwright</code>) and there is no automatic fallback. After the cloud gate above passes, the local installer deploys the Python broker modules; it intentionally does not deploy the cloud source.</p>
+    <p>The broker owns one dedicated Edge context and serializes requests from all Gmail MCP processes. Use <code>status</code>, <code>diagnostics</code>, <code>start</code>, <code>login</code>, and <code>stop</code> from <code>gmail_brokerctl.py</code>; see <a href="docs/GMAIL_EDGE_BROKER.md">docs/GMAIL_EDGE_BROKER.md</a>. The rollback switch is explicit (<code>GMAIL_BACKEND=legacy_playwright</code>) and there is no automatic fallback. The local installer deploys the Python broker modules; the Gmail cloud source remains release-maintained and is never deployed by an end-user installer.</p>
 
     <h2>Complete Documentation Suite (<code>docs/</code>)</h2>
     <p>All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the <strong><a href="docs/">docs/</a></strong> directory:</p>
@@ -279,7 +284,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
         <ul>
             <li><strong>Release Notes &amp; Version Track</strong>:
                 <ul>
-                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> - v1.10.0 - latest release</li>
+                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> - v1.10.1 - latest release</li>
                 </ul>
             </li>
             <li><strong>Executive Presentation</strong>:
@@ -309,7 +314,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
     <h2>Package Structure</h2>
     <ul>
         <li><code>setup_env.ps1</code>: Automated environment installer script.</li>
-        <li><code>install-codex.ps1</code>: Cloud-gated Codex marketplace, plugin, dependency, and Gmail login installer.</li>
+        <li><code>install-codex.ps1</code>: Codex marketplace, plugin, dependency, attestation, live-compatibility, and Gmail login installer.</li>
         <li><code>INSTALL.md</code>: Agent-readable GitHub URL installation contract for Codex and Antigravity.</li>
         <li><code>.codex-plugin/plugin.json</code> / <code>.agents/plugins/marketplace.json</code> / <code>.mcp.json</code>: Codex plugin, marketplace, and bundled MCP metadata.</li>
         <li><code>docs/GMAIL_CLOUD_BRIDGE.md</code>: Advanced Gmail Service deployment, verification, sequencing, and rollback runbook.</li>

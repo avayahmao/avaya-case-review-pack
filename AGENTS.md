@@ -8,7 +8,10 @@
 
 The **Avaya Case Review Suite** — a distributable pack for Avaya Support & Operations Managers. It supports both Codex and Antigravity and ships:
 
-Before any local installation or Agent activation, deploy and verify the existing Gmail MCP Apps Script with the **Advanced Gmail Service** named Gmail, API version v1, using `docs/GMAIL_CLOUD_BRIDGE.md`. Cloud deployment and verification must complete before any `install-codex.ps1`, `install.bat`, `setup_env.ps1`, or local Agent SKILL activation; keep the exhaustive gate inactive until the cloud checks pass.
+The Gmail Apps Script Web App is a maintainer-owned release dependency. End-user
+installers validate the local release attestation and live cloud compatibility;
+they never ask an end user to deploy the cloud source. The maintainer procedure
+is in `docs/GMAIL_CLOUD_BRIDGE.md`.
 
 - an Antigravity/Claude-style **skill** (`case-review`) that turns a raw Siebel SR / ServiceNow INC ID into an executive-ready management brief
 - a Codex repository plugin (`.codex-plugin/plugin.json`) and repository marketplace (`.agents/plugins/marketplace.json`) that expose the same canonical workflow and bundled MCP servers
@@ -30,11 +33,13 @@ install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 
 Follow [`INSTALL.md`](INSTALL.md). Do not execute a remote script directly: clone the repository into a unique temporary directory, inspect the checked-out installer, and select the current host's supported entry point.
 
-- **Codex:** after the Gmail cloud gate passes, run `install-codex.ps1 -CloudBridgeVerified`. This installs Python dependencies, registers the Git-backed marketplace, installs `avaya-case-review@avaya-case-review-pack`, and completes Managed Edge login when required.
-- **Antigravity:** after the same cloud gate passes, run `install.bat`; it retains the existing `setup_env.ps1` deployment into `%USERPROFILE%\.gemini\`.
+- **Do not use a skill installer.** This is a Codex plugin marketplace, not a standalone skill; the repository root is the plugin selected by its marketplace manifest.
+- **Stable tag:** clone and verify `v1.10.1` with `git clone --depth 1 --branch v1.10.1` and `git describe --exact-match --tags HEAD` before running any installer. Do not fall back to `main`.
+- **Codex:** run `install-codex.ps1` with no cloud-verification flag. It installs the runtime package, validates local attestation and live cloud compatibility, registers the Git-backed marketplace, installs `avaya-case-review@avaya-case-review-pack`, and completes Managed Edge login when required.
+- **Antigravity:** run `install.bat`; it validates the same release and retains the existing `setup_env.ps1` deployment into `%USERPROFILE%\.gemini\`.
 - **Claude Code:** out of scope. Do not create or install a `.claude-plugin` package.
 
-Cloud deployment and exhaustive verification remain mandatory before either local skill is activated. Interactive SSO/MFA is a legitimate pause; never claim it succeeded without evidence. After installation, start a new Codex task or restart Antigravity.
+Interactive SSO/MFA is a legitimate pause; never claim it succeeded without evidence. After installation, start a new Codex task or restart Antigravity.
 
 ---
 
@@ -143,7 +148,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 3. **Never bypass corporate SSL globally.** The installer's `NODE_TLS_REJECT_UNAUTHORIZED=0` is scoped to the single `playwright install chromium` call and restored immediately. If you're adding new network operations that fail behind corp proxy, prefer honoring `NODE_EXTRA_CA_CERTS` first.
 4. **Browser login recovery must survive early browser-window close.** The active Managed Edge broker restores and verifies its headless context after login interaction. Any legacy rollback code that reads a page after user interaction must guard with `page.is_closed()` and wrap `context.close()` in `try/except`.
 5. **Keep Codex and Antigravity on one canonical workflow.** Root `skills/` files are thin Codex entry points; the full workflow remains under `plugins/avaya-case-review/skills/`. Do not fork the report contract.
-6. **Keep the Codex installer cloud-gated.** `install-codex.ps1` must refuse state changes unless `-CloudBridgeVerified` is supplied; dry-run is the only exception.
+6. **Keep the Codex installer centrally cloud-gated.** `install-codex.ps1` must validate local release attestation and live compatibility before state changes; `-CloudBridgeVerified` is a deprecated compatibility parameter and never bypasses validation.
 
 ---
 
@@ -156,7 +161,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 | Add a new Avaya-domain reference | new `.md` in `plugins/avaya-case-review/skills/case-review/references/`, plus a row in the SKILL.md routing table |
 | Change the installer | `setup_env.ps1` (invoked by `install.bat`) — verify with `powershell -NoProfile -Command "[PSParser]::Tokenize((Get-Content -Raw './setup_env.ps1'),[ref]$null)|Out-Null"` |
 | Change Gmail behavior | `tools/gmail/gmail_mcp_server.py`, `gmail_edge_broker.py`, `gmail_broker_client.py`, `gmail_brokerctl.py`, and `gmail_legacy_backend.py`; keep `edge_broker` as the default and the explicit `legacy_playwright` rollback path tested |
-| Deploy the Gmail cloud bridge | Follow `docs/GMAIL_CLOUD_BRIDGE.md`; update the existing Apps Script Web App before local MCP/SKILL deployment |
+| Deploy the Gmail cloud bridge | Maintainers follow `docs/GMAIL_CLOUD_BRIDGE.md` as a release gate; do not route end users to deploy Apps Script |
 | Change CaseToMD behavior | `tools/casetomd/casetomd_mcp_bridge.py` |
 | Update docs | `docs/` — HTML and MD versions should be kept in sync, README top-level too |
 
@@ -183,6 +188,7 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Version history (all on GitHub Releases, most recent first):
 
+- **v1.10.1** — GitHub URL plugin bootstrap and runtime-packaged Codex MCP launch repair
 - **v1.10.0** — Investigation-complete reviews, QA scoring, and alarm audit
 - **v1.9.4** — Cloud bridge pagination speedup
 - **v1.9.3** — Whole-case storyline and problem lineage

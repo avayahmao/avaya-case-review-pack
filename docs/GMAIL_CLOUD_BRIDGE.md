@@ -1,10 +1,14 @@
-# Gmail Cloud Bridge Deployment Runbook
+# Gmail Cloud Bridge Maintainer Release Runbook
 
-This runbook deploys the exhaustive Gmail MCP cloud endpoint. It updates the
-existing Gmail MCP Apps Script Web App; it does not deploy the optional
-governance example in `examples/optional-appsscript/Code.gs`.
+This maintainer-only runbook deploys the exhaustive Gmail MCP cloud endpoint
+for release **v1.10.1**. It updates the existing Gmail MCP Apps Script Web App;
+it does not deploy the optional governance example in
+`examples/optional-appsscript/Code.gs`. End users install the tagged package
+with `install-codex.ps1` or `install.bat`; those installers perform local
+release-attestation and live compatibility checks automatically and must not be
+used to deploy this cloud source.
 
-## Deployment gate
+## Maintainer release gate
 
 Complete these steps in order:
 
@@ -17,11 +21,11 @@ Complete these steps in order:
 7. Complete controlled authorization if Google requests the newly required Gmail scopes. Confirm the expected account and scopes before allowing access.
 8. Verify a zero-result `list_threads` request returns `complete=true`. Then run a real case query and confirm that it retains one stable snapshot across the complete page-token chain. Track every `next_page_token`; a repeated or regressing token, a missing `complete` field, a quota/timeout, or a 15-minute verification deadline is a failure.
 9. Verify one multi-message thread through cursor exhaustion and complete the documented hash/count checks for its manifest, messages, and body chunks. Track every `next_cursor` with the same repeated/regressing-token, missing-`complete`, quota/timeout, and deadline guards.
-10. **Only then** deploy the updated local Gmail MCP modules and Agent SKILL.
+10. **Only then** create the release attestation and publish the updated local Gmail MCP modules and Agent package.
 
 If the Advanced Gmail Service cannot be enabled, authorization cannot be
-completed, or either verification fails, stop. Do not deploy the local SKILL
-that activates the exhaustive gate.
+completed, or either verification fails, stop. Do not publish the local package
+or its attestation.
 
 ## Sanitized verification examples
 
@@ -50,18 +54,18 @@ $CaseId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_CASE_ID")
 $ZeroResultId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_ZERO_RESULT_ID")
 
 function Assert-Equal([string]$Name, $Actual, $Expected) {
-    if ($Actual -ne $Expected) { throw "FAIL: $Name; do not activate local Agent SKILL" }
+    if ($Actual -ne $Expected) { throw "FAIL: $Name; do not publish local release package" }
     Write-Host "PASS: $Name"
 }
 
 function Assert-True([string]$Name, [bool]$Condition) {
-    if (-not $Condition) { throw "FAIL: $Name; do not activate local Agent SKILL" }
+    if (-not $Condition) { throw "FAIL: $Name; do not publish local release package" }
     Write-Host "PASS: $Name"
 }
 
 function Assert-VerificationDeadline([string]$Name) {
     if ((Get-Date).ToUniversalTime() -ge $verificationDeadline) {
-        throw "FAIL: verification deadline exceeded during $Name; do not activate local Agent SKILL"
+        throw "FAIL: verification deadline exceeded during $Name; do not publish local release package"
     }
 }
 
@@ -102,7 +106,7 @@ function Invoke-Bridge([hashtable]$Parameters) {
         $parsed | Add-Member -NotePropertyName raw_text -NotePropertyValue $raw
         return $parsed
     } catch {
-        throw "FAIL: cloud request timeout/quota/error; do not activate local Agent SKILL"
+        throw "FAIL: cloud request timeout/quota/error; do not publish local release package"
     }
 }
 
@@ -136,7 +140,7 @@ do {
     Assert-Equal "page complete flag matches next token" ([bool]$page.complete) ([string]::IsNullOrEmpty($pageToken))
     if ($pageToken) {
         if ($seenPageTokens.ContainsKey($pageToken)) {
-            throw "FAIL: repeated or regressing page token; do not activate local Agent SKILL"
+            throw "FAIL: repeated or regressing page token; do not publish local release package"
         }
         $seenPageTokens[$pageToken] = $true
         $page = Invoke-Bridge @{
@@ -218,7 +222,7 @@ foreach ($threadId in $threadIds) {
         Assert-Equal "cursor complete flag matches next cursor" ([bool]$threadPage.complete) ([string]::IsNullOrEmpty($nextCursor))
         if ($nextCursor) {
             if ($seenCursors.ContainsKey($nextCursor)) {
-                throw "FAIL: repeated or regressing cursor; do not activate local Agent SKILL"
+                throw "FAIL: repeated or regressing cursor; do not publish local release package"
             }
             $seenCursors[$nextCursor] = $true
         }
@@ -258,7 +262,8 @@ if ($LASTEXITCODE -ne 0) { throw "FAIL: local CLI read smoke check" }
 
 The check passes only when every `Assert-...` line reports `PASS`. Any repeated
 or regressing page token/cursor, missing `complete`, deadline expiry, quota,
-timeout, count/hash mismatch, or remaining process/state is a failure; do not activate the local Agent SKILL.
+timeout, count/hash mismatch, or remaining process/state is a failure; do not
+publish or activate the local release package.
 The script keeps response objects in memory solely to compare counts, manifest
 hashes, UTF-8 byte counts, and body hashes;
 it never prints message bodies or writes tokens, IDs, cookies, or credentials

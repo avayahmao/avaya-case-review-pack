@@ -677,7 +677,7 @@ class CaseReviewContractTests(unittest.TestCase):
             "thread response includes complete",
             "-TimeoutSec 60",
             "timeout/quota/error",
-            "do not activate local Agent SKILL",
+            "do not publish local release package",
         ]:
             self.assertIn(marker, verification)
         for forbidden in [
@@ -724,64 +724,31 @@ class CaseReviewContractTests(unittest.TestCase):
             "quota",
             "timeout",
             "missing `complete`",
-            "do not activate the local Agent SKILL",
+            "publish or activate the local release package",
         ]:
             self.assertIn(marker, runbook)
 
-    def test_cloud_deployment_precedes_local_install_and_activation_in_each_core_doc(self):
-        readme_md = read(README_MD)
-        readme_html = read(README_HTML)
-        manager_md = read(MANAGER_MD)
-        manager_html = read(MANAGER_HTML)
-        tdd_md = read(TDD_MD)
-        tdd_html = read(TDD_HTML)
-        agents = read(AGENTS_MD)
-        documents = {
-            "readme_md": readme_md[readme_md.index("## Cloud Prerequisite"):],
-            "readme_html": readme_html[readme_html.index("<h2>Cloud Prerequisite"):],
-            "manager_md": extract_between(
-                manager_md,
-                "## 2. Quick Start: One-Click Automated Setup",
-                "## 5. Using the Case Review Capability",
-            ),
-            "manager_html": extract_between(
-                manager_html,
-                "<h2>2. Quick Start: One-Click Automated Setup</h2>",
-                "<h2>5. Using the Case Review Capability</h2>",
-            ),
-            "tdd_md": extract_between(
-                tdd_md,
-                "## 5. Deployment & Installation Architecture",
-                "## 6. Verification & Validation Framework",
-            ),
-            "tdd_html": extract_between(
-                tdd_html,
-                "<h2>5. Deployment & Installation Architecture</h2>",
-                "<h2>6. Verification &amp; Validation Framework</h2>",
-            ),
-            "agents": extract_between(
-                agents,
-                "## 1. What this repo is",
-                "## 2. When the user asks for a case review",
-            ),
-        }
-        for name, content in documents.items():
-            with self.subTest(document=name):
-                cloud = content.index("Cloud deployment and verification")
-                self.assertLess(
-                    content.index("Advanced Gmail Service"),
-                    cloud,
-                )
-                for local_marker in [
-                    "install.bat",
-                    "setup_env.ps1",
-                    "local Agent SKILL",
-                ]:
-                    self.assertLess(
-                        cloud,
-                        content.index(local_marker),
-                        f"{local_marker} appears before the cloud gate",
-                    )
+    def test_core_docs_assign_cloud_deployment_to_maintainers(self):
+        documents = [
+            read(README_MD),
+            read(README_HTML),
+            read(MANAGER_MD),
+            read(MANAGER_HTML),
+            read(TDD_MD),
+            read(TDD_HTML),
+            read(AGENTS_MD),
+        ]
+        for content in documents:
+            with self.subTest(document=content[:40]):
+                self.assertIn("install-codex.ps1", content)
+                self.assertIn("v1.10.1", content)
+                self.assertIn("attestation", content.lower())
+                self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", content)
+                self.assertNotIn("Before either local installation, deploy", content)
+
+        runbook = read(GMAIL_CLOUD_BRIDGE_MD)
+        self.assertIn("## Maintainer release gate", runbook)
+        self.assertIn("End users install the tagged package", runbook)
 
     def test_manager_guides_describe_managed_edge_default_and_chromium_rollback(self):
         stale_claim = "headless browser engine required for Gmail automation"
@@ -1545,7 +1512,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
-    def test_release_metadata_targets_v1_10_0(self):
+    def test_release_metadata_targets_v1_10_1(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
         self.assertIn("[v1.8.0]", release_md)
@@ -1585,17 +1552,17 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.4", release_html)
         self.assertIn("Cloud Bridge Pagination Speedup", release_md)
         self.assertIn("Cloud Bridge Pagination Speedup", release_html)
-        self.assertIn("[v1.10.0]", release_md)
-        self.assertIn("v1.10.0", release_html)
-        self.assertIn("Investigation-Complete Reviews and Quality Audits", release_md)
-        self.assertIn("Investigation-Complete Reviews and Quality Audits", release_html)
+        self.assertIn("[v1.10.1]", release_md)
+        self.assertIn("v1.10.1", release_html)
+        self.assertIn("GitHub URL Plugin Bootstrap Repair", release_md)
+        self.assertIn("GitHub URL Plugin Bootstrap Repair", release_html)
         plugin = json.loads(read(PLUGIN_JSON))
-        self.assertEqual("1.10.0", plugin["version"])
+        self.assertEqual("1.10.1", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.10.0 - latest release", content)
+                self.assertIn("v1.10.1 - latest release", content)
                 self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
@@ -1609,7 +1576,7 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.2", agents)
         self.assertIn("v1.9.3", agents)
         self.assertIn("v1.9.4", agents)
-        self.assertIn("v1.10.0", agents)
+        self.assertIn("v1.10.1", agents)
         self.assertNotIn("Target release (not yet published)", agents)
 
     def test_distributable_docs_have_no_machine_specific_file_urls(self):

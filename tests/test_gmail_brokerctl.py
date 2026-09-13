@@ -63,7 +63,7 @@ class RecordingClient:
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE_SOURCE = ROOT / "tools/gmail/cloud/GmailMcpBridge.gs"
-PLUGIN_VERSION = "1.10.0"
+PLUGIN_VERSION = "1.10.1"
 
 
 def make_capabilities(**overrides):
