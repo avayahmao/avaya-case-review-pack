@@ -169,18 +169,7 @@
     <p>Use this exact request with an AI agent:</p>
     <pre><code>install this plugin: https://github.com/avayahmao/avaya-case-review-pack</code></pre>
     <p>This repository is a <strong>Codex plugin marketplace, not a standalone skill</strong>. Do not use a skill installer; the repository root is the plugin selected by its marketplace manifest. Do not search for a root <code>SKILL.md</code> or route this URL to a skill-only install.</p>
-    <p>Install the published stable release <strong>v1.10.1</strong>, never the moving default branch. Clone it into a unique temporary directory, verify the checked-out tag, then inspect <a href="INSTALL.md">INSTALL.md</a> and the selected local installer before running it:</p>
-<pre><code>$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
-git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
-Set-Location $Checkout
-if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }</code></pre>
-    <p>Choose the host entry point from that tagged checkout:</p>
-<pre><code># Codex
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
-
-# Antigravity
-.\install.bat</code></pre>
-    <p>The installers perform the local release-attestation and live Gmail cloud compatibility checks automatically. Pause only if Managed Edge opens for SSO/MFA; otherwise the installer continues, verifies the plugin and MCP definitions, then requires a new Codex task or an Antigravity restart.</p>
+    <p>The <strong>v1.10.1 release candidate is not published</strong>. Do not attempt a URL-only install from a presumed <code>v1.10.1</code> tag or run its no-flag installer yet; <strong>v1.10.0 is the latest published release</strong>. URL-only stable installation becomes active only after maintainers complete the Gmail cloud attestation, create the <code>v1.10.1</code> tag, and publish the release. At that point the bootstrap will direct Codex users to <code>install-codex.ps1</code> and Antigravity users to <code>install.bat</code>, with the local attestation and live compatibility checks.</p>
 
     <h2>Overview</h2>
     <p>This package provides an automated <strong>Case Review Suite</strong> for Avaya Support & Operations Managers. It supports <strong>Codex</strong> and <strong>Antigravity</strong> and integrates <strong>CaseToMD</strong>, <strong>Gmail</strong>, and the <strong>Embedded 10-Domain Avaya Debugger Knowledge Base</strong> to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with evidence-grounded technical direction checks.</p>
@@ -284,7 +273,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
         <ul>
             <li><strong>Release Notes &amp; Version Track</strong>:
                 <ul>
-                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> - v1.10.1 - latest release</li>
+                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> - v1.10.0 - latest published release; v1.10.1 release preparation</li>
                 </ul>
             </li>
             <li><strong>Executive Presentation</strong>:

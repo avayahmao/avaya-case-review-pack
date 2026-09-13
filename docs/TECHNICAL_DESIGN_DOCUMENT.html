@@ -419,14 +419,7 @@ function sendDailyManagerDigest() { ... }</pre>
     </ol>
 
     <h2>5. Deployment & Installation Architecture</h2>
-    <p>The Gmail Apps Script deployment is a maintainer release gate, documented in <code>docs/GMAIL_CLOUD_BRIDGE.md</code>; end users do not deploy the cloud source. For a production URL installation, clone and verify the immutable <code>v1.10.1</code> tag (<code>git clone --depth 1 --branch v1.10.1</code> followed by <code>git describe --exact-match --tags HEAD</code>) before inspecting and running the selected local installer. The installers validate the local release attestation and live cloud compatibility before activation. The checked-out repository then exposes two supported local installation modes; neither installer deploys the cloud source:</p>
-<pre># Codex
-# install the runtime package, validate attestation and compatibility,
-# add the immutable Git marketplace, install the plugin, and complete login if required.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
-
-# Antigravity: install.bat invokes setup_env.ps1
-.\install.bat</pre>
+    <p>The Gmail Apps Script deployment is a maintainer release gate, documented in <code>docs/GMAIL_CLOUD_BRIDGE.md</code>; end users do not deploy the cloud source. <code>v1.10.1</code> is an unreleased release candidate, so URL-only stable installation is unavailable until maintainers complete attestation, create the immutable tag, and publish the release. <code>v1.10.0</code> remains the latest published release. After publication, the no-flag <code>install-codex.ps1</code> and <code>install.bat</code> installers validate local attestation and live cloud compatibility before activation; neither deploys the cloud source.</p>
     <p>The Antigravity setup path performs these local phases:</p>
 <pre># 1. Environment Verification
 # Checks Python 3.10+, PowerShell 5.1+, and Antigravity App directory

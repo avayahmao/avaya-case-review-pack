@@ -15,32 +15,13 @@ not use a skill installer; the repository root is the plugin selected by its
 marketplace manifest. Do not search for a root `SKILL.md` or route this URL to
 a skill-only install.
 
-Install the published stable release **v1.10.1**, never the moving default
-branch. Clone it into a unique temporary directory, verify the checked-out tag,
-then inspect [`INSTALL.md`](INSTALL.md) and the selected local installer before
-running it:
-
-```powershell
-$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
-git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
-Set-Location $Checkout
-if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }
-```
-
-Choose the host entry point from that tagged checkout:
-
-```powershell
-# Codex
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
-
-# Antigravity
-.\install.bat
-```
-
-The installers perform the local release-attestation and live Gmail cloud
-compatibility checks automatically. Pause only if Managed Edge opens for
-SSO/MFA; otherwise the installer continues, verifies the plugin and MCP
-definitions, then requires a new Codex task or an Antigravity restart.
+The **v1.10.1 release candidate is not published**. Do not attempt a URL-only
+install from a presumed `v1.10.1` tag or run its no-flag installer yet;
+**v1.10.0 is the latest published release**. URL-only stable installation
+becomes active only after maintainers complete the Gmail cloud attestation,
+create the `v1.10.1` tag, and publish the release. At that point the bootstrap
+will direct Codex users to `install-codex.ps1` and Antigravity users to
+`install.bat`, with the local attestation and live compatibility checks.
 
 ## Overview
 
@@ -152,7 +133,7 @@ The broker owns one dedicated Edge context and serializes requests from all Gmai
 All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](docs/)** directory:
 
 - **Release Notes & Version Track**:
-  - **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** - v1.10.1 - latest release
+  - **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** - v1.10.0 - latest published release; v1.10.1 release preparation
 - **Executive Presentation**:
   - **[docs/PRESENTATION.html](docs/PRESENTATION.html)** - Interactive Browser Slide Deck
   - **[docs/Avaya_Case_Review_Suite_Presentation.pptx](docs/Avaya_Case_Review_Suite_Presentation.pptx)** - PowerPoint Presentation Deck

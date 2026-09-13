@@ -258,17 +258,7 @@ This payload applies only to a manually deployed optional extension and a separa
 
 ## 5. Deployment & Installation Architecture
 
-The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source. For a production URL installation, clone and verify the immutable `v1.10.1` tag (`git clone --depth 1 --branch v1.10.1` followed by `git describe --exact-match --tags HEAD`) before inspecting and running the selected local installer. The installers validate the local release attestation and live cloud compatibility before activation. The checked-out repository then exposes two supported local installation modes; neither installer deploys the cloud source:
-
-```powershell
-# Codex: install the runtime package, validate attestation and compatibility,
-# add the immutable Git marketplace, install the plugin, and complete login if required.
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
-
-# Antigravity: install.bat invokes setup_env.ps1 to deploy the plugin and MCP runtime
-# under %USERPROFILE%\.gemini\.
-.\install.bat
-```
+The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source. `v1.10.1` is an unreleased release candidate, so URL-only stable installation is unavailable until maintainers complete attestation, create the immutable tag, and publish the release. `v1.10.0` remains the latest published release. After publication, the no-flag `install-codex.ps1` and `install.bat` installers validate local attestation and live cloud compatibility before activation; neither deploys the cloud source.
 
 The Antigravity setup path performs these local phases:
 

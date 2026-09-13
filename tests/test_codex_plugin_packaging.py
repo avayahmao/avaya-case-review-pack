@@ -181,7 +181,8 @@ class CodexPluginPackagingTests(unittest.TestCase):
         overview = readme.index("Overview")
         self.assertLess(bootstrap, overview)
         self.assertIn("Codex plugin marketplace, not a standalone skill", readme)
-        self.assertIn("git clone --depth 1 --branch v1.10.1", readme)
+        self.assertIn("v1.10.1 release candidate", readme)
+        self.assertNotIn("git clone --depth 1 --branch v1.10.1", readme)
         self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", readme)
 
         for path in (README_MD, README_HTML, AGENTS, INSTALL_CONTRACT, MANAGER_MD, MANAGER_HTML):
@@ -195,13 +196,17 @@ class CodexPluginPackagingTests(unittest.TestCase):
 
         self.assertFalse((ROOT / "SKILL.md").exists())
 
-    def test_docs_share_stable_tag_and_no_end_user_cloud_deployment(self):
+    def test_docs_keep_v1_10_1_unreleased_until_the_release_gate(self):
         for path in URL_INSTALL_DOCS:
             with self.subTest(document=path.name):
                 text = path.read_text(encoding="utf-8-sig")
                 self.assertIn("v1.10.1", text)
                 self.assertIn("install-codex.ps1", text)
                 self.assertNotIn("Before either local installation, deploy", text)
+                self.assertNotIn("git clone --depth 1 --branch v1.10.1", text)
+
+        self.assertIn("v1.10.0 - latest published release", README_MD.read_text(encoding="utf-8"))
+        self.assertIn("v1.10.0 - latest published release", README_HTML.read_text(encoding="utf-8"))
 
     def test_readme_has_a_github_mermaid_workflow_and_html_equivalent(self):
         markdown = README_MD.read_text(encoding="utf-8")

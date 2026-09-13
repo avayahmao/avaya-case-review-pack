@@ -28,49 +28,34 @@ Use the exact AI-agent request below. This repository is a Codex plugin marketpl
 install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 ```
 
-Clone the stable **v1.10.1** tag into a unique temporary directory and verify it before running an installer:
-
-```powershell
-$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
-git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
-Set-Location $Checkout
-if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }
-```
-
-The installers perform release-attestation and live Gmail cloud compatibility checks automatically. End users do not deploy the Gmail Apps Script Web App; that is a maintainer release responsibility.
+The **v1.10.1 release candidate is not published**. Do not clone a presumed
+`v1.10.1` tag or use URL-only installation until maintainers complete the Gmail
+cloud attestation, create the tag, and publish the release. **v1.10.0 remains
+the latest published release.** The published v1.10.1 bootstrap will require a
+unique temporary checkout and exact-tag verification before an installer runs.
+End users do not deploy the Gmail Apps Script Web App; that is a maintainer
+release responsibility.
 
 ### Codex Setup
 
-For Codex, follow [`../INSTALL.md`](../INSTALL.md) or run the checked-out installer:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
-```
+For Codex, follow [`../INSTALL.md`](../INSTALL.md). After the v1.10.1 release
+gate, use the checked-out no-flag `install-codex.ps1` installer.
 
 Start a new Codex task after the installer reports success. The Antigravity-specific steps below are not required for a Codex-only installation.
 
 ### Antigravity Local Component Setup
 
-Configure the local components using the checked-out `install.bat` entry point.
+After the release gate, configure the local components using the checked-out
+`install.bat` entry point.
 
 ### Step-by-Step Execution
 
-1. Open **PowerShell** on your workstation.
-2. Navigate to the extracted `avaya-case-review-pack` directory:
-   ```powershell
-   cd Path\To\avaya-case-review-pack
-   ```
-3. Run the installer script:
-   ```powershell
-   .\install.bat
-   ```
+After the release gate, follow the published installer instructions. Do not run
+the unreleased v1.10.1 candidate from a presumed tag.
 
 > [!TIP]
-> If PowerShell displays a script execution policy restriction, run:
-> ```powershell
-> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-> .\install.bat
-> ```
+> The published bootstrap provides the supported PowerShell invocation after
+> the release gate completes.
 
 ### What the Automated Script Does
 

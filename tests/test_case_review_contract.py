@@ -748,7 +748,7 @@ class CaseReviewContractTests(unittest.TestCase):
 
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)
         self.assertIn("## Maintainer release gate", runbook)
-        self.assertIn("End users install the tagged package", runbook)
+        self.assertIn("URL-only stable installation becomes active only after this gate", runbook)
 
     def test_manager_guides_describe_managed_edge_default_and_chromium_rollback(self):
         stale_claim = "headless browser engine required for Gmail automation"
@@ -1512,7 +1512,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
-    def test_release_metadata_targets_v1_10_1(self):
+    def test_release_metadata_keeps_v1_10_1_as_unreleased_candidate(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
         self.assertIn("[v1.8.0]", release_md)
@@ -1552,8 +1552,8 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.4", release_html)
         self.assertIn("Cloud Bridge Pagination Speedup", release_md)
         self.assertIn("Cloud Bridge Pagination Speedup", release_html)
-        self.assertIn("[v1.10.1]", release_md)
-        self.assertIn("v1.10.1", release_html)
+        self.assertIn("v1.10.1 release preparation", release_md)
+        self.assertIn("v1.10.1 release preparation", release_html)
         self.assertIn("GitHub URL Plugin Bootstrap Repair", release_md)
         self.assertIn("GitHub URL Plugin Bootstrap Repair", release_html)
         plugin = json.loads(read(PLUGIN_JSON))
@@ -1562,8 +1562,8 @@ class CaseReviewContractTests(unittest.TestCase):
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.10.1 - latest release", content)
-                self.assertNotIn("release candidate", content)
+                self.assertIn("v1.10.0 - latest published release", content)
+                self.assertIn("v1.10.1 release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
         agents = read(AGENTS_MD)

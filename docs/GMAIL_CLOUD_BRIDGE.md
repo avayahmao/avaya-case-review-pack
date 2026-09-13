@@ -1,12 +1,13 @@
 # Gmail Cloud Bridge Maintainer Release Runbook
 
 This maintainer-only runbook deploys the exhaustive Gmail MCP cloud endpoint
-for release **v1.10.1**. It updates the existing Gmail MCP Apps Script Web App;
-it does not deploy the optional governance example in
-`examples/optional-appsscript/Code.gs`. End users install the tagged package
-with `install-codex.ps1` or `install.bat`; those installers perform local
-release-attestation and live compatibility checks automatically and must not be
-used to deploy this cloud source.
+for the **v1.10.1 release candidate**. It updates the existing Gmail MCP Apps
+Script Web App; it does not deploy the optional governance example in
+`examples/optional-appsscript/Code.gs`. `v1.10.0` remains the latest published
+release. URL-only stable installation becomes active only after this gate
+creates the v1.10.1 attestation, tag, and release; then `install-codex.ps1` or
+`install.bat` performs local release-attestation and live compatibility checks
+automatically and must not be used to deploy this cloud source.
 
 ## Maintainer release gate
 

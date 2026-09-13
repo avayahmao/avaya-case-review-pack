@@ -44,34 +44,17 @@
 <h3>GitHub URL Installation (Codex and Antigravity)</h3>
 <p>Use the exact AI-agent request below. This repository is a Codex plugin marketplace, not a standalone skill: do not use a skill installer or look for a root <code>SKILL.md</code>.</p>
 <pre><code>install this plugin: https://github.com/avayahmao/avaya-case-review-pack</code></pre>
-<p>Clone the stable <strong>v1.10.1</strong> tag into a unique temporary directory and verify it before running an installer:</p>
-<pre><code>$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
-git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
-Set-Location $Checkout
-if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }</code></pre>
-<p>The installers perform release-attestation and live Gmail cloud compatibility checks automatically. End users do not deploy the Gmail Apps Script Web App; that is a maintainer release responsibility.</p>
+<p>The <strong>v1.10.1 release candidate is not published</strong>. Do not clone a presumed <code>v1.10.1</code> tag or use URL-only installation until maintainers complete the Gmail cloud attestation, create the tag, and publish the release. <strong>v1.10.0 remains the latest published release.</strong> The published v1.10.1 bootstrap will require a unique temporary checkout and exact-tag verification before an installer runs. End users do not deploy the Gmail Apps Script Web App; that is a maintainer release responsibility.</p>
 <h3>Codex Setup</h3>
-<p>For Codex, follow <a href="../INSTALL.md">../INSTALL.md</a> or run the checked-out installer:</p>
-<pre><code>powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1</code></pre>
+<p>For Codex, follow <a href="../INSTALL.md">../INSTALL.md</a>. After the v1.10.1 release gate, use the checked-out no-flag <code>install-codex.ps1</code> installer.</p>
 <p>Start a new Codex task after the installer reports success. The Antigravity-specific steps below are not required for a Codex-only installation.</p>
 <h3>Antigravity Local Component Setup</h3>
-<p>Configure the local components using the checked-out <code>install.bat</code> entry point.</p>
+<p>After the release gate, configure the local components using the checked-out <code>install.bat</code> entry point.</p>
 <h3>Step-by-Step Execution</h3>
-<ol>
-<li>Open <strong>PowerShell</strong> on your workstation.</li>
-<li>Navigate to the extracted <code>avaya-case-review-pack</code> directory:<br />
-<code>powershell
-   cd Path\To\avaya-case-review-pack</code></li>
-<li>Run the installer script:<br />
-<code>powershell
-   .\install.bat</code></li>
-</ol>
+<p>After the release gate, follow the published installer instructions. Do not run the unreleased v1.10.1 candidate from a presumed tag.</p>
 <blockquote>
 <p>[!TIP]<br />
-If PowerShell displays a script execution policy restriction, run:<br />
-<code>powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\install.bat</code></p>
+The published bootstrap provides the supported PowerShell invocation after the release gate completes.</p>
 </blockquote>
 <h3>What the Automated Script Does</h3>
 <ol>

@@ -15,49 +15,33 @@ the agent should complete the applicable flow below. Do not execute a remote
 script directly. Clone the published stable tag, inspect this file and the
 selected installer, then run the local entry point.
 
-## Stable release checkout
+## Release-preparation status
 
-Install **v1.10.1**, not `main`, a branch, or an arbitrary commit. Use a unique
-temporary directory so an existing checkout is never overwritten:
-
-```powershell
-$Checkout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-case-review-pack-" + [guid]::NewGuid().ToString("N"))
-git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack $Checkout
-Set-Location $Checkout
-if ((git describe --exact-match --tags HEAD) -ne "v1.10.1") { throw "Expected the v1.10.1 release tag." }
-```
-
-If the tag cannot be fetched or verified, stop with an actionable error; do not
-fall back to `main`.
+`v1.10.1` is an **unreleased release candidate**. Do not clone a presumed
+`v1.10.1` tag or run the candidate as a URL-only installation. `v1.10.0`
+remains the latest published release. URL-only stable installation becomes
+active only after maintainers complete the cloud attestation, create the
+immutable `v1.10.1` tag, and publish the release. The published bootstrap will
+then require a unique temporary checkout and exact-tag verification before any
+local script runs.
 
 ## Codex installation
 
-Run the checked-out installer with no cloud-verification flag:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\install-codex.ps1
-```
-
-The installer installs the runtime package, performs local release-attestation
-and live Gmail cloud compatibility checks, refreshes the marketplace at the
-immutable release tag, installs `avaya-case-review@avaya-case-review-pack`,
-and verifies both MCP definitions. It may pause only for Managed Edge SSO/MFA.
-It does not require an end user to deploy Apps Script. Start a new Codex task
-after installation.
+After the release gate, the checked-out no-flag `install-codex.ps1` installer
+will install the runtime package, perform local release-attestation and live
+Gmail cloud compatibility checks, refresh the marketplace at the immutable
+release tag, install `avaya-case-review@avaya-case-review-pack`, and verify
+both MCP definitions. It may pause only for Managed Edge SSO/MFA. It does not
+require an end user to deploy Apps Script. Start a new Codex task after a
+published installation.
 
 ## Antigravity installation
 
-Run the checked-out installer:
-
-```powershell
-.\install.bat
-```
-
-The installer performs the same local attestation and live compatibility checks,
-deploys the plugin and MCP tools under `%USERPROFILE%\.gemini\`, preserves
-unrelated MCP configuration, and opens Managed Edge for SSO/MFA only when
-required. It does not deploy the Gmail cloud source. Restart Antigravity after
-installation.
+After the release gate, the checked-out `install.bat` installer will perform
+the same local attestation and live compatibility checks, deploy the plugin and
+MCP tools under `%USERPROFILE%\.gemini\`, preserve unrelated MCP configuration,
+and open Managed Edge for SSO/MFA only when required. It does not deploy the
+Gmail cloud source. Restart Antigravity after a published installation.
 
 Verify that these files exist and that the broker status succeeds:
 
