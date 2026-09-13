@@ -17,6 +17,12 @@ or SSO evidence recorded here.
   `________________`.
 - [ ] Confirm the attestation plugin version, bridge version, and contract
   revision match the candidate: `________________`.
+- [ ] Verify the existing Apps Script deployment against the final stamped
+  source by following `docs/GMAIL_CLOUD_BRIDGE.md`; do not redeploy it merely
+  because a release is being prepared.
+- [ ] If the existing deployment is proven mismatched, record the mismatch and
+  obtain separate maintainer authorization before updating the existing Web
+  App. Restart every cloud verification gate after any authorized update.
 
 ## Module-package MCP launch contract
 
@@ -32,11 +38,31 @@ option: the module-package commands below are the only supported launch gates.
 - [ ] Confirm neither MCP definition has a placeholder, private Codex cache
   path, `PYTHONPATH`, `cwd`, or non-stdio transport.
 
+## Local automated gates
+
+- [ ] Run the complete Python suite on each supported release host (Python 3.10 through 3.13):
+  `python -m unittest discover -s tests -p "test_*.py"`.
+- [ ] Run the complete cloud and rollback Node suites:
+  `node --test tests/js/gmail_cloud_bridge.test.mjs tests/js/rollback_bridge_v3.test.mjs`.
+- [ ] Compile every shipped Python tree:
+  `python -m compileall avaya_case_review_runtime tools plugins`.
+- [ ] Parse both installers with Windows PowerShell 5.1:
+  `powershell.exe -NoProfile -Command "$e=$null; [System.Management.Automation.PSParser]::Tokenize((Get-Content -LiteralPath './install-codex.ps1' -Raw),[ref]$e)|Out-Null; if($e){throw $e}; [System.Management.Automation.PSParser]::Tokenize((Get-Content -LiteralPath './setup_env.ps1' -Raw),[ref]$e)|Out-Null; if($e){throw $e}"`.
+- [ ] Verify `install-codex.ps1`, `setup_env.ps1`, `install.bat`, and every
+  shipped `*.ps1`, `*.bat`, and `*.cmd` begins with a UTF-8 BOM and contains
+  CRLF only; record the command and pass result without file contents.
+- [ ] Run `git diff --check` and record a clean result.
+- [ ] Build the ZIP strictly from `release-manifest.txt`, then compare the
+  normalized sorted ZIP entry list with the non-comment manifest entries and
+  fail on any missing, extra, duplicate, traversal, or backslash entry. Do not
+  add the ZIP to Git.
+
 ## Supervised installation
 
 - [ ] Start from a fresh Windows profile and a unique temporary checkout.
-- [ ] Install the exact candidate marketplace source and ref with
-  `install-codex.ps1`.
+- [ ] From the unique checkout, install the exact candidate commit with
+  `./install-codex.ps1 -MarketplaceSource https://github.com/avayahmao/avaya-case-review-pack -MarketplaceRef <candidate-SHA> -AllowUnreleasedRef`;
+  record the resolved installed SHA and require an exact match.
 - [ ] If prompted, complete the visible Managed Edge SSO/MFA interaction;
   record only `passed`, `cancelled`, or `blocked`: `________________`.
 - [ ] Confirm the marketplace and enabled
@@ -48,6 +74,16 @@ option: the module-package commands below are the only supported launch gates.
   reinstall result: `________________`.
 - [ ] Exercise the documented same-source rollback; record rollback result:
   `________________`.
+- [ ] After the candidate is tagged and before publication, start a separate
+  clean Codex task and use only the canonical request
+  `install this plugin: https://github.com/avayahmao/avaya-case-review-pack`.
+  Confirm it resolves the release tag to the candidate SHA and passes every
+  installer gate without local-path assistance.
+- [ ] From that URL-only installation, perform one evidence-complete case review:
+  exhaust the Case notes, the single primary-ID Gmail thread-page
+  chain, and every message cursor; require the Context Coverage Ledger
+  equalities, deterministic full presentation, and durable follow-up record.
+  Record only pass/fail and sanitized counts.
 
 ## Evidence hygiene
 

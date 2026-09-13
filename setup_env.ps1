@@ -304,21 +304,92 @@ function Stop-RunningGmailBroker {
 }
 
 function Get-CanonicalBrokerBuildId {
-    param([Parameter(Mandatory = $true)][string]$RuntimePackageRoot)
+    param(
+        [Parameter(Mandatory = $true)][string]$RuntimePackageRoot,
+        [Parameter(Mandatory = $true)][string]$BridgeSourcePath,
+        [Parameter(Mandatory = $true)][string]$PluginVersion
+    )
 
     $BrokerModulePath = Join-Path $RuntimePackageRoot "gmail_edge_broker.py"
+    $IdentityModulePath = Join-Path $RuntimePackageRoot "bridge_identity.py"
     if (-not (Test-Path -LiteralPath $BrokerModulePath -PathType Leaf)) {
         throw "Canonical Gmail broker runtime module is missing."
     }
+    if (-not (Test-Path -LiteralPath $IdentityModulePath -PathType Leaf)) {
+        throw "Canonical Gmail bridge identity runtime module is missing."
+    }
     $BrokerSource = Get-Content -LiteralPath $BrokerModulePath -Raw -Encoding UTF8
-    $BuildMatch = [regex]::Match(
-        $BrokerSource,
-        'build_id:\s*str\s*=\s*"(?<id>[A-Za-z0-9._-]+)"'
-    )
-    if (-not $BuildMatch.Success) {
+    if (
+        $BrokerSource -notmatch '(?m)^from \.bridge_identity import BROKER_BUILD_ID\s*$' -or
+        $BrokerSource -notmatch 'build_id:\s*str\s*=\s*BROKER_BUILD_ID'
+    ) {
         throw "Unable to determine the canonical Gmail broker build ID."
     }
-    return $BuildMatch.Groups["id"].Value
+    $IdentitySource = Get-Content -LiteralPath $IdentityModulePath -Raw -Encoding UTF8
+    $CloudSource = Get-Content -LiteralPath $BridgeSourcePath -Raw -Encoding UTF8
+    $ProtocolMatch = [regex]::Match($IdentitySource, '(?m)^BRIDGE_PROTOCOL_VERSION\s*=\s*(?<value>\d+)\s*$')
+    $RevisionMatch = [regex]::Match($IdentitySource, '(?m)^CONTRACT_REVISION\s*=\s*(?<value>\d+)\s*$')
+    $RuntimeDigestMatch = [regex]::Match($IdentitySource, '(?m)^BRIDGE_SOURCE_SHA256\s*=\s*"(?<value>[0-9a-f]{64})"\s*$')
+    $CloudDigestMatch = [regex]::Match($CloudSource, '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "(?<value>[0-9a-f]{64})";$')
+    if (
+        -not $ProtocolMatch.Success -or
+        -not $RevisionMatch.Success -or
+        -not $RuntimeDigestMatch.Success -or
+        -not $CloudDigestMatch.Success -or
+        $RuntimeDigestMatch.Groups["value"].Value -cne $CloudDigestMatch.Groups["value"].Value
+    ) {
+        throw "Unable to determine the canonical Gmail broker build ID."
+    }
+    return "$PluginVersion-b$($ProtocolMatch.Groups['value'].Value)-r$($RevisionMatch.Groups['value'].Value)-$($RuntimeDigestMatch.Groups['value'].Value)"
+}
+
+function Get-GmailBrokerSnapshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateFile,
+        [Parameter(Mandatory = $true)][string]$PreferredControlPath,
+        [Parameter(Mandatory = $true)][string]$FallbackControlPath
+    )
+
+    if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
+        return [pscustomobject]@{
+            StatePresent = $false
+            BuildId = ""
+            ControlPath = $FallbackControlPath
+        }
+    }
+    try {
+        $State = Get-Content -LiteralPath $StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]::IsNullOrWhiteSpace([string]$State.build_id)) {
+            throw "invalid"
+        }
+        return [pscustomobject]@{
+            StatePresent = $true
+            BuildId = [string]$State.build_id
+            ControlPath = if (Test-Path -LiteralPath $PreferredControlPath -PathType Leaf) {
+                $PreferredControlPath
+            } else {
+                $FallbackControlPath
+            }
+        }
+    } catch {
+        throw "Existing Gmail broker state is invalid; resolve it before installation."
+    }
+}
+
+function Test-VersionAtLeast {
+    param(
+        [Parameter(Mandatory = $true)][string]$Actual,
+        [Parameter(Mandatory = $true)][version]$Minimum,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+
+    $Match = [regex]::Match($Actual, '(?<!\d)(\d+\.\d+(?:\.\d+)?)(?!\d)')
+    if (-not $Match.Success) {
+        throw "Stage '$Label version' returned an unrecognized version."
+    }
+    if ([version]$Match.Groups[1].Value -lt $Minimum) {
+        throw "$Label $Minimum or newer is required."
+    }
 }
 
 function Assert-BrokerBuildId {
@@ -601,7 +672,9 @@ if (-not $ProjectVersion.Success -or $ProjectVersion.Groups[1].Value -cne $Plugi
     throw "Runtime package version does not match the Antigravity plugin version."
 }
 $ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `
-    -RuntimePackageRoot $CanonicalRuntimePackageRoot
+    -RuntimePackageRoot $CanonicalRuntimePackageRoot `
+    -BridgeSourcePath $BridgeSourcePath `
+    -PluginVersion $PluginVersion
 
 # ------------------------------------------------------------------------------
 # 1. Validate Local Release and Python Environment
@@ -620,6 +693,10 @@ $PythonVersionResult = Invoke-BoundedCommand `
     -TimeoutSeconds $TimeoutLocalSeconds `
     -Environment $BrokerEnvironment
 Write-Host "  Found: $($PythonVersionResult.StdOut.Trim())" -ForegroundColor Green
+Test-VersionAtLeast `
+    -Actual ($PythonVersionResult.StdOut + $PythonVersionResult.StdErr) `
+    -Minimum ([version]'3.10') `
+    -Label 'Python'
 
 $null = Invoke-BoundedCommand `
     -Stage "validate release attestation" `
@@ -678,11 +755,18 @@ if ($PreviousRuntimePresent -and $PreviousRuntimeVersion -cne $PluginVersion) {
         -Environment $BrokerEnvironment
 }
 
+$PriorBroker = Get-GmailBrokerSnapshot `
+    -StateFile $BrokerStateFile `
+    -PreferredControlPath $BrokerCtlPath `
+    -FallbackControlPath $SourceBrokerCtlPath
 $RuntimeMutated = $false
 $CurrentRuntimeWheel = $null
 $RuntimeSmokeWorkDir = $null
 $BackupRoot = $null
 $PreserveBackup = $false
+$PriorBrokerWasRunning = $false
+$CandidateBrokerMayBeRunning = $false
+$DeploymentStarted = $false
 try {
     if ($SkipDependencyInstall) {
         if (-not $PreviousRuntimePresent -or $PreviousRuntimeVersion -cne $PluginVersion) {
@@ -786,6 +870,17 @@ try {
         -TimeoutSeconds $TimeoutBridgeSeconds `
         -Environment $BrokerEnvironment
 
+    if ($PriorBroker.StatePresent) {
+        $PriorStopResult = Stop-RunningGmailBroker `
+            -BrokerCtlPath $SourceBrokerCtlPath `
+            -StateFile $BrokerStateFile `
+            -EdgeProfileDir $EdgeBrokerProfileDir `
+            -PythonCommand $PythonCommand `
+            -BrokerEnvironment $BrokerEnvironment
+        $PriorBrokerWasRunning = $PriorStopResult.exit_code -eq 0
+    }
+
+    $CandidateBrokerMayBeRunning = $true
     $BridgeVerifyResult = Invoke-BoundedCommand `
         -Stage "verify-bridge" `
         -Command $PythonCommand `
@@ -820,18 +915,16 @@ try {
             -AllowFailure
     }
     if ($BridgeVerifyResult.ExitCode -ne 0) {
-        throw "Gmail Cloud Bridge preflight failed with exit code $($BridgeVerifyResult.ExitCode); deployed Antigravity state was not changed."
+        throw "Gmail Cloud Bridge preflight failed with exit code $($BridgeVerifyResult.ExitCode); deployed Antigravity files and configuration were not changed."
     }
     Write-Host "  Gmail Cloud Bridge is authenticated and compatible." -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
-# 3. Stop the Verified Source Broker and Capture Deployment Backups
+# 3. Stop the Verified Candidate Broker and Capture Deployment Backups
 # ------------------------------------------------------------------------------
 Write-Host ""
 Write-Host "[3/6] Preparing a reversible Antigravity deployment..." -ForegroundColor Yellow
 $BrokerStopResult = $null
-$BrokerWasStopped = $false
-$DeploymentStarted = $false
 try {
     $BrokerStopResult = Stop-RunningGmailBroker `
         -BrokerCtlPath $SourceBrokerCtlPath `
@@ -839,7 +932,7 @@ try {
         -EdgeProfileDir $EdgeBrokerProfileDir `
         -PythonCommand $PythonCommand `
         -BrokerEnvironment $BrokerEnvironment
-    $BrokerWasStopped = $BrokerStopResult.exit_code -eq 0
+    $CandidateBrokerMayBeRunning = $false
     Write-Host "  Verified source broker is stopped (control exit $($BrokerStopResult.exit_code))." -ForegroundColor Green
 
     $LegacyProfileBaselineBefore = Get-ProfileBaseline -Path $LegacyProfileDir
@@ -973,6 +1066,22 @@ try {
         -CaseToMdScriptPath $CaseToMdScriptPath
 
     Write-Host "[6/6] Starting and validating the deployed Gmail Edge broker..." -ForegroundColor Yellow
+    $CandidateBrokerMayBeRunning = $true
+    $DeployedBridgeVerify = Invoke-BoundedCommand `
+        -Stage "deployed Gmail bridge verification" `
+        -Command $PythonCommand `
+        -Arguments @(
+            "-B", $BrokerCtlPath, "verify-bridge",
+            "--source", $BridgeSourcePath,
+            "--attestation", $BridgeAttestationPath,
+            "--plugin-version", $PluginVersion
+        ) `
+        -TimeoutSeconds $TimeoutBridgeSeconds `
+        -Environment $BrokerEnvironment `
+        -AllowFailure
+    if ($DeployedBridgeVerify.ExitCode -ne 0) {
+        throw "Deployed Gmail bridge verification failed with exit code $($DeployedBridgeVerify.ExitCode)."
+    }
     $BrokerStatus = Invoke-BoundedCommand `
         -Stage "deployed Gmail broker status" `
         -Command $PythonCommand `
@@ -1026,8 +1135,41 @@ try {
         Pop-Location
     }
 } catch {
-    $PrimaryFailure = $_
+    throw $_
+}
+} catch {
+    $RuntimePrimaryFailure = $_.Exception.Message
     $RecoveryFailures = New-Object System.Collections.Generic.List[string]
+    if ($CandidateBrokerMayBeRunning) {
+        Invoke-DeploymentRecoveryStep `
+            -Stage "candidate Gmail broker stop" `
+            -Failures $RecoveryFailures `
+            -Action {
+                $null = Stop-RunningGmailBroker `
+                    -BrokerCtlPath $SourceBrokerCtlPath `
+                    -StateFile $BrokerStateFile `
+                    -EdgeProfileDir $EdgeBrokerProfileDir `
+                    -PythonCommand $PythonCommand `
+                    -BrokerEnvironment $BrokerEnvironment
+                $CandidateBrokerMayBeRunning = $false
+            }
+    }
+    if ($RuntimeMutated) {
+        Invoke-DeploymentRecoveryStep `
+            -Stage "runtime restoration" `
+            -Failures $RecoveryFailures `
+            -Action {
+                Restore-RuntimePackage `
+                    -PythonCommand $PythonCommand `
+                    -RuntimeHelperPath $RuntimeHelperPath `
+                    -Environment $BrokerEnvironment `
+                    -PreviousPresent $PreviousRuntimePresent `
+                    -PreviousVersion $PreviousRuntimeVersion `
+                    -PreviousWheel $PreviousRuntimeWheel `
+                    -CurrentWheel $CurrentRuntimeWheel `
+                    -CurrentVersion $PluginVersion
+            }
+    }
     if ($DeploymentStarted) {
         Invoke-DeploymentRecoveryStep `
             -Stage "plugin restoration" `
@@ -1083,62 +1225,51 @@ try {
                     -ExpectedBaseline ([string]$DeploymentBaselines[$McpConfigFile])
             }
     }
-    if ($BrokerWasStopped) {
-        Invoke-DeploymentRecoveryStep `
-            -Stage "restored Gmail broker start" `
-            -Failures $RecoveryFailures `
-            -Action {
-                $null = Invoke-BoundedCommand `
-                    -Stage "restored Gmail broker start" `
-                    -Command $PythonCommand `
-                    -Arguments @("-B", $BrokerCtlPath, "start") `
-                    -TimeoutSeconds $TimeoutBridgeSeconds `
-                    -Environment $BrokerEnvironment
-            }
+    if ($PriorBrokerWasRunning) {
+        if ($RecoveryFailures.Count -eq 0) {
+            Invoke-DeploymentRecoveryStep `
+                -Stage "prior Gmail broker restart and verification" `
+                -Failures $RecoveryFailures `
+                -Action {
+                    $PriorStart = Invoke-BoundedCommand `
+                        -Stage "restored Gmail broker start" `
+                        -Command $PythonCommand `
+                        -Arguments @("-B", $PriorBroker.ControlPath, "start") `
+                        -TimeoutSeconds $TimeoutBridgeSeconds `
+                        -Environment $BrokerEnvironment `
+                        -AllowFailure
+                    if ($PriorStart.ExitCode -ne 0 -and $PriorStart.ExitCode -ne 10) {
+                        throw "Restored Gmail broker start failed."
+                    }
+                    $PriorStatus = Invoke-BoundedCommand `
+                        -Stage "restored Gmail broker status" `
+                        -Command $PythonCommand `
+                        -Arguments @("-B", $PriorBroker.ControlPath, "status") `
+                        -TimeoutSeconds $TimeoutBridgeSeconds `
+                        -Environment $BrokerEnvironment `
+                        -AllowFailure
+                    if ($PriorStatus.ExitCode -ne 0 -and $PriorStatus.ExitCode -ne 10) {
+                        throw "Restored Gmail broker status failed."
+                    }
+                    Assert-BrokerBuildId `
+                        -StatusOutput @($PriorStatus.StdOut -split "`r?`n") `
+                        -ExpectedBuildId $PriorBroker.BuildId
+                }
+        } else {
+            $RecoveryFailures.Add("prior broker restart skipped because prerequisite restoration failed")
+        }
     }
     if ($RecoveryFailures.Count -gt 0) {
-        $BackupStatus = "No usable backup was created."
+        $BackupStatus = "No usable deployment backup was created."
         if (
             -not [string]::IsNullOrWhiteSpace($BackupRoot) -and
             (Test-Path -LiteralPath $BackupRoot -PathType Container)
         ) {
             $PreserveBackup = $true
-            $BackupStatus = "Backup preserved at: $BackupRoot"
+            $BackupStatus = "Deployment backup preserved at: $BackupRoot"
             Write-Host "RECOVERY_BACKUP=$BackupRoot"
         }
-        $RecoverySummary = $RecoveryFailures -join " "
-        throw "Antigravity deployment failed: $($PrimaryFailure.Exception.Message) Recovery status: failed ($RecoverySummary) $BackupStatus"
-    }
-    throw $PrimaryFailure
-}
-} catch {
-    $RuntimePrimaryFailure = $_.Exception.Message
-    if ($RuntimeMutated) {
-        try {
-            Restore-RuntimePackage `
-                -PythonCommand $PythonCommand `
-                -RuntimeHelperPath $RuntimeHelperPath `
-                -Environment $BrokerEnvironment `
-                -PreviousPresent $PreviousRuntimePresent `
-                -PreviousVersion $PreviousRuntimeVersion `
-                -PreviousWheel $PreviousRuntimeWheel `
-                -CurrentWheel $CurrentRuntimeWheel `
-                -CurrentVersion $PluginVersion
-        } catch {
-            $RuntimeRecoveryFailure = $_.Exception.Message
-            $BackupStatus = "No usable deployment backup was created."
-            if (
-                -not [string]::IsNullOrWhiteSpace($BackupRoot) -and
-                (Test-Path -LiteralPath $BackupRoot -PathType Container)
-            ) {
-                $BackupStatus = "Deployment backup preserved at: $BackupRoot"
-                if (-not $PreserveBackup) {
-                    Write-Host "RECOVERY_BACKUP=$BackupRoot"
-                }
-                $PreserveBackup = $true
-            }
-            throw "Antigravity installation failed: $RuntimePrimaryFailure Runtime rollback failed: $RuntimeRecoveryFailure $BackupStatus"
-        }
+        throw "Antigravity installation failed: $RuntimePrimaryFailure Recovery status: failed ($($RecoveryFailures -join '; ')). $BackupStatus"
     }
     throw $RuntimePrimaryFailure
 } finally {

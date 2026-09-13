@@ -17,6 +17,7 @@ TDD_MD = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.md"
 TDD_HTML = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.html"
 GMAIL_EDGE_BROKER_MD = ROOT / "docs/GMAIL_EDGE_BROKER.md"
 GMAIL_CLOUD_BRIDGE_MD = ROOT / "docs/GMAIL_CLOUD_BRIDGE.md"
+CODEX_RELEASE_CHECKLIST_MD = ROOT / "docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md"
 RELEASE_MD = ROOT / "docs/RELEASE_NOTES.md"
 RELEASE_HTML = ROOT / "docs/RELEASE_NOTES.html"
 ADM_SPEC = ROOT / "docs/superpowers/specs/2026-08-02-adm-adaptive-integration-design.md"
@@ -496,13 +497,15 @@ class CaseReviewContractTests(unittest.TestCase):
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)
         ordered_markers = [
             "existing Gmail MCP Apps Script",
+            "tools/gmail/cloud/GmailMcpBridge.gs",
+            "bridge_identity.py stamp",
+            "source stamp is not idempotent",
             "Advanced Gmail Service",
             "Gmail v1",
-            "tools/gmail/cloud/GmailMcpBridge.gs",
+            "existing deployment URL",
             "syntax check",
             "Manage deployments",
             "New version",
-            "existing deployment URL",
             "controlled authorization",
             "zero-result",
             "complete=true",
@@ -521,6 +524,9 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertEqual(offsets, sorted(offsets))
         for marker in [
             "optional governance example",
+            "does not redeploy",
+            "If and only if step 4 proves a mismatch",
+            "separate maintainer authorization",
             "primary raw Case ID",
             "Attachments are excluded",
             "Context collection incomplete",
@@ -529,6 +535,9 @@ class CaseReviewContractTests(unittest.TestCase):
             "backward-compatible",
             "prior Apps Script version",
             "Agent gate inactive",
+            "temporary attestation",
+            "gmail_brokerctl.py verify-bridge",
+            "production attestation",
         ]:
             self.assertIn(marker, runbook)
         for marker in [
@@ -688,6 +697,32 @@ class CaseReviewContractTests(unittest.TestCase):
             "BEGIN PRIVATE KEY",
         ]:
             self.assertNotIn(forbidden, verification)
+
+    def test_codex_release_checklist_covers_all_final_host_and_artifact_gates(self):
+        checklist = read(CODEX_RELEASE_CHECKLIST_MD)
+        for marker in (
+            "avaya_case_review_runtime.gmail_mcp_server",
+            "avaya_case_review_runtime.casetomd_mcp_bridge",
+            "Python 3.10 through 3.13",
+            "unittest discover",
+            "node --test",
+            "compileall avaya_case_review_runtime tools plugins",
+            "PSParser",
+            "UTF-8 BOM",
+            "CRLF only",
+            "git diff --check",
+            "ZIP entry list",
+            "<candidate-SHA>",
+            "URL-only installation",
+            "evidence-complete case review",
+        ):
+            self.assertIn(marker, checklist)
+        for forbidden in (
+            "script.googleusercontent.com",
+            "BEGIN PRIVATE KEY",
+            "GMAIL_VERIFY_CASE_ID=",
+        ):
+            self.assertNotIn(forbidden, checklist)
 
     def test_cloud_bridge_verification_bounds_and_advances_each_pagination_chain(self):
         runbook = read(GMAIL_CLOUD_BRIDGE_MD)

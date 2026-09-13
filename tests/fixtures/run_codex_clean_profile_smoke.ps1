@@ -90,6 +90,10 @@ function Write-State($State) { $State | ConvertTo-Json -Depth 8 | Set-Content -L
 if ([string]::IsNullOrWhiteSpace($env:CODEX_HOME) -or $env:CODEX_HOME -ne $env:AVAYA_CLEAN_PROFILE_CODEX_HOME) { exit 81 }
 $State = Read-State
 if ($args.Count -eq 1 -and $args[0] -eq "--version") { "Python 3.10.0"; exit 0 }
+if ($args.Count -ge 2 -and $args[0] -like "*bridge_identity.py" -and $args[1] -eq "validate") {
+    & $env:AVAYA_CLEAN_PROFILE_REAL_PYTHON @args
+    exit $LASTEXITCODE
+}
 if ($args.Count -ge 2 -and $args[0] -like "*runtime_package.py") {
     if ($args[1] -eq "installed-version") {
         if ($State.runtime_installed) { ('{"distribution":"avaya-case-review-runtime","installed":true,"version":"' + $State.plugin_version + '"}') } else { '{"distribution":"avaya-case-review-runtime","installed":false}' }
@@ -97,7 +101,19 @@ if ($args.Count -ge 2 -and $args[0] -like "*runtime_package.py") {
     }
     if ($args[1] -eq "validate-wheel" -or $args[1] -eq "smoke") { exit 0 }
 }
-if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[2] -eq "verify-bridge") { exit 0 }
+if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "avaya_case_review_runtime.gmail_brokerctl") {
+    $BrokerState = Join-Path $env:LOCALAPPDATA "AvayaCaseReview\gmail-broker\state.json"
+    if ($args[2] -eq "verify-bridge") {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $BrokerState) -Force | Out-Null
+        '{"build_id":"candidate"}' | Set-Content -LiteralPath $BrokerState -Encoding UTF8
+        exit 0
+    }
+    if ($args[2] -eq "stop") {
+        if (-not (Test-Path -LiteralPath $BrokerState -PathType Leaf)) { exit 20 }
+        Remove-Item -LiteralPath $BrokerState -Force
+        exit 0
+    }
+}
 if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "pip") {
     if ($args[2] -eq "wheel") {
         $Index = [Array]::IndexOf($args, "--wheel-dir")
@@ -176,6 +192,7 @@ try {
     $env:AVAYA_CLEAN_PROFILE_STATE = $StatePath
     $env:AVAYA_CLEAN_PROFILE_CODEX_HOME = $TestCodexHome
     $env:AVAYA_CLEAN_PROFILE_ADAPTER_ROOT = $AdapterRoot
+    $env:AVAYA_CLEAN_PROFILE_REAL_PYTHON = $RealPythonPath
     $Installer = Join-Path $FixtureRepository "install-codex.ps1"
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Installer -MarketplaceSource $FixtureRepository -MarketplaceRef $MarketplaceRef -AllowUnreleasedRef -SkipLogin *> $InstallerLog
     if ($LASTEXITCODE -ne 0) { throw "Automated installer smoke failed." }

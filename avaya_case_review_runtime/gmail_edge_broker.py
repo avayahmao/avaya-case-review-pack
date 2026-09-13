@@ -16,6 +16,7 @@ import time
 import uuid
 from typing import Any, Callable, Protocol
 
+from .bridge_identity import BROKER_BUILD_ID
 from .gmail_broker_protocol import (
     MAX_FRAME_BYTES,
     PROTOCOL_VERSION,
@@ -479,7 +480,7 @@ class GmailEdgeBroker:
         owner_lock: LifetimeFileLock | None = None,
         logger: SanitizedRotatingLogger | None = None,
         logger_factory: Callable[[Path], SanitizedRotatingLogger] | None = None,
-        build_id: str = "source",
+        build_id: str = BROKER_BUILD_ID,
         instance_id: str | None = None,
         token: str | None = None,
         host: str = "127.0.0.1",

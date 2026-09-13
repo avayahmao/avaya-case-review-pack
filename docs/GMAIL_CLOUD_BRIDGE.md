@@ -1,8 +1,10 @@
 # Gmail Cloud Bridge Maintainer Release Runbook
 
-This maintainer-only runbook deploys the exhaustive Gmail MCP cloud endpoint
-for the **v1.10.1 release candidate**. It updates the existing Gmail MCP Apps
-Script Web App; it does not deploy the optional governance example in
+This maintainer-only runbook verifies the already-deployed exhaustive Gmail MCP
+cloud endpoint against the **v1.10.1 release candidate**. It does not redeploy
+the existing Gmail MCP Apps Script Web App unless verification proves a
+mismatch and a maintainer separately authorizes that update. It never deploys
+the optional governance example in
 `examples/optional-appsscript/Code.gs`. `v1.10.0` remains the latest published
 release. URL-only stable installation becomes active only after this gate
 creates the v1.10.1 attestation, tag, and release; then `install-codex.ps1` or
@@ -11,18 +13,47 @@ automatically and must not be used to deploy this cloud source.
 
 ## Maintainer release gate
 
+From the candidate checkout, stamp the canonical source before opening Apps
+Script. The second command must print the same digest and `git diff --exit-code`
+must show that the second stamp made no change:
+
+```powershell
+$BridgeSource = Resolve-Path "tools/gmail/cloud/GmailMcpBridge.gs"
+$FirstDigest = python tools/gmail/cloud/bridge_identity.py stamp --source $BridgeSource
+if ($LASTEXITCODE -ne 0) { throw "FAIL: source stamp" }
+$StampedBlob = git hash-object -- $BridgeSource
+$SecondDigest = python tools/gmail/cloud/bridge_identity.py stamp --source $BridgeSource
+if ($LASTEXITCODE -ne 0 -or $FirstDigest -cne $SecondDigest) { throw "FAIL: source stamp is not idempotent" }
+if ((git hash-object -- $BridgeSource) -cne $StampedBlob) { throw "FAIL: second stamp changed source" }
+git diff --exit-code -- tools/gmail/cloud/GmailMcpBridge.gs
+if ($LASTEXITCODE -ne 0) { throw "FAIL: candidate source was not already stamped" }
+```
+
 Complete these steps in order:
 
 1. Open the existing Gmail MCP Apps Script project, not the optional governance example.
-2. Enable the Advanced Gmail Service. Select the service named **Gmail**, API version **v1** (shown as `Gmail v1`).
-3. Replace the Web App source with `tools/gmail/cloud/GmailMcpBridge.gs`.
-4. Save the project and run a syntax check in the Apps Script editor.
-5. Select **Deploy > Manage deployments**, edit the existing Web App, select **New version**, and deploy it.
-6. Keep the existing deployment URL; do not create or distribute a replacement endpoint URL.
-7. Complete controlled authorization if Google requests the newly required Gmail scopes. Confirm the expected account and scopes before allowing access.
-8. Verify a zero-result `list_threads` request returns `complete=true`. Then run a real case query and confirm that it retains one stable snapshot across the complete page-token chain. Track every `next_page_token`; a repeated or regressing token, a missing `complete` field, a quota/timeout, or a 15-minute verification deadline is a failure.
-9. Verify one multi-message thread through cursor exhaustion and complete the documented hash/count checks for its manifest, messages, and body chunks. Track every `next_cursor` with the same repeated/regressing-token, missing-`complete`, quota/timeout, and deadline guards.
-10. **Only then** create the release attestation and publish the updated local Gmail MCP modules and Agent package.
+2. Confirm its Advanced Gmail Service is named **Gmail** and uses API version **v1** (shown as `Gmail v1`).
+3. Keep the existing deployment URL; do not create or distribute a replacement endpoint URL.
+4. Run the `capabilities` comparison below against that existing deployment.
+   The live protocol version, contract revision, source digest, and capability
+   flags must match the final stamped candidate source.
+5. If and only if step 4 proves a mismatch, stop. Obtain separate maintainer authorization
+   before replacing the Web App source with
+   `tools/gmail/cloud/GmailMcpBridge.gs`. After authorization, save and run a
+   syntax check, then use **Deploy > Manage deployments**, edit the existing
+   Web App, select **New version**, and retain the existing deployment URL.
+   Restart this runbook from step 1 after any update.
+6. Complete controlled authorization only if Google requests the required
+   Gmail scopes. Confirm the expected account and scopes before allowing access.
+7. Verify a zero-result `list_threads` request returns `complete=true`. Then run a real case query and confirm that it retains one stable snapshot across the complete page-token chain. Track every `next_page_token`; a repeated or regressing token, a missing `complete` field, a quota/timeout, or a 15-minute verification deadline is a failure.
+8. Verify one multi-message thread through cursor exhaustion and complete the documented hash/count checks for its manifest, messages, and body chunks. Track every `next_cursor` with the same repeated/regressing-token, missing-`complete`, quota/timeout, and deadline guards.
+9. Run the Managed Edge `verify-bridge` command below against a temporary
+    attestation. It must compare the live protocol version, contract revision,
+    and source digest and return exit code `0`.
+10. Generate and validate the production attestation with the exact commands
+    below.
+11. **Only then, after every preceding gate passes,** may the local MCP modules or
+    Agent package be activated, pushed, tagged, zipped, or published.
 
 If the Advanced Gmail Service cannot be enabled, authorization cannot be
 completed, or either verification fails, stop. Do not publish the local package
@@ -30,8 +61,9 @@ or its attestation.
 
 ## Sanitized verification examples
 
-Run the following PowerShell checks only after the existing Web App has been
-updated. Set the environment variables in the current local session; do not
+Run the following PowerShell checks against the existing Web App. If a
+separately authorized update was required, restart these checks from the
+beginning after that update. Set the environment variables in the current local session; do not
 commit them, print them, or place their values in a transcript. The values are
 deliberately placeholders so that no URL, case ID, thread ID, page token,
 cursor, or message body is stored in this repository.
@@ -53,6 +85,10 @@ foreach ($name in $requiredInputs) {
 $WebAppUrl = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_WEB_APP_URL")
 $CaseId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_CASE_ID")
 $ZeroResultId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_ZERO_RESULT_ID")
+$CandidateSource = Get-Content -LiteralPath "tools/gmail/cloud/GmailMcpBridge.gs" -Raw
+$ExpectedBridgeVersion = [int]([regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_VERSION = (\d+);$').Groups[1].Value)
+$ExpectedContractRevision = [int]([regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_CONTRACT_REVISION = (\d+);$').Groups[1].Value)
+$ExpectedSourceDigest = [regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "([0-9a-f]{64})";$').Groups[1].Value
 
 function Assert-Equal([string]$Name, $Actual, $Expected) {
     if ($Actual -ne $Expected) { throw "FAIL: $Name; do not publish local release package" }
@@ -109,6 +145,15 @@ function Invoke-Bridge([hashtable]$Parameters) {
     } catch {
         throw "FAIL: cloud request timeout/quota/error; do not publish local release package"
     }
+}
+
+# Compare the existing deployment before any deployment action is considered.
+$liveCapabilities = Invoke-Bridge @{ action = "capabilities" }
+Assert-Equal "live bridge protocol version" ([int]$liveCapabilities.bridge_version) $ExpectedBridgeVersion
+Assert-Equal "live bridge contract revision" ([int]$liveCapabilities.contract_revision) $ExpectedContractRevision
+Assert-Equal "live bridge source digest" ([string]$liveCapabilities.bridge_source_sha256) $ExpectedSourceDigest
+foreach ($capability in @("stable_snapshots", "thread_pagination", "cursor_pagination", "manifest_sha256", "body_bytes", "body_sha256")) {
+    Assert-True "live capability $capability" ($liveCapabilities.capabilities.$capability -eq $true)
 }
 
 # A known no-result placeholder must be supplied by the verifier; do not use a real case ID here.
@@ -249,17 +294,44 @@ Assert-True "at least one multi-message thread exercised" $multiMessageFound
 Write-Host "PASS: response bodies, IDs, tokens, cursors, and secrets were not printed or logged"
 ```
 
-The local CLI has the same argument shape for a post-deployment smoke check;
-keep all values in environment variables and discard its output. This is a
-placeholder only and does not replace the direct cloud checks above:
+After every zero-result, page-token, cursor, count, and hash assertion above
+passes, create a temporary attestation and use the Managed Edge broker to
+compare the live `capabilities` response. The broker output is sanitized; do
+not redirect it to a committed file.
 
 ```powershell
-$McpCli = Join-Path $env:USERPROFILE ".gemini\tools\gmail\gmail_mcp_server.py"
-python $McpCli list-threads $env:GMAIL_VERIFY_CASE_ID --snapshot-before="" --page-token="" --max-results=1 | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "FAIL: local CLI list smoke check" }
-python $McpCli read-thread-page $env:GMAIL_VERIFY_THREAD_ID $env:GMAIL_VERIFY_SNAPSHOT_BEFORE $env:GMAIL_VERIFY_CURSOR | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "FAIL: local CLI read smoke check" }
+$PluginVersion = (Get-Content -LiteralPath ".codex-plugin/plugin.json" -Raw | ConvertFrom-Json).version
+$VerifiedAtUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+$CandidateAttestation = Join-Path ([IO.Path]::GetTempPath()) ("bridge-attestation-" + [guid]::NewGuid().ToString("N") + ".json")
+python tools/gmail/cloud/bridge_identity.py attest `
+  --source tools/gmail/cloud/GmailMcpBridge.gs `
+  --output $CandidateAttestation `
+  --plugin-version $PluginVersion `
+  --verified-at-utc $VerifiedAtUtc `
+  --all-checks-passed
+if ($LASTEXITCODE -ne 0) { throw "FAIL: temporary attestation generation" }
+python tools/gmail/gmail_brokerctl.py verify-bridge `
+  --source tools/gmail/cloud/GmailMcpBridge.gs `
+  --attestation $CandidateAttestation `
+  --plugin-version $PluginVersion | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "FAIL: live protocol/contract/source comparison" }
+python tools/gmail/cloud/bridge_identity.py validate `
+  --source tools/gmail/cloud/GmailMcpBridge.gs `
+  --attestation $CandidateAttestation `
+  --plugin-version $PluginVersion
+if ($LASTEXITCODE -ne 0) { throw "FAIL: temporary attestation validation" }
+Move-Item -LiteralPath $CandidateAttestation -Destination tools/gmail/cloud/bridge_release_attestation.json -Force
+python tools/gmail/cloud/bridge_identity.py validate `
+  --source tools/gmail/cloud/GmailMcpBridge.gs `
+  --attestation tools/gmail/cloud/bridge_release_attestation.json `
+  --plugin-version $PluginVersion
+if ($LASTEXITCODE -ne 0) { throw "FAIL: production attestation validation" }
 ```
+
+Do not run either local installer, activate either Agent skill, push, tag,
+build the release ZIP, or publish the release until the source-stamp
+idempotence check, exhaustive verification loop, live Managed Edge comparison,
+and final production-attestation validation have all passed in that order.
 
 The check passes only when every `Assert-...` line reports `PASS`. Any repeated
 or regressing page token/cursor, missing `complete`, deadline expiry, quota,

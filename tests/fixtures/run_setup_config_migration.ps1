@@ -93,8 +93,10 @@ try {
         -After $ProfileAfter
 
     $BuildId = Get-CanonicalBrokerBuildId `
-        -RuntimePackageRoot (Join-Path $RepoRoot "avaya_case_review_runtime")
-    if ($BuildId -ne "source") {
+        -RuntimePackageRoot (Join-Path $RepoRoot "avaya_case_review_runtime") `
+        -BridgeSourcePath (Join-Path $RepoRoot "tools\gmail\cloud\GmailMcpBridge.gs") `
+        -PluginVersion "1.10.1"
+    if ($BuildId -ne "1.10.1-b4-r1-14f8542b9ed19f1bb84ea2fb0209f8c70151f0d427b48453b904683187e884c0") {
         throw "Installed broker build ID extraction failed."
     }
 

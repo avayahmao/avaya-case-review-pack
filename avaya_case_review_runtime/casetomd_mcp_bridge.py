@@ -72,7 +72,7 @@ def main():
             req = json.loads(line)
             method = req.get('method')
             msg_id = req.get('id')
-            
+
             if method == 'initialize':
                 resp = {
                     'jsonrpc': '2.0',
@@ -105,7 +105,7 @@ def main():
                 params = req.get('params', {})
                 args = params.get('arguments', {})
                 report_id = args.get('report_id', '')
-                
+
                 res = call_casetomd(report_id)
                 resp = {
                     'jsonrpc': '2.0',
@@ -122,7 +122,7 @@ def main():
                     'id': msg_id,
                     'result': {}
                 }
-                
+
             sys.stdout.write(json.dumps(resp) + '\n')
             sys.stdout.flush()
         except Exception as e:

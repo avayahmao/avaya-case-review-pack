@@ -1,4 +1,5 @@
 import copy
+import inspect
 import json
 import subprocess
 import sys
@@ -16,6 +17,9 @@ from tools.gmail.cloud.bridge_identity import (
     validate_attestation,
     write_attestation,
 )
+from avaya_case_review_runtime import __version__
+from avaya_case_review_runtime import bridge_identity as runtime_bridge_identity
+from avaya_case_review_runtime.gmail_edge_broker import GmailEdgeBroker
 
 
 IDENTITY_LINE = 'var GMAIL_BRIDGE_SOURCE_SHA256 = "' + "0" * 64 + '";'
@@ -24,6 +28,22 @@ UTC_TIMESTAMP = "2026-09-09T12:34:56Z"
 
 
 class BridgeSourceIdentityTests(unittest.TestCase):
+    def test_broker_build_identity_binds_release_and_bridge_identity(self):
+        source = (Path(__file__).resolve().parents[1] / "tools/gmail/cloud/GmailMcpBridge.gs").read_text(
+            encoding="utf-8"
+        )
+        source_digest = runtime_bridge_identity.validate_source_identity(source)
+        expected = (
+            f"{__version__}-b{BRIDGE_PROTOCOL_VERSION}-"
+            f"r{CONTRACT_REVISION}-{source_digest}"
+        )
+
+        self.assertEqual(getattr(runtime_bridge_identity, "BROKER_BUILD_ID", None), expected)
+        self.assertEqual(
+            inspect.signature(GmailEdgeBroker).parameters["build_id"].default,
+            expected,
+        )
+
     def test_hash_normalizes_line_endings_and_zeroes_only_identity(self):
         lf = 'var GMAIL_BRIDGE_SOURCE_SHA256 = "' + "a" * 64 + '";\nvar X = 1;\n'
         crlf = lf.replace("\n", "\r\n").replace("a" * 64, "b" * 64)

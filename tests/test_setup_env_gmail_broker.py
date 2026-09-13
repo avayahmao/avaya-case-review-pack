@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from tools.gmail.cloud.bridge_identity import write_attestation
+from avaya_case_review_runtime.bridge_identity import BROKER_BUILD_ID
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +51,7 @@ import sys
 import time
 from pathlib import Path
 
-build_id: str = "source"
+build_id: str = os.environ["SETUP_FIXTURE_EXPECTED_BUILD_ID"]
 event_path = Path(os.environ["SETUP_FIXTURE_EVENTS"])
 counter_path = Path(os.environ["SETUP_FIXTURE_COUNTER"])
 command = sys.argv[1]
@@ -64,25 +65,76 @@ with Path(os.environ["SETUP_FIXTURE_ENVIRONMENTS"]).open("a", encoding="utf-8") 
     }) + "\\n")
 
 if command == "verify-bridge":
+    state_path = Path(os.environ["SETUP_FIXTURE_RUNTIME_STATE"])
+    state = json.loads(state_path.read_text(encoding="utf-8-sig"))
+    control_build = (
+        build_id
+        if state["runtime_version"] == state["plugin_version"]
+        else state["prior_broker_build"]
+    )
+    if state["broker_running"] and state["broker_build"] != control_build:
+        with event_path.open("a", encoding="utf-8") as stream:
+            stream.write("old-broker-rejected-bridge-capabilities\\n")
+        raise SystemExit(30)
     exits = [int(value) for value in os.environ["SETUP_FIXTURE_VERIFY_EXITS"].split(",")]
     index = int(counter_path.read_text(encoding="ascii")) if counter_path.exists() else 0
     counter_path.write_text(str(index + 1), encoding="ascii")
-    raise SystemExit(exits[min(index, len(exits) - 1)])
+    exit_code = exits[min(index, len(exits) - 1)]
+    state["broker_running"] = True
+    state["broker_build"] = control_build
+    state["broker_edge_state"] = "AUTHENTICATED" if exit_code == 0 else "STARTING"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    broker_state = Path(os.environ["SETUP_FIXTURE_BROKER_STATE"])
+    broker_state.parent.mkdir(parents=True, exist_ok=True)
+    broker_state.write_text(json.dumps({"pid": 0, "build_id": control_build}), encoding="utf-8")
+    raise SystemExit(exit_code)
 if command == "login":
     time.sleep(float(os.environ.get("SETUP_FIXTURE_LOGIN_SLEEP", "0")))
     raise SystemExit(int(os.environ.get("SETUP_FIXTURE_LOGIN_EXIT", "0")))
 if command == "stop":
-    raise SystemExit(int(os.environ.get("SETUP_FIXTURE_STOP_EXIT", "20")))
+    state_path = Path(os.environ["SETUP_FIXTURE_RUNTIME_STATE"])
+    state = json.loads(state_path.read_text(encoding="utf-8-sig"))
+    if not state["broker_running"]:
+        raise SystemExit(20)
+    forced = int(os.environ.get("SETUP_FIXTURE_STOP_EXIT", "0"))
+    if forced not in (0, 20):
+        raise SystemExit(forced)
+    state["broker_running"] = False
+    state["broker_edge_state"] = "STARTING"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    Path(os.environ["SETUP_FIXTURE_BROKER_STATE"]).unlink(missing_ok=True)
+    raise SystemExit(0)
 if command == "status":
     if os.environ.get("SETUP_FIXTURE_ROLLBACK_BLOCK") == "1":
         target = Path(os.environ["SETUP_FIXTURE_CONFIG"])
         target.unlink()
         target.mkdir()
         (target / "block.txt").write_text("block", encoding="ascii")
-    print(json.dumps({"ok": True, "result": {"build_id": "source"}}))
-    raise SystemExit(int(os.environ.get("SETUP_FIXTURE_STATUS_EXIT", "0")))
+    state = json.loads(Path(os.environ["SETUP_FIXTURE_RUNTIME_STATE"]).read_text(encoding="utf-8-sig"))
+    print(json.dumps({"ok": True, "result": {"build_id": state["broker_build"], "edge_state": state["broker_edge_state"]}}))
+    forced = int(os.environ.get("SETUP_FIXTURE_STATUS_EXIT", "0"))
+    if forced:
+        raise SystemExit(forced)
+    raise SystemExit(10 if state["broker_edge_state"] == "STARTING" else 0)
 if command == "start":
-    raise SystemExit(int(os.environ.get("SETUP_FIXTURE_START_EXIT", "0")))
+    exit_code = int(os.environ.get("SETUP_FIXTURE_START_EXIT", "0"))
+    if exit_code:
+        raise SystemExit(exit_code)
+    state_path = Path(os.environ["SETUP_FIXTURE_RUNTIME_STATE"])
+    state = json.loads(state_path.read_text(encoding="utf-8-sig"))
+    state["broker_running"] = True
+    state["broker_build"] = (
+        build_id
+        if state["runtime_version"] == state["plugin_version"]
+        else state["prior_broker_build"]
+    )
+    state["broker_edge_state"] = "STARTING"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    broker_state = Path(os.environ["SETUP_FIXTURE_BROKER_STATE"])
+    broker_state.parent.mkdir(parents=True, exist_ok=True)
+    broker_state.write_text(json.dumps({"pid": 0, "build_id": state["broker_build"]}), encoding="utf-8")
+    print(json.dumps({"ok": True, "result": {"build_id": state["broker_build"], "edge_state": "STARTING"}}))
+    raise SystemExit(0)
 raise SystemExit(30)
 '''
 
@@ -113,7 +165,7 @@ $State = Read-TestState
 if ($args.Count -eq 1 -and $args[0] -eq "--version") {
     Add-TestEvent "python-version"
     Add-EnvironmentRecord "python-version"
-    Write-Output "Python 3.14.0"
+    Write-Output ("Python " + $env:SETUP_FIXTURE_PYTHON_VERSION)
     exit 0
 }
 if ($args.Count -ge 2 -and $args[0] -like "*bridge_identity.py" -and $args[1] -eq "validate") {
@@ -249,6 +301,9 @@ function Copy-Item {
     if ($FailPluginRestore -or $FailConfigRestore) {
         throw "fixture restore failure"
     }
+    if ($LiteralPath -like "*avaya-case-review-deploy-*") {
+        Add-Content -LiteralPath $env:SETUP_FIXTURE_EVENTS -Value ("restore-file:" + $Destination) -Encoding UTF8
+    }
     Microsoft.PowerShell.Management\Copy-Item @PSBoundParameters
 }
 '''
@@ -349,6 +404,10 @@ function Copy-Item {
             "plugin_version": self.plugin_version,
             "runtime_version": version or "",
             "original_runtime_version": version or "",
+            "broker_running": False,
+            "broker_build": "",
+            "broker_edge_state": "STARTING",
+            "prior_broker_build": f"{version}-prior-build" if version else "",
         }
         self.runtime_state.write_text(json.dumps(payload), encoding="utf-8")
         if version and retain:
@@ -399,7 +458,22 @@ function Copy-Item {
         skip_dependency_install: bool = True,
         runtime_rollback_exit: int = 0,
         early_restore_failure: bool = False,
+        prior_broker_running: bool = False,
+        prior_broker_build: str | None = None,
+        python_version: str = "3.14.0",
     ) -> subprocess.CompletedProcess:
+        runtime_state = json.loads(self.runtime_state.read_text(encoding="utf-8"))
+        if prior_broker_running:
+            build_id = prior_broker_build or runtime_state["prior_broker_build"]
+            runtime_state["broker_running"] = True
+            runtime_state["broker_build"] = build_id
+            runtime_state["broker_edge_state"] = "AUTHENTICATED"
+            self.runtime_state.write_text(json.dumps(runtime_state), encoding="utf-8")
+            broker_state = self.local_app_data / "AvayaCaseReview/gmail-broker/state.json"
+            broker_state.parent.mkdir(parents=True, exist_ok=True)
+            broker_state.write_text(
+                json.dumps({"pid": 0, "build_id": build_id}), encoding="utf-8"
+            )
         environment = os.environ.copy()
         environment.update(
             {
@@ -416,6 +490,11 @@ function Copy-Item {
                 "SETUP_FIXTURE_CONFIG": str(self.config),
                 "SETUP_FIXTURE_RUNTIME_STATE": str(self.runtime_state),
                 "SETUP_FIXTURE_RUNTIME_ROLLBACK_EXIT": str(runtime_rollback_exit),
+                "SETUP_FIXTURE_EXPECTED_BUILD_ID": BROKER_BUILD_ID,
+                "SETUP_FIXTURE_BROKER_STATE": str(
+                    self.local_app_data / "AvayaCaseReview/gmail-broker/state.json"
+                ),
+                "SETUP_FIXTURE_PYTHON_VERSION": python_version,
                 "SETUP_FIXTURE_REAL_PYTHON": sys.executable,
                 "SETUP_FIXTURE_PYTHON": str(self.bin_dir / "python.ps1"),
                 "SETUP_FIXTURE_EARLY_RESTORE_FAILURE": (
@@ -460,7 +539,10 @@ function Copy-Item {
     def event_lines(self):
         if not self.events.exists():
             return []
-        return self.events.read_text(encoding="utf-8").splitlines()
+        return [
+            line.lstrip("\ufeff")
+            for line in self.events.read_text(encoding="utf-8").splitlines()
+        ]
 
     def broker_event_lines(self):
         broker_commands = {"verify-bridge", "login", "stop", "status", "start"}
@@ -577,7 +659,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("30")
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "stop"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_invalid_local_attestation_stops_before_broker_or_replacement(self):
@@ -612,16 +694,44 @@ class InstallerContractTests(unittest.TestCase):
         self.assertEqual(fixture.event_lines(), [])
         self.assertEqual(fixture.snapshot(), before)
 
+    def test_python_3_9_is_rejected_before_attestation_or_runtime_work(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        before = fixture.snapshot()
+
+        completed = fixture.run("0", python_version="3.9.19")
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("python 3.10", (completed.stdout + completed.stderr).lower())
+        self.assertEqual(fixture.event_lines(), ["python-version"])
+        self.assertEqual(fixture.snapshot(), before)
+
+    def test_running_old_broker_is_stopped_before_candidate_preflight(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime("1.9.0", retain=True)
+
+        completed = fixture.run(
+            "0,0",
+            skip_dependency_install=False,
+            prior_broker_running=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        events = fixture.broker_event_lines()
+        self.assertEqual(events[:2], ["stop", "verify-bridge"])
+        self.assertNotIn("old-broker-rejected-bridge-capabilities", fixture.event_lines())
+
     def test_auth_required_runs_one_login_and_one_preflight_retry(self):
         fixture = SetupInstallFixture()
         self.addCleanup(fixture.close)
 
-        completed = fixture.run("10,0")
+        completed = fixture.run("10,0,0")
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         events = fixture.broker_event_lines()
         self.assertEqual(events.count("login"), 1)
-        self.assertEqual(events.count("verify-bridge"), 2)
+        self.assertEqual(events.count("verify-bridge"), 3)
         self.assertLess(events.index("login"), events.index("stop"))
         self.assertEqual(
             (fixture.target_plugin / "new-plugin.txt").read_text(encoding="utf-8"),
@@ -661,7 +771,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("20")
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "stop"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_login_failure_stops_before_replacement(self):
@@ -672,7 +782,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("10", login_exit=30)
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "login"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "login", "stop"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_auth_required_after_retry_stops_before_replacement(self):
@@ -685,7 +795,7 @@ class InstallerContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertEqual(
             fixture.broker_event_lines(),
-            ["verify-bridge", "login", "verify-bridge"],
+            ["verify-bridge", "login", "verify-bridge", "stop"],
         )
         self.assertEqual(fixture.snapshot(), before)
 
@@ -698,7 +808,7 @@ class InstallerContractTests(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertIn("timed out", (completed.stdout + completed.stderr).lower())
-        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "login"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "login", "stop"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_login_timeout_defaults_to_330_seconds(self):
@@ -717,7 +827,7 @@ class InstallerContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertEqual(
             fixture.broker_event_lines(),
-            ["verify-bridge", "stop", "status"],
+            ["verify-bridge", "stop", "verify-bridge", "status", "stop"],
         )
         self.assertEqual(fixture.snapshot(), before)
 
@@ -739,22 +849,27 @@ class InstallerContractTests(unittest.TestCase):
             b'{"existing":"config"}\r\n',
         )
 
-    def test_backup_failure_after_stop_restarts_prior_broker_without_mutation(self):
+    def test_runtime_smoke_workspace_failure_precedes_broker_and_file_mutation(self):
         fixture = SetupInstallFixture()
         self.addCleanup(fixture.close)
         before = fixture.snapshot()
 
-        completed = fixture.run("0", stop_exit=0, blocked_backup_parent=True)
+        completed = fixture.run("0", blocked_backup_parent=True)
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "stop", "start"])
+        self.assertEqual(fixture.broker_event_lines(), [])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_restart_failure_preserves_verified_backup(self):
         fixture = SetupInstallFixture()
         self.addCleanup(fixture.close)
 
-        completed = fixture.run("0", status_exit=30, stop_exit=0, start_exit=20)
+        completed = fixture.run(
+            "0,0",
+            status_exit=30,
+            start_exit=20,
+            prior_broker_running=True,
+        )
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         output = completed.stdout + completed.stderr
@@ -842,40 +957,77 @@ class InstallerContractTests(unittest.TestCase):
         self.assertNotIn("stop", events)
         self.assertEqual(fixture.snapshot(), before)
 
-    def test_bridge_failure_restores_previous_runtime_before_any_file_change(self):
-        fixture = SetupInstallFixture()
-        self.addCleanup(fixture.close)
-        fixture.set_runtime("1.9.0", retain=True)
-        before = fixture.snapshot()
-
-        completed = fixture.run("30", skip_dependency_install=False)
-
-        self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.runtime_version(), "1.9.0")
-        events = fixture.event_lines()
-        bridge = events.index("verify-bridge")
-        rollback = events.index(
-            "runtime-install:avaya_case_review_runtime-1.9.0-py3-none-any.whl"
-        )
-        self.assertLess(bridge, rollback)
-        self.assertNotIn("stop", events)
-        self.assertEqual(fixture.snapshot(), before)
-
-    def test_deployment_failure_restores_files_and_broker_before_prior_runtime(self):
+    def test_candidate_preflight_failure_restores_previous_runtime_and_prior_broker(self):
         fixture = SetupInstallFixture()
         self.addCleanup(fixture.close)
         fixture.set_runtime("1.9.0", retain=True)
         before = fixture.snapshot()
 
         completed = fixture.run(
-            "0", status_exit=30, stop_exit=0, skip_dependency_install=False
+            "30",
+            skip_dependency_install=False,
+            prior_broker_running=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertEqual(fixture.runtime_version(), "1.9.0")
+        events = fixture.event_lines()
+        prior_stop = events.index("stop")
+        bridge = events.index("verify-bridge")
+        candidate_stop = events.index("stop", prior_stop + 1)
+        rollback = events.index(
+            "runtime-install:avaya_case_review_runtime-1.9.0-py3-none-any.whl"
+        )
+        restart = events.index("start")
+        restored_status = events.index("status")
+        self.assertEqual(
+            [prior_stop, bridge, candidate_stop, rollback, restart, restored_status],
+            sorted([prior_stop, bridge, candidate_stop, rollback, restart, restored_status]),
+        )
+        self.assertEqual(fixture.snapshot(), before)
+
+    def test_deployment_failure_restores_runtime_then_files_then_prior_broker(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime("1.9.0", retain=True)
+        before = fixture.snapshot()
+
+        completed = fixture.run(
+            "0,30",
+            prior_broker_running=True,
+            skip_dependency_install=False,
         )
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertEqual(fixture.snapshot(), before)
         self.assertEqual(fixture.runtime_version(), "1.9.0")
         events = fixture.event_lines()
-        self.assertLess(events.index("start"), events.index("runtime-rollback-files-restored:true"))
+        candidate_stop = events.index("stop", events.index("verify-bridge") + 1)
+        runtime_restore = events.index(
+            "runtime-install:avaya_case_review_runtime-1.9.0-py3-none-any.whl"
+        )
+        file_restore = next(
+            index for index, event in enumerate(events) if event.startswith("restore-file:")
+        )
+        restart = events.index("start")
+        restored_status = events.index("status")
+        self.assertEqual(
+            [candidate_stop, runtime_restore, file_restore, restart, restored_status],
+            sorted([candidate_stop, runtime_restore, file_restore, restart, restored_status]),
+        )
+
+    def test_deployed_verify_completes_probe_before_status_build_check(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+
+        completed = fixture.run("0,0")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        events = fixture.broker_event_lines()
+        self.assertEqual(events.count("verify-bridge"), 2)
+        final_verify = len(events) - 1 - events[::-1].index("verify-bridge")
+        status = len(events) - 1 - events[::-1].index("status")
+        self.assertLess(final_verify, status)
 
     def test_early_restore_failure_does_not_skip_later_targets_or_broker_restart(self):
         fixture = SetupInstallFixture()
@@ -886,19 +1038,17 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run(
             "0",
             status_exit=30,
-            stop_exit=0,
             skip_dependency_install=False,
             early_restore_failure=True,
+            prior_broker_running=True,
         )
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         events = fixture.event_lines()
-        self.assertIn("start", events)
-        self.assertLess(
-            events.index("start"),
-            events.index(
-                "runtime-install:avaya_case_review_runtime-1.9.0-py3-none-any.whl"
-            ),
+        self.assertNotIn("start", events)
+        self.assertIn(
+            "runtime-install:avaya_case_review_runtime-1.9.0-py3-none-any.whl",
+            events,
         )
         self.assertEqual(directory_bytes(fixture.target_gmail), before["gmail"])
         self.assertEqual(directory_bytes(fixture.target_case), before["case"])
@@ -941,7 +1091,7 @@ class InstallerContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         output = completed.stdout + completed.stderr
         self.assertIn("deployed gmail broker validation", output.lower())
-        self.assertIn("runtime rollback install", output.lower())
+        self.assertIn("runtime restoration", output.lower())
         match = re.search(r"RECOVERY_BACKUP=(?P<path>[^\r\n]+)", output)
         self.assertIsNotNone(match, output)
         backup = Path(match.group("path").strip())
@@ -1186,7 +1336,7 @@ raise SystemExit(gmail_brokerctl.main(["status"], client=Client()))
         self.assertTrue(payload["gmail_env_preserved"])
         self.assertEqual(payload["backend"], "edge_broker")
         self.assertTrue(payload["profile_baseline_verified"])
-        self.assertEqual(payload["build_id"], "source")
+        self.assertEqual(payload["build_id"], BROKER_BUILD_ID)
         self.assertTrue(payload["stale_state_ignored"])
         self.assertEqual(payload["deployment_allowlist_count"], 10)
 

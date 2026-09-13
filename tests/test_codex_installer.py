@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 import unittest
 from pathlib import Path
@@ -326,6 +327,11 @@ if ($args.Count -eq 1 -and $args[0] -eq "--version") {
     Write-Output "Python 3.14.0"
     exit 0
 }
+if ($args.Count -ge 2 -and $args[0] -like "*bridge_identity.py" -and $args[1] -eq "validate") {
+    Add-TestEvent "attestation-validate"
+    & $env:AVAYA_INSTALL_TEST_REAL_PYTHON @args
+    exit $LASTEXITCODE
+}
 if ($args.Count -ge 2 -and $args[0] -like "*runtime_package.py") {
     $Command = [string]$args[1]
     if ($Command -eq "installed-version") {
@@ -349,17 +355,61 @@ if ($args.Count -ge 2 -and $args[0] -like "*runtime_package.py") {
         exit 0
     }
 }
-if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[2] -eq "verify-bridge") {
+$BrokerCommand = ""
+if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[1] -like "*gmail_brokerctl.py") {
+    $BrokerCommand = [string]$args[2]
+} elseif ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "avaya_case_review_runtime.gmail_brokerctl") {
+    $BrokerCommand = [string]$args[2]
+}
+if ($BrokerCommand -eq "verify-bridge") {
     Add-TestEvent "verify-bridge"
+    if ([bool]$State.broker_running -and [string]$State.broker_build -ne [string]$State.runtime_version) {
+        Add-TestEvent "old-broker-rejected-bridge-capabilities"
+        exit 30
+    }
     $Index = [int]$State.verify_index
     $Exits = @([string]$State.verify_exits -split ',' | ForEach-Object { [int]$_ })
     $State.verify_index = $Index + 1
+    $State.broker_running = $true
+    $State.broker_build = [string]$State.runtime_version
     Write-TestState $State
+    $BrokerDirectory = Split-Path -Parent $env:AVAYA_INSTALL_TEST_BROKER_STATE
+    New-Item -ItemType Directory -Path $BrokerDirectory -Force | Out-Null
+    [pscustomobject]@{ pid = 0; build_id = [string]$State.broker_build } |
+        ConvertTo-Json -Compress | Set-Content -LiteralPath $env:AVAYA_INSTALL_TEST_BROKER_STATE -Encoding UTF8
     exit $Exits[[Math]::Min($Index, $Exits.Count - 1)]
 }
-if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[2] -eq "login") {
+if ($BrokerCommand -eq "login") {
     Add-TestEvent "login"
     exit [int]$State.login_exit
+}
+if ($BrokerCommand -eq "stop") {
+    Add-TestEvent "stop"
+    if (-not [bool]$State.broker_running) { exit 20 }
+    $State.broker_running = $false
+    Write-TestState $State
+    Remove-Item -LiteralPath $env:AVAYA_INSTALL_TEST_BROKER_STATE -Force -ErrorAction SilentlyContinue
+    exit 0
+}
+if ($BrokerCommand -eq "start") {
+    Add-TestEvent "start"
+    $State.broker_running = $true
+    $State.broker_build = [string]$State.runtime_version
+    Write-TestState $State
+    $BrokerDirectory = Split-Path -Parent $env:AVAYA_INSTALL_TEST_BROKER_STATE
+    New-Item -ItemType Directory -Path $BrokerDirectory -Force | Out-Null
+    [pscustomobject]@{ pid = 0; build_id = [string]$State.broker_build } |
+        ConvertTo-Json -Compress | Set-Content -LiteralPath $env:AVAYA_INSTALL_TEST_BROKER_STATE -Encoding UTF8
+    [pscustomobject]@{ ok = $true; result = [pscustomobject]@{ build_id = [string]$State.broker_build; edge_state = "STARTING" } } |
+        ConvertTo-Json -Compress
+    exit [int]$State.prior_start_exit
+}
+if ($BrokerCommand -eq "status") {
+    Add-TestEvent "status"
+    if (-not [bool]$State.broker_running) { exit 20 }
+    [pscustomobject]@{ ok = $true; result = [pscustomobject]@{ build_id = [string]$State.broker_build; edge_state = "AUTHENTICATED" } } |
+        ConvertTo-Json -Compress
+    exit [int]$State.prior_status_exit
 }
 if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "pip") {
     $PipCommand = [string]$args[2]
@@ -445,6 +495,10 @@ class CodexInstallerTests(unittest.TestCase):
         login_exit=0,
         missing_tag=False,
         fixture_sentinel="",
+        prior_broker_running=False,
+        prior_broker_build="",
+        prior_start_exit=0,
+        prior_status_exit=0,
     ):
         state = {
             "marketplace_exists": bool(existing_sha),
@@ -468,8 +522,21 @@ class CodexInstallerTests(unittest.TestCase):
             "login_exit": login_exit,
             "missing_tag": missing_tag,
             "fixture_sentinel": fixture_sentinel,
+            "broker_running": prior_broker_running,
+            "broker_build": prior_broker_build or runtime_version,
+            "prior_start_exit": prior_start_exit,
+            "prior_status_exit": prior_status_exit,
         }
         self.state_path.write_text(json.dumps(state), encoding="utf-8-sig")
+        broker_state = self.temp_root / "local/AvayaCaseReview/gmail-broker/state.json"
+        if prior_broker_running:
+            broker_state.parent.mkdir(parents=True, exist_ok=True)
+            broker_state.write_text(
+                json.dumps({"pid": 0, "build_id": prior_broker_build or runtime_version}),
+                encoding="utf-8",
+            )
+        else:
+            broker_state.unlink(missing_ok=True)
 
     def _read_state(self):
         value = json.loads(self.state_path.read_text(encoding="utf-8-sig"))
@@ -481,6 +548,10 @@ class CodexInstallerTests(unittest.TestCase):
         environment["AVAYA_INSTALL_TEST_LOG"] = str(self.log_path)
         environment["AVAYA_INSTALL_TEST_MODE"] = mode
         environment["AVAYA_INSTALL_TEST_STATE"] = str(self.state_path)
+        environment["AVAYA_INSTALL_TEST_BROKER_STATE"] = str(
+            self.temp_root / "local/AvayaCaseReview/gmail-broker/state.json"
+        )
+        environment["AVAYA_INSTALL_TEST_REAL_PYTHON"] = sys.executable
         environment["AVAYA_INSTALL_TEST_MARKETPLACE_ROOT"] = str(
             self.marketplace_root
         )
@@ -526,8 +597,13 @@ class CodexInstallerTests(unittest.TestCase):
         fixture_sentinel="",
         skip_dependency=True,
         corrupt_attestation=False,
+        attestation_variant="",
         local_mcp_variant="",
         installed_mcp_variant="",
+        prior_broker_running=False,
+        prior_broker_build="",
+        prior_start_exit=0,
+        prior_status_exit=0,
     ):
         fixture_root = self.temp_root / "stateful-installer"
         for relative_path in (
@@ -540,6 +616,8 @@ class CodexInstallerTests(unittest.TestCase):
             "tools/gmail/cloud/bridge_identity.py",
             "tools/installer/runtime_package.py",
             "tools/installer/windows_common.ps1",
+            "avaya_case_review_runtime/__init__.py",
+            "avaya_case_review_runtime/bridge_identity.py",
         ):
             destination = fixture_root / relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -574,6 +652,15 @@ class CodexInstallerTests(unittest.TestCase):
         if corrupt_attestation:
             (fixture_root / "tools/gmail/cloud/bridge_release_attestation.json").write_text(
                 json.dumps({"invalid": fixture_sentinel or True}), encoding="utf-8"
+            )
+        elif attestation_variant == "duplicate-coercible-schema":
+            attestation_path = (
+                fixture_root / "tools/gmail/cloud/bridge_release_attestation.json"
+            )
+            source = attestation_path.read_text(encoding="utf-8")
+            attestation_path.write_text(
+                source.replace("{", '{"schema_version": true,', 1),
+                encoding="utf-8",
             )
         pyproject_path = fixture_root / "pyproject.toml"
         pyproject_path.write_text(
@@ -638,6 +725,10 @@ class CodexInstallerTests(unittest.TestCase):
             login_exit=login_exit,
             missing_tag=missing_tag,
             fixture_sentinel=fixture_sentinel,
+            prior_broker_running=prior_broker_running,
+            prior_broker_build=prior_broker_build,
+            prior_start_exit=prior_start_exit,
+            prior_status_exit=prior_status_exit,
         )
         installer_arguments = [
             "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
@@ -656,7 +747,7 @@ class CodexInstallerTests(unittest.TestCase):
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=30,
+            timeout=60,
             check=False,
         )
         return result, self._events(), self._read_state()
@@ -672,6 +763,8 @@ class CodexInstallerTests(unittest.TestCase):
             "tools/gmail/cloud/GmailMcpBridge.gs",
             "tools/gmail/cloud/bridge_identity.py",
             "tools/installer/runtime_package.py",
+            "avaya_case_review_runtime/__init__.py",
+            "avaya_case_review_runtime/bridge_identity.py",
         ):
             destination = fixture_root / relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -834,7 +927,75 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertIn("timed out", result.stderr.lower())
         self.assertNotIn("UNSANITIZED_CLEANUP_SENTINEL", result.stderr)
 
-    def test_unconfirmed_cleanup_is_bounded_sanitized_and_stops_child_mutation(self):
+    def test_successful_parent_exit_closes_inherited_pipes_and_terminates_descendant(self):
+        child = self.temp_root / "pipe-child.py"
+        child_pid = self.temp_root / "pipe-child.pid"
+        child.write_text(
+            "import os, pathlib, sys, time\n"
+            "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()), encoding='ascii')\n"
+            "time.sleep(20)\n"
+            "print('UNSANITIZED_DESCENDANT_OUTPUT', flush=True)\n",
+            encoding="utf-8",
+        )
+        parent = self.temp_root / "pipe-parent.py"
+        parent.write_text(
+            "import subprocess, sys, time\n"
+            "subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2]], close_fds=False)\n"
+            "deadline = time.monotonic() + 2\n"
+            "while not __import__('pathlib').Path(sys.argv[2]).exists() and time.monotonic() < deadline: time.sleep(0.01)\n"
+            "print('parent-complete', flush=True)\n",
+            encoding="utf-8",
+        )
+        command = (
+            f". '{WINDOWS_COMMON}'; "
+            "$result = Invoke-BoundedCommand -Stage 'pipe ownership' "
+            f"-Command '{sys.executable}' -Arguments @('{parent}', '{child}', '{child_pid}') "
+            "-TimeoutSeconds 1; $result | ConvertTo-Json -Compress"
+        )
+
+        started = time.monotonic()
+        try:
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    command,
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=5,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            self.fail("bounded command hung while a descendant held its output pipes")
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(elapsed, 4.0)
+        self.assertIn("parent-complete", result.stdout, result.stdout + result.stderr)
+        self.assertNotIn("UNSANITIZED_DESCENDANT_OUTPUT", result.stdout + result.stderr)
+        self.assertTrue(child_pid.is_file())
+        pid = int(child_pid.read_text(encoding="ascii"))
+        process = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                f"if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 1 }}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0, "descendant survived job closure")
+
+    def test_job_cleanup_is_bounded_even_when_legacy_fallback_is_faulted(self):
         helper_path = self._faulted_cleanup_helper()
         command = (
             f". '{helper_path}'; "
@@ -865,7 +1026,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("marketplace", result.stderr.lower())
         self.assertIn("timed out", result.stderr.lower())
-        self.assertIn("cleanup failed", result.stderr.lower())
+        self.assertNotIn("cleanup failed", result.stderr.lower())
         self.assertIn("marketplace-add", events)
         self.assertNotIn("resistant-child-mutated", events)
 
@@ -1154,24 +1315,115 @@ class CodexInstallerTests(unittest.TestCase):
         result, events = self.run_installer("-DryRun")
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual([], events)
+        self.assertEqual(["attestation-validate"], events)
         self.assertIn("validate release attestation", result.stdout.lower())
         self.assertIn("verify-bridge", result.stdout)
         self.assertIn("plugin add", result.stdout)
 
-    def test_live_preflight_blocks_before_runtime_or_codex_mutation(self):
+    def test_dry_run_uses_canonical_strict_attestation_validation(self):
+        result, events, state = self.run_stateful_installer(
+            extra_arguments=("-DryRun",),
+            attestation_variant="duplicate-coercible-schema",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(events, ["attestation-validate"])
+        self.assertFalse(state.marketplace_exists)
+        self.assertEqual(state.runtime_version, "1.10.1")
+
+    def test_clean_install_prepares_candidate_runtime_before_live_verification(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="", skip_dependency=False
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        ordered = (
+            "runtime-build",
+            "runtime-install:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
+            "runtime-smoke",
+            "verify-bridge",
+            "plugin-add",
+        )
+        positions = [
+            next(i for i, event in enumerate(events) if event.startswith(name))
+            for name in ordered
+        ]
+        self.assertEqual(positions, sorted(positions), events)
+        self.assertEqual(state.runtime_version, "1.10.1")
+
+    def test_active_old_broker_is_stopped_before_candidate_verification(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            retain_prior_wheel=True,
+            skip_dependency=False,
+            prior_broker_running=True,
+            prior_broker_build="1.9.9",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("old-broker-rejected-bridge-capabilities", events)
+        self.assertLess(events.index("stop"), events.index("verify-bridge"))
+        self.assertEqual(state.broker_build, "1.10.1")
+
+    def test_candidate_preflight_failure_restores_runtime_and_prior_broker(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            retain_prior_wheel=True,
+            skip_dependency=False,
+            prior_broker_running=True,
+            prior_broker_build="1.9.9",
+            verify_exits="30",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(state.runtime_version, "1.9.9")
+        self.assertTrue(state.broker_running)
+        self.assertEqual(state.broker_build, "1.9.9")
+        candidate_install = events.index(
+            "runtime-install:avaya_case_review_runtime-1.10.1-py3-none-any.whl"
+        )
+        prior_stop = events.index("stop")
+        verify = events.index("verify-bridge")
+        candidate_stop = events.index("stop", prior_stop + 1)
+        runtime_restore = events.index(
+            "runtime-install:avaya_case_review_runtime-1.9.9-py3-none-any.whl"
+        )
+        restart = events.index("start")
+        restored_status = events.index("status")
+        self.assertEqual(
+            [candidate_install, prior_stop, verify, candidate_stop, runtime_restore, restart, restored_status],
+            sorted(
+                [candidate_install, prior_stop, verify, candidate_stop, runtime_restore, restart, restored_status]
+            ),
+        )
+
+    def test_prior_lazy_broker_status_ten_is_accepted_during_rollback(self):
+        result, events, state = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            retain_prior_wheel=True,
+            skip_dependency=False,
+            prior_broker_running=True,
+            prior_broker_build="1.9.9",
+            prior_start_exit=10,
+            prior_status_exit=10,
+            verify_exits="30",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("Recovery status: failed", result.stderr)
+        self.assertTrue(state.broker_running)
+        self.assertEqual(events[-2:], ["start", "status"])
+
+    def test_candidate_live_preflight_blocks_codex_mutation_and_rolls_back_runtime(self):
         result, events, _ = self.run_stateful_installer(
-            verify_exits="20", skip_dependency=False
+            verify_exits="20", runtime_version="", skip_dependency=False
         )
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("verify-bridge", events)
-        for mutation in (
-            "dependency-install",
-            "runtime-build",
-            "marketplace-add",
-            "plugin-add",
-        ):
+        self.assertIn("runtime-build", events)
+        self.assertIn("runtime-uninstall:avaya-case-review-runtime", events)
+        for mutation in ("marketplace-add", "plugin-add"):
             self.assertNotIn(mutation, events)
 
     def test_dependency_timeout_blocks_before_runtime_or_codex_mutation_with_sanitized_output(self):
@@ -1219,7 +1471,7 @@ class CodexInstallerTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("attestation", result.stderr.lower())
-        self.assertEqual(events, [])
+        self.assertEqual(events, ["attestation-validate"])
         self.assertEqual(state.runtime_version, "1.10.1")
         self.assertFalse(state.marketplace_exists)
 
@@ -1241,11 +1493,11 @@ class CodexInstallerTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         ordered = (
-            "verify-bridge",
             "runtime-build",
             "wheel-validate:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
             "runtime-install:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
             "runtime-smoke",
+            "verify-bridge",
             "plugin-add",
         )
         for name in ordered:
@@ -1331,6 +1583,10 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertIn(
             "runtime-install:avaya_case_review_runtime-1.9.9-py3-none-any.whl",
             events,
+        )
+        self.assertLess(
+            events.index("stop"),
+            events.index("marketplace-add:old-sha"),
         )
         self.assertLess(
             events.index("marketplace-add:old-sha"),
@@ -1420,7 +1676,7 @@ class CodexInstallerTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("new plugin add", result.stderr.lower())
-        self.assertIn("runtime rollback", result.stderr.lower())
+        self.assertIn("runtime restoration", result.stderr.lower())
         self.assertNotIn("UNSANITIZED", result.stderr)
 
     def test_bridge_auth_retry_contract_precedes_codex_state(self):

@@ -117,62 +117,86 @@ function Assert-ExactPropertyNames {
     }
 }
 
-function Test-LocalBridgeAttestation {
+function Invoke-LocalBridgeAttestationValidation {
     param(
+        [Parameter(Mandatory = $true)][string]$PythonCommand,
+        [Parameter(Mandatory = $true)][string]$ValidatorPath,
         [Parameter(Mandatory = $true)][string]$SourcePath,
         [Parameter(Mandatory = $true)][string]$AttestationPath,
         [Parameter(Mandatory = $true)][string]$PluginVersion
     )
 
     try {
-        $Utf8 = New-Object System.Text.UTF8Encoding($false)
-        $Source = [IO.File]::ReadAllText($SourcePath, $Utf8).Replace("`r`n", "`n").Replace("`r", "`n")
-        $IdentityPattern = '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "([0-9a-f]{64})";$'
-        $IdentityMatches = [regex]::Matches($Source, $IdentityPattern)
-        if ($IdentityMatches.Count -ne 1) {
-            throw "identity"
-        }
-        $IdentityMatch = $IdentityMatches[0]
-        $EmbeddedDigest = $IdentityMatch.Groups[1].Value
-        $Canonical = $Source.Substring(0, $IdentityMatch.Groups[1].Index) + ('0' * 64) +
-            $Source.Substring($IdentityMatch.Groups[1].Index + $IdentityMatch.Groups[1].Length)
-        $Hasher = [Security.Cryptography.SHA256]::Create()
-        try {
-            $ComputedDigest = ([BitConverter]::ToString($Hasher.ComputeHash($Utf8.GetBytes($Canonical)))).Replace('-', '').ToLowerInvariant()
-        } finally {
-            $Hasher.Dispose()
-        }
-        if ($EmbeddedDigest -ne $ComputedDigest) {
-            throw "digest"
-        }
-
-        $Attestation = Get-Content -LiteralPath $AttestationPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        Assert-ExactPropertyNames -Value $Attestation -Expected @(
-            'schema_version', 'plugin_version', 'bridge_version', 'contract_revision',
-            'bridge_source_sha256', 'verified_at_utc', 'checks'
-        ) -Label 'schema'
-        if (
-            [int]$Attestation.schema_version -ne 1 -or
-            [int]$Attestation.bridge_version -ne 4 -or
-            [int]$Attestation.contract_revision -ne 1 -or
-            [string]$Attestation.plugin_version -cne $PluginVersion -or
-            [string]$Attestation.bridge_source_sha256 -cne $ComputedDigest -or
-            [string]$Attestation.verified_at_utc -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$'
-        ) {
-            throw "values"
-        }
-        Assert-ExactPropertyNames -Value $Attestation.checks -Expected @(
-            'advanced_gmail_v1', 'zero_result_complete', 'stable_snapshot_pagination',
-            'cursor_exhaustion', 'manifest_message_count_hashes', 'sensitive_output_absent'
-        ) -Label 'checks'
-        foreach ($Property in $Attestation.checks.PSObject.Properties) {
-            if ($Property.Value -isnot [bool] -or -not $Property.Value) {
-                throw "checks"
-            }
-        }
+        Invoke-BoundedCommand `
+            -Stage "validate release attestation" `
+            -Command $PythonCommand `
+            -Arguments @(
+                $ValidatorPath, "validate",
+                "--source", $SourcePath,
+                "--attestation", $AttestationPath,
+                "--plugin-version", $PluginVersion
+            ) `
+            -TimeoutSeconds $TimeoutLocalSeconds | Out-Null
     } catch {
         throw "Local bridge attestation validation failed. Use an intact verified release checkout."
     }
+}
+
+function Get-GmailBrokerSnapshot {
+    param([Parameter(Mandatory = $true)][string]$StateFile)
+
+    if (-not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
+        return [pscustomobject]@{
+            StatePresent = $false
+            BuildId = ""
+            ControlModule = "avaya_case_review_runtime.gmail_brokerctl"
+        }
+    }
+    try {
+        $State = Get-Content -LiteralPath $StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ([string]::IsNullOrWhiteSpace([string]$State.build_id)) {
+            throw "invalid"
+        }
+        return [pscustomobject]@{
+            StatePresent = $true
+            BuildId = [string]$State.build_id
+            ControlModule = "avaya_case_review_runtime.gmail_brokerctl"
+        }
+    } catch {
+        throw "Existing Gmail broker state is invalid; resolve it before installation."
+    }
+}
+
+function Stop-GmailBrokerForInstall {
+    param(
+        [Parameter(Mandatory = $true)][string]$PythonCommand,
+        [Parameter(Mandatory = $true)][string]$StateFile,
+        [switch]$OnlyIfStatePresent
+    )
+
+    if ($OnlyIfStatePresent -and -not (Test-Path -LiteralPath $StateFile -PathType Leaf)) {
+        return 20
+    }
+    $Result = Invoke-CheckedCommand `
+        -Stage "Gmail broker stop" `
+        -Command $PythonCommand `
+        -Arguments @("-m", "avaya_case_review_runtime.gmail_brokerctl", "stop") `
+        -Description "Stopping the Gmail Edge broker" `
+        -TimeoutSeconds $TimeoutBridgeSeconds `
+        -AllowFailure
+    if ($Result.ExitCode -ne 0 -and $Result.ExitCode -ne 20) {
+        throw "Stage 'Gmail broker stop' failed with exit code $($Result.ExitCode)."
+    }
+    if ($Result.ExitCode -eq 0) {
+        $Deadline = [DateTime]::UtcNow.AddSeconds($TimeoutBridgeSeconds)
+        while (Test-Path -LiteralPath $StateFile -PathType Leaf) {
+            if ([DateTime]::UtcNow -ge $Deadline) {
+                throw "Stage 'Gmail broker stop' timed out waiting for broker state removal."
+            }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    return $Result.ExitCode
 }
 
 function Test-McpManifestContract {
@@ -694,13 +718,16 @@ $MarketplaceManifestPath = Join-Path $ScriptDir ".agents\plugins\marketplace.jso
 $McpManifestPath = Join-Path $ScriptDir ".mcp.json"
 $BrokerCtlPath = Join-Path $ScriptDir "tools\gmail\gmail_brokerctl.py"
 $BridgeSourcePath = Join-Path $ScriptDir "tools\gmail\cloud\GmailMcpBridge.gs"
+$BridgeIdentityPath = Join-Path $ScriptDir "tools\gmail\cloud\bridge_identity.py"
 $BridgeAttestationPath = Join-Path $ScriptDir "tools\gmail\cloud\bridge_release_attestation.json"
 $RuntimeHelperPath = Join-Path $ScriptDir "tools\installer\runtime_package.py"
 $PyProjectPath = Join-Path $ScriptDir "pyproject.toml"
+$BrokerStateFile = Join-Path $env:LOCALAPPDATA "AvayaCaseReview\gmail-broker\state.json"
 
 foreach ($RequiredFile in @(
     $CodexManifestPath, $MarketplaceManifestPath, $McpManifestPath, $BrokerCtlPath,
-    $BridgeSourcePath, $BridgeAttestationPath, $RuntimeHelperPath, $PyProjectPath
+    $BridgeSourcePath, $BridgeIdentityPath, $BridgeAttestationPath,
+    $RuntimeHelperPath, $PyProjectPath
 )) {
     if (-not (Test-Path -LiteralPath $RequiredFile -PathType Leaf)) {
         throw "Required installation file is missing: $RequiredFile"
@@ -739,7 +766,9 @@ if (-not $ProjectVersion.Success -or $ProjectVersion.Groups[1].Value -cne $Plugi
     throw "Runtime package version does not match the Codex plugin version."
 }
 Test-McpManifestContract -Path $McpManifestPath
-Test-LocalBridgeAttestation `
+Invoke-LocalBridgeAttestationValidation `
+    -PythonCommand "python" `
+    -ValidatorPath $BridgeIdentityPath `
     -SourcePath $BridgeSourcePath `
     -AttestationPath $BridgeAttestationPath `
     -PluginVersion $PluginVersion
@@ -763,9 +792,10 @@ if ($DryRun) {
     Write-Host "  Mode:        dry run (no state changes)" -ForegroundColor DarkGray
     foreach ($Stage in @(
         "validate release attestation", "check Python and Codex versions",
-        "inspect installed runtime", "verify retained rollback wheel", "verify-bridge",
+        "snapshot runtime, Codex, and broker state", "verify retained rollback wheel",
         "install dependencies and build runtime wheel", "validate runtime wheel",
-        "install runtime wheel", "smoke runtime MCP modules", "new marketplace add",
+        "install runtime wheel", "smoke runtime MCP modules", "stop prior broker",
+        "verify-bridge", "new marketplace add",
         "new plugin add", "verify plugin identity, version, and MCP definitions"
     )) {
         Write-Host "  Planned stage: $Stage" -ForegroundColor DarkGray
@@ -799,6 +829,8 @@ $InstalledVersionResult = Invoke-CheckedCommand `
 $InstalledRuntime = ConvertFrom-CommandJson -Result $InstalledVersionResult -Stage "runtime version inspection"
 $PreviousRuntimePresent = [bool]$InstalledRuntime.installed
 $PreviousRuntimeVersion = if ($PreviousRuntimePresent) { [string]$InstalledRuntime.version } else { "" }
+$Before = Get-CodexMarketplaceSnapshot -MarketplaceName $MarketplaceName -PluginName $PluginName
+$PriorBroker = Get-GmailBrokerSnapshot -StateFile $BrokerStateFile
 $WheelStore = Join-Path $env:LOCALAPPDATA "AvayaCaseReview\runtime-wheels"
 $PreviousRuntimeWheel = $null
 if ($PreviousRuntimePresent -and $PreviousRuntimeVersion -cne $PluginVersion -and -not $SkipDependencyInstall) {
@@ -815,49 +847,11 @@ if ($PreviousRuntimePresent -and $PreviousRuntimeVersion -cne $PluginVersion -an
         -TimeoutSeconds $TimeoutLocalSeconds | Out-Null
 }
 
-$VerifyArguments = @(
-    "-B", $BrokerCtlPath, "verify-bridge",
-    "--source", $BridgeSourcePath,
-    "--attestation", $BridgeAttestationPath,
-    "--plugin-version", $PluginVersion
-)
-$BridgeResult = Invoke-CheckedCommand `
-    -Stage "verify-bridge" `
-    -Command "python" `
-    -Arguments $VerifyArguments `
-    -Description "Verifying the live Gmail Cloud Bridge" `
-    -TimeoutSeconds $TimeoutBridgeSeconds `
-    -AllowFailure
-if ($BridgeResult.ExitCode -eq 10) {
-    if ($SkipLogin) {
-        throw "Gmail authentication is required; rerun without -SkipLogin to open Managed Edge."
-    }
-    Invoke-CheckedCommand `
-        -Stage "Gmail login" `
-        -Command "python" `
-        -Arguments @("-B", $BrokerCtlPath, "login") `
-        -Description "Opening Managed Edge for SSO/MFA" `
-        -TimeoutSeconds 330 | Out-Null
-    $BridgeResult = Invoke-CheckedCommand `
-        -Stage "verify-bridge retry" `
-        -Command "python" `
-        -Arguments $VerifyArguments `
-        -Description "Retrying live Gmail Cloud Bridge verification" `
-        -TimeoutSeconds $TimeoutBridgeSeconds `
-        -AllowFailure
-}
-if ($BridgeResult.ExitCode -eq 10) {
-    throw "Gmail authentication remains required after one login attempt."
-}
-if ($BridgeResult.ExitCode -eq 20) {
-    throw "The Gmail Cloud Bridge is unavailable."
-}
-if ($BridgeResult.ExitCode -ne 0) {
-    throw "The Gmail Cloud Bridge is incompatible with this release."
-}
-
 $RuntimeMutated = $false
 $CurrentRuntimeWheel = $null
+$PriorBrokerWasRunning = $false
+$CandidateBrokerMayBeRunning = $false
+$CodexTransaction = $null
 try {
     if ($SkipDependencyInstall) {
         if (-not $PreviousRuntimePresent -or $PreviousRuntimeVersion -cne $PluginVersion) {
@@ -925,10 +919,86 @@ try {
         -Description "Checking both installed MCP modules" `
         -TimeoutSeconds $TimeoutBridgeSeconds | Out-Null
 
-    $Before = Get-CodexMarketplaceSnapshot -MarketplaceName $MarketplaceName -PluginName $PluginName
-    $null = Set-CodexMarketplaceAtRef -Before $Before -TargetSource $MarketplaceSource -TargetRef $TargetRef
+    if ($PriorBroker.StatePresent) {
+        $PriorStopExit = Stop-GmailBrokerForInstall `
+            -PythonCommand "python" `
+            -StateFile $BrokerStateFile `
+            -OnlyIfStatePresent
+        $PriorBrokerWasRunning = $PriorStopExit -eq 0
+    }
+
+    $VerifyArguments = @(
+        "-m", "avaya_case_review_runtime.gmail_brokerctl", "verify-bridge",
+        "--source", $BridgeSourcePath,
+        "--attestation", $BridgeAttestationPath,
+        "--plugin-version", $PluginVersion
+    )
+    $CandidateBrokerMayBeRunning = $true
+    $BridgeResult = Invoke-CheckedCommand `
+        -Stage "verify-bridge" `
+        -Command "python" `
+        -Arguments $VerifyArguments `
+        -Description "Verifying the live Gmail Cloud Bridge with the candidate runtime" `
+        -TimeoutSeconds $TimeoutBridgeSeconds `
+        -AllowFailure
+    if ($BridgeResult.ExitCode -eq 10) {
+        if ($SkipLogin) {
+            throw "Gmail authentication is required; rerun without -SkipLogin to open Managed Edge."
+        }
+        Invoke-CheckedCommand `
+            -Stage "Gmail login" `
+            -Command "python" `
+            -Arguments @("-m", "avaya_case_review_runtime.gmail_brokerctl", "login") `
+            -Description "Opening Managed Edge for SSO/MFA" `
+            -TimeoutSeconds 330 | Out-Null
+        $BridgeResult = Invoke-CheckedCommand `
+            -Stage "verify-bridge retry" `
+            -Command "python" `
+            -Arguments $VerifyArguments `
+            -Description "Retrying live Gmail Cloud Bridge verification" `
+            -TimeoutSeconds $TimeoutBridgeSeconds `
+            -AllowFailure
+    }
+    if ($BridgeResult.ExitCode -eq 10) {
+        throw "Gmail authentication remains required after one login attempt."
+    }
+    if ($BridgeResult.ExitCode -eq 20) {
+        throw "The Gmail Cloud Bridge is unavailable."
+    }
+    if ($BridgeResult.ExitCode -ne 0) {
+        throw "The Gmail Cloud Bridge is incompatible with this release."
+    }
+
+    $null = Stop-GmailBrokerForInstall `
+        -PythonCommand "python" `
+        -StateFile $BrokerStateFile `
+        -OnlyIfStatePresent
+    $CandidateBrokerMayBeRunning = $false
+
+    $CodexTransaction = Set-CodexMarketplaceAtRef `
+        -Before $Before `
+        -TargetSource $MarketplaceSource `
+        -TargetRef $TargetRef
 } catch {
     $PrimaryMessage = $_.Exception.Message
+    $RecoveryFailures = New-Object System.Collections.Generic.List[string]
+    if ($CandidateBrokerMayBeRunning) {
+        try {
+            $null = Stop-GmailBrokerForInstall `
+                -PythonCommand "python" `
+                -StateFile $BrokerStateFile `
+                -OnlyIfStatePresent
+        } catch {
+            $RecoveryFailures.Add("candidate broker stop failed")
+        }
+    }
+    if ($null -ne $CodexTransaction) {
+        try {
+            Restore-CodexMarketplaceSnapshot -Before $Before -Transaction $CodexTransaction
+        } catch {
+            $RecoveryFailures.Add("Codex state restoration failed")
+        }
+    }
     if ($RuntimeMutated) {
         try {
             if ($PreviousRuntimePresent) {
@@ -961,8 +1031,47 @@ try {
                 throw "Stage 'runtime rollback verification' failed."
             }
         } catch {
-            throw "Installation failed: $PrimaryMessage Runtime rollback failed: $($_.Exception.Message)"
+            $RecoveryFailures.Add("runtime restoration failed")
         }
+    }
+    if ($PriorBrokerWasRunning) {
+        if ($RecoveryFailures.Count -eq 0) {
+            try {
+                $PriorStart = Invoke-CheckedCommand `
+                    -Stage "prior Gmail broker restart" `
+                    -Command "python" `
+                    -Arguments @("-m", $PriorBroker.ControlModule, "start") `
+                    -Description "Restarting the prior Gmail Edge broker" `
+                    -TimeoutSeconds $TimeoutBridgeSeconds `
+                    -AllowFailure
+                if ($PriorStart.ExitCode -ne 0 -and $PriorStart.ExitCode -ne 10) {
+                    throw "Stage 'prior Gmail broker restart' failed."
+                }
+                $PriorStatusResult = Invoke-CheckedCommand `
+                    -Stage "prior Gmail broker verification" `
+                    -Command "python" `
+                    -Arguments @("-m", $PriorBroker.ControlModule, "status") `
+                    -Description "Verifying the restored Gmail Edge broker" `
+                    -TimeoutSeconds $TimeoutBridgeSeconds `
+                    -AllowFailure
+                if ($PriorStatusResult.ExitCode -ne 0 -and $PriorStatusResult.ExitCode -ne 10) {
+                    throw "Stage 'prior Gmail broker verification' failed."
+                }
+                $PriorStatus = ConvertFrom-CommandJson `
+                    -Result $PriorStatusResult `
+                    -Stage "prior Gmail broker verification"
+                if ([string]$PriorStatus.result.build_id -cne $PriorBroker.BuildId) {
+                    throw "Stage 'prior Gmail broker verification' returned the wrong build."
+                }
+            } catch {
+                $RecoveryFailures.Add("prior broker restart or verification failed")
+            }
+        } else {
+            $RecoveryFailures.Add("prior broker restart skipped because prerequisite restoration failed")
+        }
+    }
+    if ($RecoveryFailures.Count -gt 0) {
+        throw "Installation failed: $PrimaryMessage Recovery status: failed ($($RecoveryFailures -join '; '))."
     }
     throw $PrimaryMessage
 }
