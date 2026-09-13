@@ -8,9 +8,9 @@ import json
 import re
 import subprocess
 import sys
+import unicodedata
 import zipfile
-from email.parser import BytesParser
-from email.policy import compat32
+from email.parser import Parser
 from pathlib import Path
 
 
@@ -47,6 +47,25 @@ def _normalized_name(value: str) -> str:
     return _NORMALIZE_RE.sub("_", value).lower()
 
 
+def _canonical_member_name(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value) if isinstance(value, str) else value
+    if (
+        not isinstance(normalized, str)
+        or not normalized
+        or "\\" in normalized
+        or normalized.startswith("/")
+        or re.match(r"^[A-Za-z]:", normalized)
+    ):
+        raise RuntimePackageError("wheel member path is invalid")
+    parts = normalized.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise RuntimePackageError("wheel member path is invalid")
+    canonical_parts = [part.casefold() for part in parts]
+    if canonical_parts[0].rstrip(" .") == "tools":
+        raise RuntimePackageError("wheel contains a forbidden package")
+    return "/".join(canonical_parts)
+
+
 def installed_version() -> dict[str, object]:
     try:
         version = importlib.metadata.version(DISTRIBUTION_NAME)
@@ -62,18 +81,25 @@ def installed_version() -> dict[str, object]:
 def validate_wheel(path: Path, expected_version: str) -> dict[str, str]:
     try:
         with zipfile.ZipFile(path) as archive:
-            members = archive.namelist()
+            members: dict[str, str] = {}
+            for info in archive.infolist():
+                canonical = _canonical_member_name(info.orig_filename)
+                if canonical in members:
+                    raise RuntimePackageError("wheel contains aliased member paths")
+                members[canonical] = info.orig_filename
             metadata_members = [
-                name
-                for name in members
-                if name.endswith(".dist-info/METADATA") and "/" in name
+                original
+                for canonical, original in members.items()
+                if canonical.endswith(".dist-info/metadata")
+                and canonical.count("/") == 1
             ]
             if len(metadata_members) != 1:
                 raise RuntimePackageError("wheel metadata contract is invalid")
-            metadata = BytesParser(policy=compat32).parsebytes(
-                archive.read(metadata_members[0])
-            )
-    except (OSError, zipfile.BadZipFile, KeyError) as error:
+            metadata_text = archive.read(metadata_members[0]).decode("utf-8")
+            metadata = Parser().parsestr(metadata_text)
+    except RuntimePackageError:
+        raise
+    except (OSError, RuntimeError, UnicodeError, zipfile.BadZipFile, KeyError) as error:
         raise RuntimePackageError("wheel archive is invalid") from error
 
     name = metadata.get("Name")
@@ -82,10 +108,14 @@ def validate_wheel(path: Path, expected_version: str) -> dict[str, str]:
         raise RuntimePackageError("wheel distribution name does not match")
     if not isinstance(version, str) or version != expected_version:
         raise RuntimePackageError("wheel distribution version does not match")
-    if not REQUIRED_WHEEL_MEMBERS.issubset(members):
+    expected_metadata = (
+        f"{NORMALIZED_DISTRIBUTION_NAME}-{expected_version}.dist-info/metadata".casefold()
+    )
+    if _canonical_member_name(metadata_members[0]) != expected_metadata:
+        raise RuntimePackageError("wheel metadata identity does not match")
+    canonical_required = {_canonical_member_name(member) for member in REQUIRED_WHEEL_MEMBERS}
+    if not canonical_required.issubset(members):
         raise RuntimePackageError("wheel required module contract is incomplete")
-    if any(name == "tools" or name.startswith("tools/") for name in members):
-        raise RuntimePackageError("wheel contains a forbidden package")
     return {"distribution": DISTRIBUTION_NAME, "version": expected_version}
 
 
@@ -111,11 +141,9 @@ def _smoke_module(python: str, work_dir: Path, module: str, expected: frozenset[
     try:
         completed = subprocess.run(
             [python, "-m", module],
-            input=_mcp_requests(),
+            input=_mcp_requests().encode("utf-8"),
             cwd=work_dir,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
             timeout=20,
             check=False,
         )
@@ -124,8 +152,9 @@ def _smoke_module(python: str, work_dir: Path, module: str, expected: frozenset[
     if completed.returncode:
         raise RuntimePackageError("runtime module smoke test failed")
     try:
+        stdout = completed.stdout.decode("utf-8")
         responses = [
-            json.loads(line) for line in completed.stdout.splitlines() if line.strip()
+            json.loads(line) for line in stdout.splitlines() if line.strip()
         ]
         initialized = next(response for response in responses if response.get("id") == 1)
         listed = next(response for response in responses if response.get("id") == 2)
@@ -133,7 +162,7 @@ def _smoke_module(python: str, work_dir: Path, module: str, expected: frozenset[
             raise RuntimePackageError("runtime initialize response is invalid")
         tools = listed["result"]["tools"]
         actual = {tool["name"] for tool in tools if isinstance(tool, dict)}
-    except (json.JSONDecodeError, KeyError, StopIteration, TypeError) as error:
+    except (UnicodeError, json.JSONDecodeError, KeyError, StopIteration, TypeError) as error:
         raise RuntimePackageError("runtime module smoke response is invalid") from error
     if actual != expected:
         raise RuntimePackageError("runtime module tool contract does not match")
@@ -171,6 +200,15 @@ def main() -> int:
             result = smoke(arguments.python, arguments.work_dir)
     except RuntimePackageError as error:
         print(json.dumps({"ok": False, "error": str(error)}, sort_keys=True), file=sys.stderr)
+        return 1
+    except Exception:
+        print(
+            json.dumps(
+                {"ok": False, "error": "runtime package operation failed"},
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
         return 1
     print(json.dumps(result, sort_keys=True))
     return 0

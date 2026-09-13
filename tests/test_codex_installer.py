@@ -207,12 +207,25 @@ if ($args.Count -ge 4 -and $args[0] -eq "mcp" -and $args[1] -eq "get") {
     if ($State.fail_stage -like "*mcp-definition*" -and $Name -eq "gmail") {
         $Module = '${BROKEN_ROOT}/gmail_mcp_server.py'
     }
+    $McpEnvironment = if ($Name -eq "gmail") {
+        $Values = [ordered]@{
+            GMAIL_BACKEND = "edge_broker"
+            PYTHONIOENCODING = "utf-8"
+        }
+        if ($State.fail_stage -like "*mcp-env*") {
+            $Values["PYTHONPATH"] = "SENTINEL_INJECTED"
+        }
+        [pscustomobject]$Values
+    } else {
+        [pscustomobject]@{ PYTHONIOENCODING = "utf-8" }
+    }
     [pscustomobject]@{
         name = $Name
         transport = [pscustomobject]@{
             type = "stdio"
             command = "python"
             args = @("-m", $Module)
+            env = $McpEnvironment
         }
     } | ConvertTo-Json -Depth 8
     exit 0
@@ -491,6 +504,8 @@ class CodexInstallerTests(unittest.TestCase):
         login_exit=0,
         skip_dependency=True,
         corrupt_attestation=False,
+        local_mcp_variant="",
+        installed_mcp_variant="",
     ):
         fixture_root = self.temp_root / "stateful-installer"
         for relative_path in (
@@ -541,6 +556,33 @@ class CodexInstallerTests(unittest.TestCase):
                 'version = "1.10.0"', f'version = "{plugin_version}"'
             ),
             encoding="utf-8",
+        )
+        mcp_path = fixture_root / ".mcp.json"
+        mcp_manifest = json.loads(mcp_path.read_text(encoding="utf-8"))
+        if local_mcp_variant == "extra-server":
+            mcp_manifest["mcpServers"]["injected"] = {
+                "command": "python",
+                "args": ["-m", "injected"],
+                "env": {},
+            }
+        elif local_mcp_variant == "extra-field":
+            mcp_manifest["mcpServers"]["gmail"]["cwd"] = "SENTINEL_CWD"
+        elif local_mcp_variant == "pythonpath":
+            mcp_manifest["mcpServers"]["gmail"]["env"]["PYTHONPATH"] = "SENTINEL_PATH"
+        mcp_path.write_text(json.dumps(mcp_manifest), encoding="utf-8")
+        installed_mcp = json.loads(json.dumps(mcp_manifest))
+        if installed_mcp_variant == "extra-server":
+            installed_mcp["mcpServers"]["injected"] = {
+                "command": "python",
+                "args": ["-m", "injected"],
+                "env": {},
+            }
+        elif installed_mcp_variant == "extra-field":
+            installed_mcp["mcpServers"]["gmail"]["cwd"] = "SENTINEL_CWD"
+        elif installed_mcp_variant == "pythonpath":
+            installed_mcp["mcpServers"]["gmail"]["env"]["PYTHONPATH"] = "SENTINEL_PATH"
+        (self.marketplace_root / ".mcp.json").write_text(
+            json.dumps(installed_mcp), encoding="utf-8"
         )
         if runtime_version is None:
             runtime_version = plugin_version
@@ -1085,6 +1127,17 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(state.runtime_version, "1.10.1")
         self.assertFalse(state.marketplace_exists)
 
+    def test_local_mcp_manifest_rejects_extra_servers_fields_and_env_before_commands(self):
+        for variant in ("extra-server", "extra-field", "pythonpath"):
+            with self.subTest(variant=variant):
+                self.log_path.unlink(missing_ok=True)
+                result, events, _ = self.run_stateful_installer(
+                    local_mcp_variant=variant
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("mcp", result.stderr.lower())
+                self.assertEqual(events, [])
+
     def test_fresh_runtime_build_validate_install_and_smoke_precede_plugin_add(self):
         result, events, state = self.run_stateful_installer(
             runtime_version="", skip_dependency=False
@@ -1189,6 +1242,29 @@ class CodexInstallerTests(unittest.TestCase):
             events.index("marketplace-add:old-sha"),
             events.index("runtime-install:avaya_case_review_runtime-1.9.9-py3-none-any.whl"),
         )
+
+    def test_installed_mcp_manifest_and_environment_are_exact_or_rolled_back(self):
+        scenarios = (
+            {"installed_mcp_variant": "extra-server"},
+            {"installed_mcp_variant": "extra-field"},
+            {"installed_mcp_variant": "pythonpath"},
+            {"fail_stage": "mcp-env"},
+        )
+        for options in scenarios:
+            with self.subTest(options=options):
+                self.log_path.unlink(missing_ok=True)
+                result, events, state = self.run_stateful_installer(
+                    runtime_version="1.9.9",
+                    skip_dependency=False,
+                    existing_sha="old-sha",
+                    plugin_installed=True,
+                    plugin_enabled=True,
+                    **options,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("mcp", result.stderr.lower())
+                self.assertEqual(state.marketplace_sha, "old-sha")
+                self.assertEqual(state.runtime_version, "1.9.9")
 
     def test_failure_with_no_prior_runtime_uninstalls_only_named_distribution(self):
         result, events, state = self.run_stateful_installer(

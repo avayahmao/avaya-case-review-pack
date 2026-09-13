@@ -180,20 +180,47 @@ function Test-McpManifestContract {
 
     try {
         $Manifest = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+        Assert-ExactPropertyNames -Value $Manifest -Expected @('mcpServers') -Label 'MCP manifest'
+        Assert-ExactPropertyNames `
+            -Value $Manifest.mcpServers `
+            -Expected @('gmail', 'CaseToMD') `
+            -Label 'MCP server set'
         $Expected = @{
-            gmail = 'avaya_case_review_runtime.gmail_mcp_server'
-            CaseToMD = 'avaya_case_review_runtime.casetomd_mcp_bridge'
+            gmail = [pscustomobject]@{
+                Module = 'avaya_case_review_runtime.gmail_mcp_server'
+                Environment = [ordered]@{
+                    GMAIL_BACKEND = 'edge_broker'
+                    PYTHONIOENCODING = 'utf-8'
+                }
+            }
+            CaseToMD = [pscustomobject]@{
+                Module = 'avaya_case_review_runtime.casetomd_mcp_bridge'
+                Environment = [ordered]@{ PYTHONIOENCODING = 'utf-8' }
+            }
         }
         foreach ($Name in $Expected.Keys) {
             $Server = $Manifest.mcpServers.$Name
+            Assert-ExactPropertyNames `
+                -Value $Server `
+                -Expected @('command', 'args', 'env') `
+                -Label "$Name MCP definition"
+            Assert-ExactPropertyNames `
+                -Value $Server.env `
+                -Expected @($Expected[$Name].Environment.Keys) `
+                -Label "$Name MCP environment"
             if (
                 $null -eq $Server -or
                 [string]$Server.command -cne 'python' -or
                 @($Server.args).Count -ne 2 -or
                 [string]$Server.args[0] -cne '-m' -or
-                [string]$Server.args[1] -cne $Expected[$Name]
+                [string]$Server.args[1] -cne $Expected[$Name].Module
             ) {
                 throw "definition"
+            }
+            foreach ($Variable in $Expected[$Name].Environment.Keys) {
+                if ([string]$Server.env.$Variable -cne $Expected[$Name].Environment[$Variable]) {
+                    throw "environment"
+                }
             }
         }
         if ((Get-Content -LiteralPath $Path -Raw -Encoding UTF8).Contains('${')) {
@@ -481,10 +508,23 @@ function Test-InstalledCodexPlugin {
     ) {
         throw "Stage 'installed plugin verification' failed."
     }
+    if ([string]::IsNullOrWhiteSpace($Installed.Root)) {
+        throw "Stage 'installed MCP manifest verification' returned no marketplace root."
+    }
+    Test-McpManifestContract -Path (Join-Path $Installed.Root '.mcp.json')
 
     $ExpectedModules = @{
-        gmail = 'avaya_case_review_runtime.gmail_mcp_server'
-        CaseToMD = 'avaya_case_review_runtime.casetomd_mcp_bridge'
+        gmail = [pscustomobject]@{
+            Module = 'avaya_case_review_runtime.gmail_mcp_server'
+            Environment = [ordered]@{
+                GMAIL_BACKEND = 'edge_broker'
+                PYTHONIOENCODING = 'utf-8'
+            }
+        }
+        CaseToMD = [pscustomobject]@{
+            Module = 'avaya_case_review_runtime.casetomd_mcp_bridge'
+            Environment = [ordered]@{ PYTHONIOENCODING = 'utf-8' }
+        }
     }
     foreach ($Name in $ExpectedModules.Keys) {
         $Result = Invoke-CheckedCommand `
@@ -497,14 +537,23 @@ function Test-InstalledCodexPlugin {
             -Result $Result `
             -Stage "installed MCP verification ($Name)"
         $Transport = if ($null -ne $Definition.transport) { $Definition.transport } else { $Definition }
+        Assert-ExactPropertyNames `
+            -Value $Transport.env `
+            -Expected @($ExpectedModules[$Name].Environment.Keys) `
+            -Label "installed $Name MCP environment"
         if (
             [string]$Transport.command -cne 'python' -or
             @($Transport.args).Count -ne 2 -or
             [string]$Transport.args[0] -cne '-m' -or
-            [string]$Transport.args[1] -cne $ExpectedModules[$Name] -or
+            [string]$Transport.args[1] -cne $ExpectedModules[$Name].Module -or
             ($Result.StdOut).Contains('${')
         ) {
             throw "Stage 'installed MCP verification ($Name)' failed."
+        }
+        foreach ($Variable in $ExpectedModules[$Name].Environment.Keys) {
+            if ([string]$Transport.env.$Variable -cne $ExpectedModules[$Name].Environment[$Variable]) {
+                throw "Stage 'installed MCP verification ($Name)' failed."
+            }
         }
     }
 }

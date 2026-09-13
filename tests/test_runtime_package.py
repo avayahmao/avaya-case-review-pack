@@ -369,6 +369,141 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
                     combined = completed.stdout + completed.stderr
                     self.assertNotIn("tools/gmail/gmail_mcp_server.py", combined)
 
+    def test_validate_wheel_rejects_noncanonical_and_aliased_member_paths(self):
+        required = {
+            "avaya_case_review_runtime/gmail_mcp_server.py",
+            "avaya_case_review_runtime/casetomd_mcp_bridge.py",
+        }
+        unsafe = (
+            "/avaya_case_review_runtime/extra.py",
+            "C:/avaya_case_review_runtime/extra.py",
+            "//server/share/extra.py",
+            "avaya_case_review_runtime//extra.py",
+            "avaya_case_review_runtime/./extra.py",
+            "avaya_case_review_runtime/../extra.py",
+            "TOOLS/extra.py",
+            "ＴＯＯＬＳ/extra.py",
+            "tools./extra.py",
+            "TOOLS／extra.py",
+        )
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for index, member in enumerate(unsafe):
+                with self.subTest(member=member):
+                    wheel = directory / f"unsafe-{index}.whl"
+                    self.write_wheel(wheel, members=required | {member})
+                    completed = self.run_helper(
+                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    combined = completed.stdout + completed.stderr
+                    self.assertNotIn(member, combined)
+                    self.assertNotIn(str(wheel), combined)
+                    self.assertNotIn("Traceback", combined)
+
+            backslash_wheel = directory / "unsafe-backslash.whl"
+            placeholder = "avaya_case_review_runtime!extra.py"
+            self.write_wheel(backslash_wheel, members=required | {placeholder})
+            raw = backslash_wheel.read_bytes().replace(
+                placeholder.encode("ascii"),
+                rb"avaya_case_review_runtime\extra.py",
+            )
+            backslash_wheel.write_bytes(raw)
+            completed = self.run_helper(
+                "validate-wheel",
+                "--wheel",
+                str(backslash_wheel),
+                "--version",
+                "1.10.0",
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertNotIn("Traceback", completed.stdout + completed.stderr)
+
+    def test_cli_sanitizes_malformed_encrypted_and_invalid_utf8_wheels(self):
+        required = {
+            "avaya_case_review_runtime/gmail_mcp_server.py",
+            "avaya_case_review_runtime/casetomd_mcp_bridge.py",
+        }
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            malformed = directory / "SENTINEL_MALFORMED.whl"
+            malformed.write_bytes(b"SENTINEL_ARCHIVE_BYTES")
+
+            encrypted = directory / "SENTINEL_ENCRYPTED.whl"
+            self.write_wheel(encrypted, members=required)
+            encrypted_bytes = bytearray(encrypted.read_bytes())
+            for signature, flag_offset in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+                position = 0
+                while True:
+                    position = encrypted_bytes.find(signature, position)
+                    if position < 0:
+                        break
+                    current = int.from_bytes(
+                        encrypted_bytes[position + flag_offset : position + flag_offset + 2],
+                        "little",
+                    )
+                    encrypted_bytes[position + flag_offset : position + flag_offset + 2] = (
+                        current | 1
+                    ).to_bytes(2, "little")
+                    position += 4
+            encrypted.write_bytes(encrypted_bytes)
+
+            invalid_utf8 = directory / "SENTINEL_UTF8.whl"
+            distribution = "avaya_case_review_runtime-1.10.0.dist-info/METADATA"
+            with zipfile.ZipFile(invalid_utf8, "w") as wheel:
+                wheel.writestr(distribution, b"Name: avaya-case-review-runtime\nVersion: \xffSENTINEL\n")
+                for member in required:
+                    wheel.writestr(member, "# fixture\n")
+
+            for wheel in (malformed, encrypted, invalid_utf8):
+                with self.subTest(wheel=wheel.name):
+                    completed = self.run_helper(
+                        "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    combined = completed.stdout + completed.stderr
+                    self.assertNotIn("SENTINEL", combined)
+                    self.assertNotIn(str(wheel), combined)
+                    self.assertNotIn("Traceback", combined)
+                    self.assertEqual(
+                        set(json.loads(completed.stderr)), {"error", "ok"}
+                    )
+
+    def test_smoke_cli_sanitizes_invalid_json_and_invalid_utf8_child_output(self):
+        variants = {
+            "invalid-json": 'print("SENTINEL_RESPONSE not-json", flush=True)',
+            "invalid-utf8": (
+                'import sys; sys.stdout.buffer.write(b"\\xffSENTINEL_CHILD_BYTES"); '
+                "sys.stdout.buffer.flush()"
+            ),
+        }
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            outside = directory / "outside"
+            outside.mkdir()
+            for label, body in variants.items():
+                with self.subTest(label=label):
+                    site = directory / label / "avaya_case_review_runtime"
+                    site.mkdir(parents=True)
+                    (site / "__init__.py").write_text("", encoding="utf-8")
+                    for module in ("gmail_mcp_server", "casetomd_mcp_bridge"):
+                        (site / f"{module}.py").write_text(body, encoding="utf-8")
+                    environment = os.environ.copy()
+                    environment["PYTHONPATH"] = str(site.parent)
+                    completed = self.run_helper(
+                        "smoke",
+                        "--python",
+                        sys.executable,
+                        "--work-dir",
+                        str(outside),
+                        environment=environment,
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    combined = completed.stdout + completed.stderr
+                    self.assertNotIn("SENTINEL", combined)
+                    self.assertNotIn("Traceback", combined)
+                    self.assertEqual(set(json.loads(completed.stderr)), {"error", "ok"})
+
     def test_smoke_verifies_both_exact_mcp_tool_sets_from_unrelated_cwd(self):
         fake_module = '''\
 import json
