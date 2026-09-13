@@ -677,14 +677,22 @@ class CodexInstallerTests(unittest.TestCase):
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / relative_path, destination)
 
+        manifest = json.loads(
+            (fixture_root / ".codex-plugin/plugin.json").read_text(
+                encoding="utf-8-sig"
+            )
+        )
+        plugin_version = manifest["version"]
         write_attestation(
             fixture_root / "tools/gmail/cloud/GmailMcpBridge.gs",
             fixture_root / "tools/gmail/cloud/bridge_release_attestation.json",
-            "1.10.0",
+            plugin_version,
             "2026-09-09T00:00:00Z",
         )
         self._write_state(
-            plugin_version="1.10.0", runtime_version="1.10.0", target_ref="v1.10.0"
+            plugin_version=plugin_version,
+            runtime_version=plugin_version,
+            target_ref=f"v{plugin_version}",
         )
 
         shutil.copy2(INSTALLER, fixture_root / INSTALLER.name)
@@ -767,6 +775,20 @@ class CodexInstallerTests(unittest.TestCase):
 
     def test_installer_marketplace_timeout_kills_only_started_child_tree(self):
         fixture_root = self._short_marketplace_timeout_fixture()
+        manifest_version = json.loads(
+            (fixture_root / ".codex-plugin/plugin.json").read_text(encoding="utf-8-sig")
+        )["version"]
+        attestation = json.loads(
+            (
+                fixture_root
+                / "tools/gmail/cloud/bridge_release_attestation.json"
+            ).read_text(encoding="utf-8")
+        )
+        fixture_state = self._read_state()
+        self.assertEqual(manifest_version, attestation["plugin_version"])
+        self.assertEqual(manifest_version, fixture_state.plugin_version)
+        self.assertEqual(manifest_version, fixture_state.runtime_version)
+        self.assertEqual(f"v{manifest_version}", fixture_state.target_ref)
         result = self._run_installer_with_caller_tree_sentinel(fixture_root)
         time.sleep(2.5)
         events = self._events()
