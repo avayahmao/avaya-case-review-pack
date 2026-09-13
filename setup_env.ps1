@@ -339,6 +339,101 @@ function Assert-BrokerBuildId {
     }
 }
 
+function ConvertFrom-CommandJson {
+    param(
+        [Parameter(Mandatory = $true)][pscustomobject]$Result,
+        [Parameter(Mandatory = $true)][string]$Stage
+    )
+
+    try {
+        return $Result.StdOut | ConvertFrom-Json
+    } catch {
+        throw "Stage '$Stage' returned invalid JSON."
+    }
+}
+
+function Get-InstalledRuntimeState {
+    param(
+        [Parameter(Mandatory = $true)][string]$PythonCommand,
+        [Parameter(Mandatory = $true)][string]$RuntimeHelperPath,
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Environment,
+        [Parameter(Mandatory = $true)][string]$Stage
+    )
+
+    $Result = Invoke-BoundedCommand `
+        -Stage $Stage `
+        -Command $PythonCommand `
+        -Arguments @($RuntimeHelperPath, "installed-version") `
+        -TimeoutSeconds $TimeoutLocalSeconds `
+        -Environment $Environment
+    $State = ConvertFrom-CommandJson -Result $Result -Stage $Stage
+    $InstalledProperty = $State.PSObject.Properties["installed"]
+    if ($null -eq $InstalledProperty -or $InstalledProperty.Value -isnot [bool]) {
+        throw "Stage '$Stage' returned an invalid runtime state."
+    }
+    if (
+        [bool]$State.installed -and
+        [string]::IsNullOrWhiteSpace([string]$State.version)
+    ) {
+        throw "Stage '$Stage' returned an invalid runtime state."
+    }
+    return $State
+}
+
+function Restore-RuntimePackage {
+    param(
+        [Parameter(Mandatory = $true)][string]$PythonCommand,
+        [Parameter(Mandatory = $true)][string]$RuntimeHelperPath,
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Environment,
+        [Parameter(Mandatory = $true)][bool]$PreviousPresent,
+        [AllowEmptyString()][Parameter(Mandatory = $true)][string]$PreviousVersion,
+        [AllowNull()][string]$PreviousWheel,
+        [AllowNull()][string]$CurrentWheel,
+        [Parameter(Mandatory = $true)][string]$CurrentVersion
+    )
+
+    if ($PreviousPresent) {
+        $RestoreWheel = if ($PreviousVersion -ceq $CurrentVersion) {
+            $CurrentWheel
+        } else {
+            $PreviousWheel
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$RestoreWheel)) {
+            throw "Stage 'runtime rollback wheel selection' failed."
+        }
+        $null = Invoke-BoundedCommand `
+            -Stage "runtime rollback install" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-m", "pip", "install", "--no-index", "--no-deps",
+                "--force-reinstall", $RestoreWheel
+            ) `
+            -TimeoutSeconds $TimeoutPipSeconds `
+            -Environment $Environment
+    } else {
+        $null = Invoke-BoundedCommand `
+            -Stage "runtime rollback uninstall" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-m", "pip", "uninstall", "--yes", "avaya-case-review-runtime"
+            ) `
+            -TimeoutSeconds $TimeoutPipSeconds `
+            -Environment $Environment
+    }
+
+    $Restored = Get-InstalledRuntimeState `
+        -PythonCommand $PythonCommand `
+        -RuntimeHelperPath $RuntimeHelperPath `
+        -Environment $Environment `
+        -Stage "runtime rollback verification"
+    if (
+        [bool]$Restored.installed -ne $PreviousPresent -or
+        ($PreviousPresent -and [string]$Restored.version -cne $PreviousVersion)
+    ) {
+        throw "Stage 'runtime rollback verification' failed."
+    }
+}
+
 if ($ConfigMigrationOnly) {
     if (
         [string]::IsNullOrWhiteSpace($ConfigMigrationPath) -or
@@ -398,6 +493,8 @@ $BridgeSourcePath = Join-Path $SourceGmailDir "cloud\GmailMcpBridge.gs"
 $BridgeIdentityPath = Join-Path $SourceGmailDir "cloud\bridge_identity.py"
 $BridgeAttestationPath = Join-Path $SourceGmailDir "cloud\bridge_release_attestation.json"
 $PluginManifestPath = Join-Path $SourcePluginDir "plugin.json"
+$RuntimeHelperPath = Join-Path $ScriptDir "tools\installer\runtime_package.py"
+$PyProjectPath = Join-Path $ScriptDir "pyproject.toml"
 $TargetPluginDir = Join-Path $GeminiPluginsDir "avaya-case-review"
 $TargetGmailCloudDir = Join-Path $GeminiToolsDir "cloud"
 $TargetCaseToMdDir = Join-Path $UserHome ".gemini\tools\casetomd"
@@ -428,7 +525,9 @@ foreach ($RequiredPath in @(
     $BridgeSourcePath,
     $BridgeIdentityPath,
     $BridgeAttestationPath,
-    $CaseToMdSourceFile
+    $CaseToMdSourceFile,
+    $RuntimeHelperPath,
+    $PyProjectPath
 )) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Required installation source is missing: $RequiredPath"
@@ -452,6 +551,11 @@ $PluginVersion = [string]$PluginManifest.version
 if ([string]::IsNullOrWhiteSpace($PluginVersion)) {
     throw "Antigravity plugin version is missing."
 }
+$PyProject = Get-Content -LiteralPath $PyProjectPath -Raw -Encoding UTF8
+$ProjectVersion = [regex]::Match($PyProject, '(?m)^version\s*=\s*"([^"]+)"\s*$')
+if (-not $ProjectVersion.Success -or $ProjectVersion.Groups[1].Value -cne $PluginVersion) {
+    throw "Runtime package version does not match the Antigravity plugin version."
+}
 $ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `
     -RuntimePackageRoot $CanonicalRuntimePackageRoot
 
@@ -459,7 +563,7 @@ $ExpectedBrokerBuildId = Get-CanonicalBrokerBuildId `
 # 1. Validate Local Release and Python Environment
 # ------------------------------------------------------------------------------
 Write-Host "[1/6] Validating the local release and Python installation..." -ForegroundColor Yellow
-$PythonCmd = Get-Command python -CommandType Application -ErrorAction SilentlyContinue |
+$PythonCmd = Get-Command python -CommandType Application, ExternalScript -ErrorAction SilentlyContinue |
     Select-Object -First 1
 if (-not $PythonCmd) {
     throw "Python was not found in PATH. Please install Python 3.10+ and add it to PATH."
@@ -469,7 +573,8 @@ $PythonVersionResult = Invoke-BoundedCommand `
     -Stage "Python version" `
     -Command $PythonCommand `
     -Arguments @("--version") `
-    -TimeoutSeconds $TimeoutLocalSeconds
+    -TimeoutSeconds $TimeoutLocalSeconds `
+    -Environment $BrokerEnvironment
 Write-Host "  Found: $($PythonVersionResult.StdOut.Trim())" -ForegroundColor Green
 
 $null = Invoke-BoundedCommand `
@@ -482,74 +587,163 @@ $null = Invoke-BoundedCommand `
         "--attestation", $BridgeAttestationPath,
         "--plugin-version", $PluginVersion
     ) `
-    -TimeoutSeconds $TimeoutLocalSeconds
+    -TimeoutSeconds $TimeoutLocalSeconds `
+    -Environment $BrokerEnvironment
 Write-Host "  Release attestation validated." -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
-# 2. Install Dependencies and Verify the Central Bridge
+# 2. Install and Verify the Packaged Runtime, Then Verify the Central Bridge
 # ------------------------------------------------------------------------------
 Write-Host ""
-Write-Host "[2/6] Preparing dependencies and validating the Gmail Cloud Bridge..." -ForegroundColor Yellow
+Write-Host "[2/6] Preparing the packaged runtime and validating the Gmail Cloud Bridge..." -ForegroundColor Yellow
 $env:PYTHONIOENCODING = "utf-8"
-if (-not $SkipDependencyInstall) {
-    $PipTrustedHosts = @(
-        "--trusted-host", "pypi.org",
-        "--trusted-host", "pypi.python.org",
-        "--trusted-host", "files.pythonhosted.org"
+$InstalledRuntime = Get-InstalledRuntimeState `
+    -PythonCommand $PythonCommand `
+    -RuntimeHelperPath $RuntimeHelperPath `
+    -Environment $BrokerEnvironment `
+    -Stage "runtime version inspection"
+$PreviousRuntimePresent = [bool]$InstalledRuntime.installed
+$PreviousRuntimeVersion = if ($PreviousRuntimePresent) {
+    [string]$InstalledRuntime.version
+} else {
+    ""
+}
+$WheelStore = Join-Path $LocalAppData "AvayaCaseReview\runtime-wheels"
+$PreviousRuntimeWheel = $null
+if ($PreviousRuntimePresent -and $PreviousRuntimeVersion -cne $PluginVersion) {
+    $PriorWheels = @(
+        Get-ChildItem `
+            -LiteralPath $WheelStore `
+            -Filter "avaya_case_review_runtime-$PreviousRuntimeVersion-*.whl" `
+            -File `
+            -ErrorAction SilentlyContinue
     )
-    $null = Invoke-BoundedCommand `
-        -Stage "pip upgrade" `
-        -Command $PythonCommand `
-        -Arguments (@("-m", "pip", "install", "--upgrade", "pip", "--quiet") + $PipTrustedHosts) `
-        -TimeoutSeconds $TimeoutPipSeconds
-    $null = Invoke-BoundedCommand `
-        -Stage "pip install" `
-        -Command $PythonCommand `
-        -Arguments (@("-m", "pip", "install", "mcp", "playwright", "--quiet") + $PipTrustedHosts) `
-        -TimeoutSeconds $TimeoutPipSeconds
-    Write-Host "  Python packages installed successfully." -ForegroundColor Green
-
-    $OldNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
-    try {
-        if (-not $env:NODE_EXTRA_CA_CERTS) {
-            $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
-        }
-        $PlaywrightResult = Invoke-BoundedCommand `
-            -Stage "playwright install" `
-            -Command $PythonCommand `
-            -Arguments @("-m", "playwright", "install", "chromium") `
-            -TimeoutSeconds $TimeoutPipSeconds `
-            -AllowFailure
-    } finally {
-        $env:NODE_TLS_REJECT_UNAUTHORIZED = $OldNodeTls
+    if ($PriorWheels.Count -ne 1) {
+        throw "A retained wheel for the installed runtime version is required before upgrade."
     }
-    if ($PlaywrightResult.ExitCode -ne 0) {
-        Write-Warning "Playwright Chromium installation failed; the legacy rollback backend may be unavailable."
-    }
+    $PreviousRuntimeWheel = $PriorWheels[0].FullName
+    $null = Invoke-BoundedCommand `
+        -Stage "prior runtime wheel validation" `
+        -Command $PythonCommand `
+        -Arguments @(
+            $RuntimeHelperPath, "validate-wheel",
+            "--wheel", $PreviousRuntimeWheel,
+            "--version", $PreviousRuntimeVersion
+        ) `
+        -TimeoutSeconds $TimeoutLocalSeconds `
+        -Environment $BrokerEnvironment
 }
 
-$BridgeVerifyResult = Invoke-BoundedCommand `
-    -Stage "verify-bridge" `
-    -Command $PythonCommand `
-    -Arguments @(
-        "-B", $SourceBrokerCtlPath, "verify-bridge",
-        "--source", $BridgeSourcePath,
-        "--attestation", $BridgeAttestationPath,
-        "--plugin-version", $PluginVersion
-    ) `
-    -TimeoutSeconds $TimeoutBridgeSeconds `
-    -Environment $BrokerEnvironment `
-    -AllowFailure
-if ($BridgeVerifyResult.ExitCode -eq 10) {
-    Write-Host "  Gmail authentication is required. Waiting for Managed Edge SSO/MFA..." -ForegroundColor Cyan
+$RuntimeMutated = $false
+$CurrentRuntimeWheel = $null
+$RuntimeSmokeWorkDir = $null
+$BackupRoot = $null
+$PreserveBackup = $false
+try {
+    if ($SkipDependencyInstall) {
+        if (-not $PreviousRuntimePresent -or $PreviousRuntimeVersion -cne $PluginVersion) {
+            throw "-SkipDependencyInstall requires runtime version $PluginVersion to already be installed."
+        }
+    } else {
+        $PipTrustedHosts = @(
+            "--trusted-host", "pypi.org",
+            "--trusted-host", "pypi.python.org",
+            "--trusted-host", "files.pythonhosted.org"
+        )
+        $null = Invoke-BoundedCommand `
+            -Stage "pip upgrade" `
+            -Command $PythonCommand `
+            -Arguments (@("-m", "pip", "install", "--upgrade", "pip", "--quiet") + $PipTrustedHosts) `
+            -TimeoutSeconds $TimeoutPipSeconds `
+            -Environment $BrokerEnvironment
+        $null = Invoke-BoundedCommand `
+            -Stage "dependency install" `
+            -Command $PythonCommand `
+            -Arguments (@(
+                "-m", "pip", "install", "mcp", "playwright", "setuptools>=68", "--quiet"
+            ) + $PipTrustedHosts) `
+            -TimeoutSeconds $TimeoutPipSeconds `
+            -Environment $BrokerEnvironment
+        Write-Host "  Python packages installed successfully." -ForegroundColor Green
+
+        $OldNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
+        try {
+            if (-not $env:NODE_EXTRA_CA_CERTS) {
+                $env:NODE_TLS_REJECT_UNAUTHORIZED = "0"
+            }
+            $PlaywrightResult = Invoke-BoundedCommand `
+                -Stage "playwright install" `
+                -Command $PythonCommand `
+                -Arguments @("-m", "playwright", "install", "chromium") `
+                -TimeoutSeconds $TimeoutPipSeconds `
+                -Environment $BrokerEnvironment `
+                -AllowFailure
+        } finally {
+            $env:NODE_TLS_REJECT_UNAUTHORIZED = $OldNodeTls
+        }
+        if ($PlaywrightResult.ExitCode -ne 0) {
+            Write-Warning "Playwright Chromium installation failed; the legacy rollback backend may be unavailable."
+        }
+
+        New-Item -ItemType Directory -Path $WheelStore -Force | Out-Null
+        $null = Invoke-BoundedCommand `
+            -Stage "runtime wheel build" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-m", "pip", "wheel", "--no-deps", "--no-build-isolation",
+                "--wheel-dir", $WheelStore, $ScriptDir
+            ) `
+            -TimeoutSeconds $TimeoutPipSeconds `
+            -Environment $BrokerEnvironment
+        $CurrentWheels = @(
+            Get-ChildItem `
+                -LiteralPath $WheelStore `
+                -Filter "avaya_case_review_runtime-$PluginVersion-*.whl" `
+                -File
+        )
+        if ($CurrentWheels.Count -ne 1) {
+            throw "Stage 'runtime wheel discovery' did not find exactly one current runtime wheel."
+        }
+        $CurrentRuntimeWheel = $CurrentWheels[0].FullName
+        $null = Invoke-BoundedCommand `
+            -Stage "runtime wheel validation" `
+            -Command $PythonCommand `
+            -Arguments @(
+                $RuntimeHelperPath, "validate-wheel",
+                "--wheel", $CurrentRuntimeWheel,
+                "--version", $PluginVersion
+            ) `
+            -TimeoutSeconds $TimeoutLocalSeconds `
+            -Environment $BrokerEnvironment
+        $RuntimeMutated = $true
+        $null = Invoke-BoundedCommand `
+            -Stage "runtime install" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-m", "pip", "install", "--no-index", "--no-deps",
+                "--force-reinstall", $CurrentRuntimeWheel
+            ) `
+            -TimeoutSeconds $TimeoutPipSeconds `
+            -Environment $BrokerEnvironment
+    }
+
+    $RuntimeSmokeWorkDir = Join-Path `
+        ([IO.Path]::GetTempPath()) `
+        ("avaya-case-review-runtime-smoke-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $RuntimeSmokeWorkDir -Force | Out-Null
     $null = Invoke-BoundedCommand `
-        -Stage "Gmail broker login" `
+        -Stage "runtime smoke" `
         -Command $PythonCommand `
-        -Arguments @("-B", $SourceBrokerCtlPath, "login") `
-        -TimeoutSeconds $LoginTimeoutSeconds `
+        -Arguments @(
+            $RuntimeHelperPath, "smoke",
+            "--python", $PythonCommand,
+            "--work-dir", $RuntimeSmokeWorkDir
+        ) `
+        -TimeoutSeconds $TimeoutBridgeSeconds `
         -Environment $BrokerEnvironment
+
     $BridgeVerifyResult = Invoke-BoundedCommand `
-        -Stage "verify-bridge retry" `
+        -Stage "verify-bridge" `
         -Command $PythonCommand `
         -Arguments @(
             "-B", $SourceBrokerCtlPath, "verify-bridge",
@@ -560,11 +754,31 @@ if ($BridgeVerifyResult.ExitCode -eq 10) {
         -TimeoutSeconds $TimeoutBridgeSeconds `
         -Environment $BrokerEnvironment `
         -AllowFailure
-}
-if ($BridgeVerifyResult.ExitCode -ne 0) {
-    throw "Gmail Cloud Bridge preflight failed with exit code $($BridgeVerifyResult.ExitCode); deployed Antigravity state was not changed."
-}
-Write-Host "  Gmail Cloud Bridge is authenticated and compatible." -ForegroundColor Green
+    if ($BridgeVerifyResult.ExitCode -eq 10) {
+        Write-Host "  Gmail authentication is required. Waiting for Managed Edge SSO/MFA..." -ForegroundColor Cyan
+        $null = Invoke-BoundedCommand `
+            -Stage "Gmail broker login" `
+            -Command $PythonCommand `
+            -Arguments @("-B", $SourceBrokerCtlPath, "login") `
+            -TimeoutSeconds $LoginTimeoutSeconds `
+            -Environment $BrokerEnvironment
+        $BridgeVerifyResult = Invoke-BoundedCommand `
+            -Stage "verify-bridge retry" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-B", $SourceBrokerCtlPath, "verify-bridge",
+                "--source", $BridgeSourcePath,
+                "--attestation", $BridgeAttestationPath,
+                "--plugin-version", $PluginVersion
+            ) `
+            -TimeoutSeconds $TimeoutBridgeSeconds `
+            -Environment $BrokerEnvironment `
+            -AllowFailure
+    }
+    if ($BridgeVerifyResult.ExitCode -ne 0) {
+        throw "Gmail Cloud Bridge preflight failed with exit code $($BridgeVerifyResult.ExitCode); deployed Antigravity state was not changed."
+    }
+    Write-Host "  Gmail Cloud Bridge is authenticated and compatible." -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
 # 3. Stop the Verified Source Broker and Capture Deployment Backups
@@ -573,8 +787,6 @@ Write-Host ""
 Write-Host "[3/6] Preparing a reversible Antigravity deployment..." -ForegroundColor Yellow
 $BrokerStopResult = $null
 $BrokerWasStopped = $false
-$BackupRoot = $null
-$PreserveBackup = $false
 $DeploymentStarted = $false
 try {
     $BrokerStopResult = Stop-RunningGmailBroker `
@@ -705,7 +917,8 @@ try {
         -Stage "secure Gmail broker state" `
         -Command $PythonCommand `
         -Arguments @("-B", "-c", $AclPython, $GeminiToolsDir, $BrokerStateDir) `
-        -TimeoutSeconds $TimeoutLocalSeconds
+        -TimeoutSeconds $TimeoutLocalSeconds `
+        -Environment $BrokerEnvironment
 
     Write-Host "[5/6] Updating Antigravity MCP configuration ($McpConfigFile)..." -ForegroundColor Yellow
     $GmailScriptPath = (Join-Path $GeminiToolsDir "gmail_mcp_server.py").Replace("\", "/")
@@ -730,6 +943,41 @@ try {
         -StatusOutput @($BrokerStatus.StdOut -split "`r?`n") `
         -ExpectedBuildId $ExpectedBrokerBuildId
     Write-Host "  Running broker build verified: $ExpectedBrokerBuildId" -ForegroundColor Green
+
+    $ShimImportCode = "import importlib.util, sys; paths=sys.argv[1:]; [(lambda s: s.loader.exec_module(importlib.util.module_from_spec(s)))(importlib.util.spec_from_file_location('_avaya_deployed_shim_' + str(i), p)) for i, p in enumerate(paths)]"
+    $PreviousProcessWorkingDirectory = [Environment]::CurrentDirectory
+    Push-Location -LiteralPath $RuntimeSmokeWorkDir
+    try {
+        [Environment]::CurrentDirectory = $RuntimeSmokeWorkDir
+        $null = Invoke-BoundedCommand `
+            -Stage "deployed MCP shim import" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-B", "-c", $ShimImportCode,
+                (Join-Path $GeminiToolsDir "gmail_mcp_server.py"),
+                $CaseToMdTargetFile
+            ) `
+            -TimeoutSeconds $TimeoutBridgeSeconds `
+            -Environment $BrokerEnvironment
+        $null = Invoke-BoundedCommand `
+            -Stage "deployed broker shim help" `
+            -Command $PythonCommand `
+            -Arguments @("-B", $BrokerCtlPath, "--help") `
+            -TimeoutSeconds $TimeoutBridgeSeconds `
+            -Environment $BrokerEnvironment
+    } finally {
+        [Environment]::CurrentDirectory = $PreviousProcessWorkingDirectory
+        Pop-Location
+    }
+
+    $FinalRuntime = Get-InstalledRuntimeState `
+        -PythonCommand $PythonCommand `
+        -RuntimeHelperPath $RuntimeHelperPath `
+        -Environment $BrokerEnvironment `
+        -Stage "final runtime verification"
+    if (-not [bool]$FinalRuntime.installed -or [string]$FinalRuntime.version -cne $PluginVersion) {
+        throw "Stage 'final runtime verification' failed."
+    }
 } catch {
     $PrimaryFailure = $_
     try {
@@ -805,7 +1053,44 @@ try {
         throw "Antigravity deployment failed: $($PrimaryFailure.Exception.Message) Recovery status: failed ($($RecoveryFailure.Exception.Message)). $BackupStatus"
     }
     throw $PrimaryFailure
+}
+} catch {
+    $RuntimePrimaryFailure = $_.Exception.Message
+    if ($RuntimeMutated) {
+        try {
+            Restore-RuntimePackage `
+                -PythonCommand $PythonCommand `
+                -RuntimeHelperPath $RuntimeHelperPath `
+                -Environment $BrokerEnvironment `
+                -PreviousPresent $PreviousRuntimePresent `
+                -PreviousVersion $PreviousRuntimeVersion `
+                -PreviousWheel $PreviousRuntimeWheel `
+                -CurrentWheel $CurrentRuntimeWheel `
+                -CurrentVersion $PluginVersion
+        } catch {
+            $RuntimeRecoveryFailure = $_.Exception.Message
+            $BackupStatus = "No usable deployment backup was created."
+            if (
+                -not [string]::IsNullOrWhiteSpace($BackupRoot) -and
+                (Test-Path -LiteralPath $BackupRoot -PathType Container)
+            ) {
+                $BackupStatus = "Deployment backup preserved at: $BackupRoot"
+                if (-not $PreserveBackup) {
+                    Write-Host "RECOVERY_BACKUP=$BackupRoot"
+                }
+                $PreserveBackup = $true
+            }
+            throw "Antigravity installation failed: $RuntimePrimaryFailure Runtime rollback failed: $RuntimeRecoveryFailure $BackupStatus"
+        }
+    }
+    throw $RuntimePrimaryFailure
 } finally {
+    if (
+        -not [string]::IsNullOrWhiteSpace($RuntimeSmokeWorkDir) -and
+        (Test-Path -LiteralPath $RuntimeSmokeWorkDir)
+    ) {
+        Remove-Item -LiteralPath $RuntimeSmokeWorkDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     if (
         -not $PreserveBackup -and
         -not [string]::IsNullOrWhiteSpace($BackupRoot) -and

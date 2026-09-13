@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,6 +86,146 @@ if command == "start":
 raise SystemExit(30)
 '''
 
+    fake_python = r'''
+function Add-TestEvent {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    Add-Content -LiteralPath $env:SETUP_FIXTURE_EVENTS -Value $Name -Encoding UTF8
+}
+function Read-TestState {
+    return Get-Content -LiteralPath $env:SETUP_FIXTURE_RUNTIME_STATE -Raw -Encoding UTF8 | ConvertFrom-Json
+}
+function Write-TestState {
+    param([Parameter(Mandatory = $true)][pscustomobject]$State)
+    $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $env:SETUP_FIXTURE_RUNTIME_STATE -Encoding UTF8
+}
+function Add-EnvironmentRecord {
+    param([Parameter(Mandatory = $true)][string]$Command)
+    $Record = [ordered]@{
+        command = $Command
+        USERPROFILE = $env:USERPROFILE
+        LOCALAPPDATA = $env:LOCALAPPDATA
+        cwd = $PWD.Path
+    }
+    Add-Content -LiteralPath $env:SETUP_FIXTURE_ENVIRONMENTS -Value ($Record | ConvertTo-Json -Compress) -Encoding UTF8
+}
+
+$State = Read-TestState
+if ($args.Count -eq 1 -and $args[0] -eq "--version") {
+    Add-TestEvent "python-version"
+    Add-EnvironmentRecord "python-version"
+    Write-Output "Python 3.14.0"
+    exit 0
+}
+if ($args.Count -ge 2 -and $args[0] -like "*bridge_identity.py" -and $args[1] -eq "validate") {
+    Add-TestEvent "attestation-validate"
+    Add-EnvironmentRecord "attestation-validate"
+    & $env:SETUP_FIXTURE_REAL_PYTHON @args
+    exit $LASTEXITCODE
+}
+if ($args.Count -ge 2 -and $args[0] -like "*runtime_package.py") {
+    $Command = [string]$args[1]
+    Add-EnvironmentRecord ("runtime-" + $Command)
+    if ($Command -eq "installed-version") {
+        $DisplayVersion = if ([string]::IsNullOrWhiteSpace([string]$State.runtime_version)) { "absent" } else { [string]$State.runtime_version }
+        Add-TestEvent ("runtime-version:" + $DisplayVersion)
+        if ($DisplayVersion -eq "absent") {
+            Write-Output '{"distribution":"avaya-case-review-runtime","installed":false}'
+        } else {
+            Write-Output ('{"distribution":"avaya-case-review-runtime","installed":true,"version":"' + $DisplayVersion + '"}')
+        }
+        exit 0
+    }
+    if ($Command -eq "validate-wheel") {
+        $WheelIndex = [Array]::IndexOf($args, "--wheel")
+        $Wheel = [string]$args[$WheelIndex + 1]
+        Add-TestEvent ("wheel-validate:" + [IO.Path]::GetFileName($Wheel))
+        if (-not (Test-Path -LiteralPath $Wheel -PathType Leaf)) { exit 41 }
+        exit 0
+    }
+    if ($Command -eq "smoke") {
+        Add-TestEvent "runtime-smoke"
+        exit 0
+    }
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "pip") {
+    $PipCommand = [string]$args[2]
+    Add-EnvironmentRecord ("pip-" + $PipCommand)
+    if ($PipCommand -eq "wheel") {
+        Add-TestEvent "runtime-build"
+        $DirectoryIndex = [Array]::IndexOf($args, "--wheel-dir")
+        $Directory = [string]$args[$DirectoryIndex + 1]
+        New-Item -ItemType Directory -Path $Directory -Force | Out-Null
+        $Wheel = Join-Path $Directory ("avaya_case_review_runtime-" + [string]$State.plugin_version + "-py3-none-any.whl")
+        Set-Content -LiteralPath $Wheel -Value "fixture" -Encoding ASCII
+        exit 0
+    }
+    if ($PipCommand -eq "install") {
+        $Wheel = @($args | Where-Object { [string]$_ -like "*.whl" }) | Select-Object -Last 1
+        if ($null -eq $Wheel) {
+            if ($args -contains "--upgrade") {
+                Add-TestEvent "pip-upgrade"
+                exit 0
+            }
+            Add-TestEvent "dependency-install"
+            if (-not ($args -contains "setuptools>=68")) { exit 45 }
+            exit 0
+        }
+        $Leaf = [IO.Path]::GetFileName([string]$Wheel)
+        Add-TestEvent ("runtime-install:" + $Leaf)
+        if ($Leaf -match '^avaya_case_review_runtime-(.+?)-py') {
+            $InstallVersion = $Matches[1]
+            if (
+                [int]$env:SETUP_FIXTURE_RUNTIME_ROLLBACK_EXIT -ne 0 -and
+                $InstallVersion -eq [string]$State.original_runtime_version
+            ) {
+                exit [int]$env:SETUP_FIXTURE_RUNTIME_ROLLBACK_EXIT
+            }
+            if ($InstallVersion -eq [string]$State.original_runtime_version) {
+                $ConfigRestored = (Test-Path -LiteralPath $env:SETUP_FIXTURE_CONFIG -PathType Leaf) -and
+                    ([IO.File]::ReadAllBytes($env:SETUP_FIXTURE_CONFIG) -join ',') -eq ([Text.Encoding]::UTF8.GetBytes('{"existing":"config"}' + "`r`n") -join ',')
+                Add-TestEvent ("runtime-rollback-files-restored:" + $ConfigRestored.ToString().ToLowerInvariant())
+            }
+            $State.runtime_version = $InstallVersion
+            Write-TestState $State
+        }
+        exit 0
+    }
+    if ($PipCommand -eq "uninstall") {
+        if ($args[-1] -ne "avaya-case-review-runtime") { exit 44 }
+        Add-TestEvent "runtime-uninstall:avaya-case-review-runtime"
+        $State.runtime_version = ""
+        Write-TestState $State
+        exit 0
+    }
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "playwright") {
+    Add-TestEvent "playwright-install"
+    Add-EnvironmentRecord "playwright-install"
+    exit 0
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-B" -and $args[1] -eq "-c") {
+    if ([string]$args[2] -like "*apply_windows_acl*") {
+        Add-TestEvent "secure-state"
+        Add-EnvironmentRecord "secure-state"
+        exit 0
+    }
+    Add-TestEvent "deployed-shim-import"
+    Add-EnvironmentRecord "deployed-shim-import"
+    exit 0
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-B" -and [string]$args[-1] -eq "--help") {
+    Add-TestEvent "deployed-shim-help"
+    Add-EnvironmentRecord "deployed-shim-help"
+    exit 0
+}
+if ($args.Count -ge 3 -and $args[0] -eq "-B") {
+    & $env:SETUP_FIXTURE_REAL_PYTHON @args
+    exit $LASTEXITCODE
+}
+Write-Error "Unexpected fake Python arguments"
+exit 93
+'''
+
     def __init__(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
@@ -94,6 +235,9 @@ raise SystemExit(30)
         self.events = self.root / "events.txt"
         self.environments = self.root / "environments.jsonl"
         self.counter = self.root / "counter.txt"
+        self.runtime_state = self.root / "runtime-state.json"
+        self.bin_dir = self.root / "bin"
+        self.bin_dir.mkdir()
         self.target_plugin = (
             self.user / ".gemini/config/plugins/avaya-case-review"
         )
@@ -102,6 +246,8 @@ raise SystemExit(30)
         self.config = self.user / ".gemini/config/mcp_config.json"
         self._build_source()
         self._build_existing_install()
+        self._write_fake_python()
+        self.set_runtime(self.plugin_version)
 
     def close(self):
         self.temporary.cleanup()
@@ -115,6 +261,11 @@ raise SystemExit(30)
     def _build_source(self):
         (self.source / "tools/installer").mkdir(parents=True)
         shutil.copy2(SETUP, self.source / "setup_env.ps1")
+        shutil.copy2(ROOT / "pyproject.toml", self.source / "pyproject.toml")
+        shutil.copy2(
+            ROOT / "tools/installer/runtime_package.py",
+            self.source / "tools/installer/runtime_package.py",
+        )
         shutil.copytree(
             ROOT / "avaya_case_review_runtime",
             self.source / "avaya_case_review_runtime",
@@ -132,6 +283,7 @@ raise SystemExit(30)
         plugin_manifest = json.loads(
             (ROOT / "plugins/avaya-case-review/plugin.json").read_text(encoding="utf-8")
         )
+        self.plugin_version = plugin_manifest["version"]
         self._write(
             "plugins/avaya-case-review/plugin.json",
             json.dumps(plugin_manifest),
@@ -152,6 +304,29 @@ raise SystemExit(30)
             plugin_manifest["version"],
             "2026-09-09T00:00:00Z",
         )
+
+    def _write_fake_python(self):
+        (self.bin_dir / "python.ps1").write_text(
+            self.fake_python.strip() + "\n", encoding="utf-8-sig", newline="\r\n"
+        )
+
+    def set_runtime(self, version: str | None, *, retain: bool = False):
+        payload = {
+            "plugin_version": self.plugin_version,
+            "runtime_version": version or "",
+            "original_runtime_version": version or "",
+        }
+        self.runtime_state.write_text(json.dumps(payload), encoding="utf-8")
+        if version and retain:
+            wheel_store = self.local_app_data / "AvayaCaseReview/runtime-wheels"
+            wheel_store.mkdir(parents=True, exist_ok=True)
+            (wheel_store / f"avaya_case_review_runtime-{version}-py3-none-any.whl").write_bytes(
+                b"fixture"
+            )
+
+    def runtime_version(self):
+        payload = json.loads(self.runtime_state.read_text(encoding="utf-8-sig"))
+        return payload["runtime_version"] or None
 
     def _build_existing_install(self):
         self.target_plugin.mkdir(parents=True)
@@ -187,6 +362,8 @@ raise SystemExit(30)
         start_exit: int = 0,
         rollback_block: bool = False,
         blocked_backup_parent: bool = False,
+        skip_dependency_install: bool = True,
+        runtime_rollback_exit: int = 0,
     ) -> subprocess.CompletedProcess:
         environment = os.environ.copy()
         environment.update(
@@ -202,29 +379,36 @@ raise SystemExit(30)
                 "SETUP_FIXTURE_START_EXIT": str(start_exit),
                 "SETUP_FIXTURE_ROLLBACK_BLOCK": "1" if rollback_block else "0",
                 "SETUP_FIXTURE_CONFIG": str(self.config),
+                "SETUP_FIXTURE_RUNTIME_STATE": str(self.runtime_state),
+                "SETUP_FIXTURE_RUNTIME_ROLLBACK_EXIT": str(runtime_rollback_exit),
+                "SETUP_FIXTURE_REAL_PYTHON": sys.executable,
+                "SETUP_FIXTURE_PYTHON": str(self.bin_dir / "python.ps1"),
             }
         )
+        environment["PATH"] = str(self.bin_dir) + os.pathsep + environment["PATH"]
         if blocked_backup_parent:
             blocked = self.root / "blocked-temp"
             blocked.write_bytes(b"not a directory")
             environment["TEMP"] = str(blocked)
             environment["TMP"] = str(blocked)
-        return subprocess.run(
-            [
+        arguments = [
                 "powershell.exe",
                 "-NoProfile",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-File",
                 str(self.source / "setup_env.ps1"),
-                "-SkipDependencyInstall",
                 "-InstallUserHome",
                 str(self.user),
                 "-InstallLocalAppData",
                 str(self.local_app_data),
                 "-LoginTimeoutSeconds",
                 str(login_timeout),
-            ],
+            ]
+        if skip_dependency_install:
+            arguments.append("-SkipDependencyInstall")
+        return subprocess.run(
+            arguments,
             cwd=self.source,
             env=environment,
             capture_output=True,
@@ -239,12 +423,16 @@ raise SystemExit(30)
             return []
         return self.events.read_text(encoding="utf-8").splitlines()
 
+    def broker_event_lines(self):
+        broker_commands = {"verify-bridge", "login", "stop", "status", "start"}
+        return [event for event in self.event_lines() if event in broker_commands]
+
     def environment_records(self):
         if not self.environments.exists():
             return []
         return [
             json.loads(line)
-            for line in self.environments.read_text(encoding="utf-8").splitlines()
+            for line in self.environments.read_text(encoding="utf-8-sig").splitlines()
         ]
 
 
@@ -317,7 +505,7 @@ class InstallerContractTests(unittest.TestCase):
                     "canonical gmail broker",
                     (completed.stdout + completed.stderr).lower(),
                 )
-                self.assertEqual(fixture.event_lines(), [])
+                self.assertEqual(fixture.broker_event_lines(), [])
                 self.assertEqual(fixture.snapshot(), before)
 
     def test_both_bridge_preflights_pass_explicit_release_identity_inputs(self):
@@ -350,7 +538,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("30")
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.event_lines(), ["verify-bridge"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_invalid_local_attestation_stops_before_broker_or_replacement(self):
@@ -363,6 +551,25 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("0")
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertEqual(fixture.broker_event_lines(), [])
+        self.assertEqual(fixture.snapshot(), before)
+
+    def test_runtime_and_plugin_version_mismatch_stops_before_commands_or_mutation(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        before = fixture.snapshot()
+        pyproject = fixture.source / "pyproject.toml"
+        pyproject.write_text(
+            pyproject.read_text(encoding="utf-8").replace(
+                f'version = "{fixture.plugin_version}"', 'version = "9.9.9"'
+            ),
+            encoding="utf-8",
+        )
+
+        completed = fixture.run("0")
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertIn("runtime package version", (completed.stdout + completed.stderr).lower())
         self.assertEqual(fixture.event_lines(), [])
         self.assertEqual(fixture.snapshot(), before)
 
@@ -373,7 +580,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("10,0")
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        events = fixture.event_lines()
+        events = fixture.broker_event_lines()
         self.assertEqual(events.count("login"), 1)
         self.assertEqual(events.count("verify-bridge"), 2)
         self.assertLess(events.index("login"), events.index("stop"))
@@ -415,7 +622,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("20")
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.event_lines(), ["verify-bridge"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_login_failure_stops_before_replacement(self):
@@ -426,7 +633,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("10", login_exit=30)
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.event_lines(), ["verify-bridge", "login"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "login"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_auth_required_after_retry_stops_before_replacement(self):
@@ -438,7 +645,7 @@ class InstallerContractTests(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertEqual(
-            fixture.event_lines(),
+            fixture.broker_event_lines(),
             ["verify-bridge", "login", "verify-bridge"],
         )
         self.assertEqual(fixture.snapshot(), before)
@@ -452,7 +659,7 @@ class InstallerContractTests(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertIn("timed out", (completed.stdout + completed.stderr).lower())
-        self.assertEqual(fixture.event_lines(), ["verify-bridge", "login"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "login"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_login_timeout_defaults_to_330_seconds(self):
@@ -470,7 +677,7 @@ class InstallerContractTests(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertEqual(
-            fixture.event_lines(),
+            fixture.broker_event_lines(),
             ["verify-bridge", "stop", "status"],
         )
         self.assertEqual(fixture.snapshot(), before)
@@ -501,7 +708,7 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("0", stop_exit=0, blocked_backup_parent=True)
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertEqual(fixture.event_lines(), ["verify-bridge", "stop", "start"])
+        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "stop", "start"])
         self.assertEqual(fixture.snapshot(), before)
 
     def test_restart_failure_preserves_verified_backup(self):
@@ -520,6 +727,197 @@ class InstallerContractTests(unittest.TestCase):
         self.assertEqual(
             (backup / "mcp_config.json").read_bytes(),
             b'{"existing":"config"}\r\n',
+        )
+
+    def test_runtime_build_validate_install_and_smoke_precede_bridge_and_copy(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime(None)
+
+        completed = fixture.run("0", skip_dependency_install=False)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        events = fixture.event_lines()
+        expected = [
+            "dependency-install",
+            "runtime-build",
+            f"wheel-validate:avaya_case_review_runtime-{fixture.plugin_version}-py3-none-any.whl",
+            f"runtime-install:avaya_case_review_runtime-{fixture.plugin_version}-py3-none-any.whl",
+            "runtime-smoke",
+            "verify-bridge",
+        ]
+        positions = [events.index(event) for event in expected]
+        self.assertEqual(positions, sorted(positions), events)
+        self.assertEqual(fixture.runtime_version(), fixture.plugin_version)
+        self.assertTrue(
+            (
+                fixture.local_app_data
+                / "AvayaCaseReview/runtime-wheels"
+                / f"avaya_case_review_runtime-{fixture.plugin_version}-py3-none-any.whl"
+            ).is_file()
+        )
+        self.assertEqual(
+            (fixture.target_plugin / "new-plugin.txt").read_text(encoding="utf-8"),
+            "new plugin",
+        )
+
+    def test_skip_dependency_install_requires_exact_runtime_and_never_changes_pip(self):
+        for installed, succeeds in (
+            (None, False),
+            ("1.9.0", False),
+            ("1.10.0", True),
+        ):
+            with self.subTest(installed=installed):
+                fixture = SetupInstallFixture()
+                self.addCleanup(fixture.close)
+                fixture.set_runtime(installed)
+                before = fixture.snapshot()
+
+                completed = fixture.run("0")
+
+                self.assertEqual(completed.returncode == 0, succeeds, completed.stderr)
+                events = fixture.event_lines()
+                self.assertFalse(any(event.startswith("dependency-") for event in events))
+                self.assertFalse(any(event.startswith("runtime-install:") for event in events))
+                self.assertNotIn("runtime-build", events)
+                if succeeds:
+                    self.assertLess(events.index("runtime-smoke"), events.index("verify-bridge"))
+                else:
+                    self.assertNotIn("verify-bridge", events)
+                    self.assertEqual(fixture.snapshot(), before)
+
+    def test_prior_runtime_without_retained_wheel_blocks_before_every_mutation(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime("1.9.0")
+        before = fixture.snapshot()
+
+        completed = fixture.run("0", skip_dependency_install=False)
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertIn("retained wheel", (completed.stdout + completed.stderr).lower())
+        events = fixture.event_lines()
+        self.assertFalse(any(event.startswith("dependency-") for event in events))
+        self.assertNotIn("runtime-build", events)
+        self.assertNotIn("verify-bridge", events)
+        self.assertNotIn("stop", events)
+        self.assertEqual(fixture.snapshot(), before)
+
+    def test_bridge_failure_restores_previous_runtime_before_any_file_change(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime("1.9.0", retain=True)
+        before = fixture.snapshot()
+
+        completed = fixture.run("30", skip_dependency_install=False)
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertEqual(fixture.runtime_version(), "1.9.0")
+        events = fixture.event_lines()
+        bridge = events.index("verify-bridge")
+        rollback = events.index(
+            "runtime-install:avaya_case_review_runtime-1.9.0-py3-none-any.whl"
+        )
+        self.assertLess(bridge, rollback)
+        self.assertNotIn("stop", events)
+        self.assertEqual(fixture.snapshot(), before)
+
+    def test_deployment_failure_restores_files_and_broker_before_prior_runtime(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime("1.9.0", retain=True)
+        before = fixture.snapshot()
+
+        completed = fixture.run(
+            "0", status_exit=30, stop_exit=0, skip_dependency_install=False
+        )
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertEqual(fixture.snapshot(), before)
+        self.assertEqual(fixture.runtime_version(), "1.9.0")
+        events = fixture.event_lines()
+        self.assertLess(events.index("start"), events.index("runtime-rollback-files-restored:true"))
+
+    def test_deployment_failure_without_prior_runtime_uninstalls_only_distribution(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime(None)
+        before = fixture.snapshot()
+
+        completed = fixture.run("0", status_exit=30, skip_dependency_install=False)
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        self.assertEqual(fixture.snapshot(), before)
+        self.assertIsNone(fixture.runtime_version())
+        events = fixture.event_lines()
+        self.assertEqual(events.count("runtime-uninstall:avaya-case-review-runtime"), 1)
+
+    def test_runtime_rollback_failure_preserves_backup_and_combines_stage_names(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime("1.9.0", retain=True)
+
+        completed = fixture.run(
+            "0",
+            status_exit=30,
+            skip_dependency_install=False,
+            runtime_rollback_exit=42,
+        )
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        output = completed.stdout + completed.stderr
+        self.assertIn("deployed gmail broker validation", output.lower())
+        self.assertIn("runtime rollback install", output.lower())
+        match = re.search(r"RECOVERY_BACKUP=(?P<path>[^\r\n]+)", output)
+        self.assertIsNotNone(match, output)
+        backup = Path(match.group("path").strip())
+        self.addCleanup(shutil.rmtree, backup, True)
+        self.assertTrue(backup.is_dir())
+        self.assertEqual(
+            (backup / "mcp_config.json").read_bytes(),
+            b'{"existing":"config"}\r\n',
+        )
+
+    def test_runtime_and_broker_commands_use_selected_install_environment(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime(None)
+
+        completed = fixture.run("0", skip_dependency_install=False)
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        records = fixture.environment_records()
+        relevant = [
+            record
+            for record in records
+            if record["command"].startswith(("runtime-", "pip-", "deployed-shim"))
+            or record["command"] in {"verify-bridge", "stop", "status"}
+        ]
+        self.assertTrue(relevant)
+        for record in relevant:
+            self.assertEqual(record["USERPROFILE"], str(fixture.user))
+            self.assertEqual(record["LOCALAPPDATA"], str(fixture.local_app_data))
+
+    def test_success_verifies_runtime_and_deployed_shims_from_unrelated_cwd(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+
+        completed = fixture.run("0")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        events = fixture.event_lines()
+        self.assertEqual(events.count(f"runtime-version:{fixture.plugin_version}"), 2)
+        self.assertIn("deployed-shim-import", events)
+        self.assertIn("deployed-shim-help", events)
+        records = {
+            record["command"]: record
+            for record in fixture.environment_records()
+            if record["command"].startswith("deployed-shim")
+        }
+        self.assertNotEqual(Path(records["deployed-shim-import"]["cwd"]), fixture.source)
+        self.assertEqual(
+            records["deployed-shim-import"]["cwd"],
+            records["deployed-shim-help"]["cwd"],
         )
 
     def test_deployed_allowlist_supports_real_brokerctl_help_and_status(self):

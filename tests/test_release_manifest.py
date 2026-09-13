@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -221,6 +222,26 @@ class ReleaseManifestTests(unittest.TestCase):
             extracted = temp_root / "extracted"
             with zipfile.ZipFile(archive) as bundle:
                 bundle.extractall(extracted)
+
+            runtime_helper = extracted / "tools/installer/runtime_package.py"
+            self.assertTrue(runtime_helper.is_file())
+            self.assertTrue((extracted / "pyproject.toml").is_file())
+            for name in RUNTIME_PACKAGE_FILES:
+                self.assertTrue((extracted / "avaya_case_review_runtime" / name).is_file())
+            helper_result = subprocess.run(
+                [sys.executable, str(runtime_helper), "installed-version"],
+                cwd=temp_root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=20,
+                check=False,
+            )
+            self.assertEqual(helper_result.returncode, 0, helper_result.stderr)
+            self.assertEqual(
+                json.loads(helper_result.stdout)["distribution"],
+                "avaya-case-review-runtime",
+            )
 
             env = os.environ.copy()
             env.pop("GMAIL_BACKEND", None)
