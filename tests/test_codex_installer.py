@@ -1167,15 +1167,15 @@ class CodexInstallerTests(unittest.TestCase):
     def test_required_failure_matrix_sanitizes_fixture_sentinels_and_preserves_state(self):
         scenarios = (
             ("different-source", {"existing_source": "https://UNSANITIZED_DIFFERENT_SOURCE.invalid/repo", "existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True}, True, "old-sha", True, True),
-            ("missing-tag", {"missing_tag": True}, False, "", False, None),
+            ("missing-tag", {"missing_tag": True}, False, "", False, False),
             ("resolved-sha", {"existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True, "fail_stage": "resolved-sha-mismatch"}, True, "old-sha", True, True),
-            ("invalid-attestation", {"corrupt_attestation": True, "skip_dependency": False}, False, "", False, None),
-            ("capability-mismatch", {"verify_exits": "30"}, False, "", False, None),
-            ("auth-required", {"verify_exits": "10"}, False, "", False, None),
-            ("dependency-timeout", {"fail_stage": "dependency-timeout", "skip_dependency": False}, False, "", False, None),
-            ("plugin-add", {"fail_stage": "new-plugin-add"}, False, "", False, None),
+            ("invalid-attestation", {"corrupt_attestation": True, "skip_dependency": False}, False, "", False, False),
+            ("capability-mismatch", {"verify_exits": "30"}, False, "", False, False),
+            ("auth-required", {"verify_exits": "10"}, False, "", False, False),
+            ("dependency-timeout", {"fail_stage": "dependency-timeout", "skip_dependency": False}, False, "", False, False),
+            ("plugin-add", {"fail_stage": "new-plugin-add"}, False, "", False, False),
             ("rollback-success", {"existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True, "fail_stage": "new-plugin-add"}, True, "old-sha", True, True),
-            ("rollback-failure", {"existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True, "fail_stage": "new-plugin-add+rollback-marketplace-add"}, False, "", False, None),
+            ("rollback-failure", {"existing_sha": "old-sha", "plugin_installed": True, "plugin_enabled": True, "fail_stage": "new-plugin-add+rollback-marketplace-add"}, False, "", False, False),
         )
         for name, options, expected_marketplace_exists, expected_marketplace_sha, expected_plugin_installed, expected_plugin_enabled in scenarios:
             with self.subTest(name=name):
@@ -1188,8 +1188,7 @@ class CodexInstallerTests(unittest.TestCase):
                 self.assertEqual(state.marketplace_exists, expected_marketplace_exists)
                 self.assertEqual(state.marketplace_sha, expected_marketplace_sha)
                 self.assertEqual(state.plugin_installed, expected_plugin_installed)
-                if expected_plugin_enabled is not None:
-                    self.assertEqual(state.plugin_enabled, expected_plugin_enabled)
+                self.assertEqual(state.plugin_enabled, expected_plugin_enabled)
 
     def test_invalid_local_attestation_blocks_before_any_command_or_mutation(self):
         result, events, state = self.run_stateful_installer(
