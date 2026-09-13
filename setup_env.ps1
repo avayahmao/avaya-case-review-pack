@@ -434,6 +434,50 @@ function Restore-RuntimePackage {
     }
 }
 
+function Restore-DeploymentTarget {
+    param(
+        [Parameter(Mandatory = $true)][string]$TargetPath,
+        [Parameter(Mandatory = $true)][string]$BackupPath,
+        [AllowEmptyString()][Parameter(Mandatory = $true)][string]$ExpectedBaseline
+    )
+
+    if (Test-Path -LiteralPath $TargetPath) {
+        if (Test-Path -LiteralPath $TargetPath -PathType Container) {
+            Remove-Item -LiteralPath $TargetPath -Recurse -Force
+        } else {
+            Remove-Item -LiteralPath $TargetPath -Force
+        }
+    }
+    if (Test-Path -LiteralPath $BackupPath -PathType Container) {
+        Copy-Item -LiteralPath $BackupPath -Destination $TargetPath -Recurse -Force
+    } elseif (Test-Path -LiteralPath $BackupPath -PathType Leaf) {
+        Copy-Item -LiteralPath $BackupPath -Destination $TargetPath -Force
+    }
+
+    $RestoredBaseline = Get-DeploymentPathBaseline -Path $TargetPath
+    if (-not [string]::Equals(
+        $ExpectedBaseline,
+        [string]$RestoredBaseline,
+        [StringComparison]::Ordinal
+    )) {
+        throw "Deployment target verification failed."
+    }
+}
+
+function Invoke-DeploymentRecoveryStep {
+    param(
+        [Parameter(Mandatory = $true)][string]$Stage,
+        [Parameter(Mandatory = $true)][scriptblock]$Action,
+        [AllowEmptyCollection()][Parameter(Mandatory = $true)][System.Collections.Generic.List[string]]$Failures
+    )
+
+    try {
+        & $Action
+    } catch {
+        [void]$Failures.Add("Stage '$Stage' failed.")
+    }
+}
+
 if ($ConfigMigrationOnly) {
     if (
         [string]::IsNullOrWhiteSpace($ConfigMigrationPath) -or
@@ -965,82 +1009,94 @@ try {
             -Arguments @("-B", $BrokerCtlPath, "--help") `
             -TimeoutSeconds $TimeoutBridgeSeconds `
             -Environment $BrokerEnvironment
+
+        $FinalRuntime = Get-InstalledRuntimeState `
+            -PythonCommand $PythonCommand `
+            -RuntimeHelperPath $RuntimeHelperPath `
+            -Environment $BrokerEnvironment `
+            -Stage "final runtime verification"
+        if (
+            -not [bool]$FinalRuntime.installed -or
+            [string]$FinalRuntime.version -cne $PluginVersion
+        ) {
+            throw "Stage 'final runtime verification' failed."
+        }
     } finally {
         [Environment]::CurrentDirectory = $PreviousProcessWorkingDirectory
         Pop-Location
     }
-
-    $FinalRuntime = Get-InstalledRuntimeState `
-        -PythonCommand $PythonCommand `
-        -RuntimeHelperPath $RuntimeHelperPath `
-        -Environment $BrokerEnvironment `
-        -Stage "final runtime verification"
-    if (-not [bool]$FinalRuntime.installed -or [string]$FinalRuntime.version -cne $PluginVersion) {
-        throw "Stage 'final runtime verification' failed."
-    }
 } catch {
     $PrimaryFailure = $_
-    try {
-        if ($DeploymentStarted) {
-            if (Test-Path -LiteralPath $TargetPluginDir) {
-                Remove-Item -LiteralPath $TargetPluginDir -Recurse -Force
+    $RecoveryFailures = New-Object System.Collections.Generic.List[string]
+    if ($DeploymentStarted) {
+        Invoke-DeploymentRecoveryStep `
+            -Stage "plugin restoration" `
+            -Failures $RecoveryFailures `
+            -Action {
+                Restore-DeploymentTarget `
+                    -TargetPath $TargetPluginDir `
+                    -BackupPath $BackupPluginDir `
+                    -ExpectedBaseline ([string]$DeploymentBaselines[$TargetPluginDir])
             }
-            if (Test-Path -LiteralPath $BackupPluginDir -PathType Container) {
-                Copy-Item -LiteralPath $BackupPluginDir -Destination $TargetPluginDir -Recurse -Force
-            }
-            foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
-                $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
-                $BackupFile = Join-Path $BackupGmailDir $GmailDeploymentFile
-                if (Test-Path -LiteralPath $TargetFile) {
-                    Remove-Item -LiteralPath $TargetFile -Force
+        foreach ($GmailDeploymentFile in $GmailDeploymentFiles) {
+            $TargetFile = Join-Path $GeminiToolsDir $GmailDeploymentFile
+            $BackupFile = Join-Path $BackupGmailDir $GmailDeploymentFile
+            Invoke-DeploymentRecoveryStep `
+                -Stage "Gmail file restoration ($GmailDeploymentFile)" `
+                -Failures $RecoveryFailures `
+                -Action {
+                    Restore-DeploymentTarget `
+                        -TargetPath $TargetFile `
+                        -BackupPath $BackupFile `
+                        -ExpectedBaseline ([string]$DeploymentBaselines[$TargetFile])
                 }
-                if (Test-Path -LiteralPath $BackupFile -PathType Leaf) {
-                    Copy-Item -LiteralPath $BackupFile -Destination $TargetFile -Force
-                }
-            }
-            foreach ($GmailCloudDeploymentFile in $GmailCloudDeploymentFiles) {
-                $TargetFile = Join-Path $TargetGmailCloudDir $GmailCloudDeploymentFile
-                $BackupFile = Join-Path $BackupGmailCloudDir $GmailCloudDeploymentFile
-                if (Test-Path -LiteralPath $TargetFile) {
-                    Remove-Item -LiteralPath $TargetFile -Force
-                }
-                if (Test-Path -LiteralPath $BackupFile -PathType Leaf) {
-                    Copy-Item -LiteralPath $BackupFile -Destination $TargetFile -Force
-                }
-            }
-            if (Test-Path -LiteralPath $CaseToMdTargetFile) {
-                Remove-Item -LiteralPath $CaseToMdTargetFile -Force
-            }
-            if (Test-Path -LiteralPath $BackupCaseFile -PathType Leaf) {
-                Copy-Item -LiteralPath $BackupCaseFile -Destination $CaseToMdTargetFile -Force
-            }
-            if (Test-Path -LiteralPath $McpConfigFile) {
-                Remove-Item -LiteralPath $McpConfigFile -Force
-            }
-            if (Test-Path -LiteralPath $BackupConfigFile -PathType Leaf) {
-                Copy-Item -LiteralPath $BackupConfigFile -Destination $McpConfigFile -Force
-            }
-            foreach ($TargetPath in $DeploymentBaselines.Keys) {
-                $RestoredBaseline = Get-DeploymentPathBaseline -Path $TargetPath
-                if (-not [string]::Equals(
-                    [string]$DeploymentBaselines[$TargetPath],
-                    [string]$RestoredBaseline,
-                    [StringComparison]::Ordinal
-                )) {
-                    throw "Backup verification failed for restored target: $TargetPath"
-                }
-            }
         }
-        if ($BrokerWasStopped -and (Test-Path -LiteralPath $BrokerCtlPath -PathType Leaf)) {
-            $null = Invoke-BoundedCommand `
-                -Stage "restored Gmail broker start" `
-                -Command $PythonCommand `
-                -Arguments @("-B", $BrokerCtlPath, "start") `
-                -TimeoutSeconds $TimeoutBridgeSeconds `
-                -Environment $BrokerEnvironment
+        foreach ($GmailCloudDeploymentFile in $GmailCloudDeploymentFiles) {
+            $TargetFile = Join-Path $TargetGmailCloudDir $GmailCloudDeploymentFile
+            $BackupFile = Join-Path $BackupGmailCloudDir $GmailCloudDeploymentFile
+            Invoke-DeploymentRecoveryStep `
+                -Stage "Gmail cloud helper restoration ($GmailCloudDeploymentFile)" `
+                -Failures $RecoveryFailures `
+                -Action {
+                    Restore-DeploymentTarget `
+                        -TargetPath $TargetFile `
+                        -BackupPath $BackupFile `
+                        -ExpectedBaseline ([string]$DeploymentBaselines[$TargetFile])
+                }
         }
-    } catch {
-        $RecoveryFailure = $_
+        Invoke-DeploymentRecoveryStep `
+            -Stage "CaseToMD shim restoration" `
+            -Failures $RecoveryFailures `
+            -Action {
+                Restore-DeploymentTarget `
+                    -TargetPath $CaseToMdTargetFile `
+                    -BackupPath $BackupCaseFile `
+                    -ExpectedBaseline ([string]$DeploymentBaselines[$CaseToMdTargetFile])
+            }
+        Invoke-DeploymentRecoveryStep `
+            -Stage "MCP configuration restoration" `
+            -Failures $RecoveryFailures `
+            -Action {
+                Restore-DeploymentTarget `
+                    -TargetPath $McpConfigFile `
+                    -BackupPath $BackupConfigFile `
+                    -ExpectedBaseline ([string]$DeploymentBaselines[$McpConfigFile])
+            }
+    }
+    if ($BrokerWasStopped) {
+        Invoke-DeploymentRecoveryStep `
+            -Stage "restored Gmail broker start" `
+            -Failures $RecoveryFailures `
+            -Action {
+                $null = Invoke-BoundedCommand `
+                    -Stage "restored Gmail broker start" `
+                    -Command $PythonCommand `
+                    -Arguments @("-B", $BrokerCtlPath, "start") `
+                    -TimeoutSeconds $TimeoutBridgeSeconds `
+                    -Environment $BrokerEnvironment
+            }
+    }
+    if ($RecoveryFailures.Count -gt 0) {
         $BackupStatus = "No usable backup was created."
         if (
             -not [string]::IsNullOrWhiteSpace($BackupRoot) -and
@@ -1050,7 +1106,8 @@ try {
             $BackupStatus = "Backup preserved at: $BackupRoot"
             Write-Host "RECOVERY_BACKUP=$BackupRoot"
         }
-        throw "Antigravity deployment failed: $($PrimaryFailure.Exception.Message) Recovery status: failed ($($RecoveryFailure.Exception.Message)). $BackupStatus"
+        $RecoverySummary = $RecoveryFailures -join " "
+        throw "Antigravity deployment failed: $($PrimaryFailure.Exception.Message) Recovery status: failed ($RecoverySummary) $BackupStatus"
     }
     throw $PrimaryFailure
 }

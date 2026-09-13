@@ -226,6 +226,33 @@ Write-Error "Unexpected fake Python arguments"
 exit 93
 '''
 
+    restore_failure_wrapper = r'''
+function Copy-Item {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$LiteralPath,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [switch]$Recurse,
+        [switch]$Force
+    )
+
+    $FailPluginRestore = (
+        $env:SETUP_FIXTURE_EARLY_RESTORE_FAILURE -eq "1" -and
+        $LiteralPath -like "*avaya-case-review-deploy-*\plugin" -and
+        $Destination -eq $env:SETUP_FIXTURE_TARGET_PLUGIN
+    )
+    $FailConfigRestore = (
+        $env:SETUP_FIXTURE_ROLLBACK_BLOCK -eq "1" -and
+        $LiteralPath -like "*avaya-case-review-deploy-*\mcp_config.json" -and
+        $Destination -eq $env:SETUP_FIXTURE_CONFIG
+    )
+    if ($FailPluginRestore -or $FailConfigRestore) {
+        throw "fixture restore failure"
+    }
+    Microsoft.PowerShell.Management\Copy-Item @PSBoundParameters
+}
+'''
+
     def __init__(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
@@ -260,7 +287,14 @@ exit 93
 
     def _build_source(self):
         (self.source / "tools/installer").mkdir(parents=True)
-        shutil.copy2(SETUP, self.source / "setup_env.ps1")
+        fixture_setup = read_setup().replace(
+            ". $WindowsCommonPath",
+            ". $WindowsCommonPath\n\n" + self.restore_failure_wrapper.strip(),
+            1,
+        )
+        (self.source / "setup_env.ps1").write_text(
+            fixture_setup, encoding="utf-8-sig", newline="\r\n"
+        )
         shutil.copy2(ROOT / "pyproject.toml", self.source / "pyproject.toml")
         shutil.copy2(
             ROOT / "tools/installer/runtime_package.py",
@@ -364,6 +398,7 @@ exit 93
         blocked_backup_parent: bool = False,
         skip_dependency_install: bool = True,
         runtime_rollback_exit: int = 0,
+        early_restore_failure: bool = False,
     ) -> subprocess.CompletedProcess:
         environment = os.environ.copy()
         environment.update(
@@ -383,6 +418,10 @@ exit 93
                 "SETUP_FIXTURE_RUNTIME_ROLLBACK_EXIT": str(runtime_rollback_exit),
                 "SETUP_FIXTURE_REAL_PYTHON": sys.executable,
                 "SETUP_FIXTURE_PYTHON": str(self.bin_dir / "python.ps1"),
+                "SETUP_FIXTURE_EARLY_RESTORE_FAILURE": (
+                    "1" if early_restore_failure else "0"
+                ),
+                "SETUP_FIXTURE_TARGET_PLUGIN": str(self.target_plugin),
             }
         )
         environment["PATH"] = str(self.bin_dir) + os.pathsep + environment["PATH"]
@@ -838,6 +877,41 @@ class InstallerContractTests(unittest.TestCase):
         events = fixture.event_lines()
         self.assertLess(events.index("start"), events.index("runtime-rollback-files-restored:true"))
 
+    def test_early_restore_failure_does_not_skip_later_targets_or_broker_restart(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        fixture.set_runtime("1.9.0", retain=True)
+        before = fixture.snapshot()
+
+        completed = fixture.run(
+            "0",
+            status_exit=30,
+            stop_exit=0,
+            skip_dependency_install=False,
+            early_restore_failure=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0, completed.stdout)
+        events = fixture.event_lines()
+        self.assertIn("start", events)
+        self.assertLess(
+            events.index("start"),
+            events.index(
+                "runtime-install:avaya_case_review_runtime-1.9.0-py3-none-any.whl"
+            ),
+        )
+        self.assertEqual(directory_bytes(fixture.target_gmail), before["gmail"])
+        self.assertEqual(directory_bytes(fixture.target_case), before["case"])
+        self.assertEqual(fixture.config.read_bytes(), before["config"])
+        self.assertEqual(fixture.runtime_version(), "1.9.0")
+        output = completed.stdout + completed.stderr
+        match = re.search(r"RECOVERY_BACKUP=(?P<path>[^\r\n]+)", output)
+        self.assertIsNotNone(match, output)
+        backup = Path(match.group("path").strip())
+        self.addCleanup(shutil.rmtree, backup, True)
+        self.assertTrue(backup.is_dir())
+        self.assertIn("plugin restoration", output.lower())
+
     def test_deployment_failure_without_prior_runtime_uninstalls_only_distribution(self):
         fixture = SetupInstallFixture()
         self.addCleanup(fixture.close)
@@ -918,6 +992,17 @@ class InstallerContractTests(unittest.TestCase):
         self.assertEqual(
             records["deployed-shim-import"]["cwd"],
             records["deployed-shim-help"]["cwd"],
+        )
+        runtime_records = [
+            record
+            for record in fixture.environment_records()
+            if record["command"] == "runtime-installed-version"
+        ]
+        self.assertEqual(len(runtime_records), 2)
+        self.assertNotEqual(Path(runtime_records[-1]["cwd"]), fixture.source)
+        self.assertEqual(
+            runtime_records[-1]["cwd"],
+            records["deployed-shim-import"]["cwd"],
         )
 
     def test_deployed_allowlist_supports_real_brokerctl_help_and_status(self):
