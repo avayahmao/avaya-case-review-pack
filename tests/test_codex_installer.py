@@ -1168,6 +1168,23 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(positions, sorted(positions))
         self.assertEqual(state.runtime_version, "1.10.1")
 
+    def test_installed_mcp_checks_use_the_packaged_module_contract(self):
+        result, events, _ = self.run_stateful_installer(
+            runtime_version="", skip_dependency=False
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("mcp-get:gmail", events)
+        self.assertIn("mcp-get:CaseToMD", events)
+        installer = INSTALLER.read_text(encoding="utf-8-sig")
+        self.assertIn(
+            "avaya_case_review_runtime.gmail_mcp_server", installer
+        )
+        self.assertIn(
+            "avaya_case_review_runtime.casetomd_mcp_bridge", installer
+        )
+        self.assertNotIn("relative Gmail and CaseToMD launch arguments", installer)
+
     def test_skip_dependency_requires_exact_runtime_without_pip_mutation(self):
         success, success_events, _ = self.run_stateful_installer(
             runtime_version="1.10.1", skip_dependency=True

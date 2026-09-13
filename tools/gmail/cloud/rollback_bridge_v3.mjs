@@ -21,7 +21,7 @@
 // Project identity: --script-id (or GMAIL_BRIDGE_SCRIPT_ID, controlled ops
 // record) must strictly equal the scriptId in tmp/clasp-bridge/.clasp.json
 // (read-only reference), and --deployment-id must strictly equal the
-// deployment id assembled from APP_SCRIPT_URL (tools/gmail/gmail_edge_common.py).
+// deployment id assembled from APP_SCRIPT_URL in the packaged runtime module.
 // All identity gates run before anything is written or pushed.
 //
 // This is NOT an atomic transaction, and a non-zero or timed-out remote call
@@ -46,7 +46,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..", "..", "..");
 const TMP = resolve(ROOT, "tmp");
 const IDENTITY_CONFIG = resolve(ROOT, "tmp", "clasp-bridge", ".clasp.json");
-const EDGE_COMMON = resolve(ROOT, "tools", "gmail", "gmail_edge_common.py");
+const EDGE_COMMON = resolve(ROOT, "avaya_case_review_runtime", "gmail_edge_common.py");
 const SOURCE_COMPANION = resolve(HERE, "rollback_bridge_v3.txt");
 const MANIFEST_COMPANION = resolve(HERE, "rollback_bridge_v3.appsscript.txt");
 const CLASP = ["--yes", "@google/clasp@3.3.0"]; // pinned: verified in this rollout
@@ -59,7 +59,7 @@ const V3_SHA256 = "ceecde437612bd3f99427907b7797c37df68b585715ea58c8489d02667bb2
 const V3_BYTES = 39525;
 const MANIFEST_SHA256 = "8c9adaf62356fcf49ed573506628ef6de8be5c1b253ecb2c6d53b47f0e7c06c0";
 const MANIFEST_BYTES = 339;
-const V4_SHA256 = "3fae58fc7e18c8329c070cb7b03d53303a8162a04b568a33d179c20db5e31d48";
+const V4_SHA256 = "8d54133fb0fbe933f0658f8dccb31442b4357d85cc5960637e041de851578ced";
 const PROBE_CASE_ID = "INC0000001"; // syntactically valid, expected zero-result
 const ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
@@ -122,7 +122,7 @@ if (!SCRIPT_ID || !ID_PATTERN.test(SCRIPT_ID)) {
   process.exit(1);
 }
 if (!MODE_DIAGNOSE && (!DEPLOYMENT_ID || !ID_PATTERN.test(DEPLOYMENT_ID))) {
-  console.error("ROLLBACK_ABORTED: --deployment-id / GMAIL_BRIDGE_DEPLOYMENT_ID is required (APP_SCRIPT_URL in tools/gmail/gmail_edge_common.py)");
+  console.error("ROLLBACK_ABORTED: --deployment-id / GMAIL_BRIDGE_DEPLOYMENT_ID is required (APP_SCRIPT_URL in the packaged runtime module)");
   process.exit(1);
 }
 
@@ -144,7 +144,7 @@ const productionDeploymentId = (() => {
   }
 })();
 if (!productionDeploymentId) {
-  console.error("ROLLBACK_ABORTED: cannot extract the production deployment id from tools/gmail/gmail_edge_common.py");
+  console.error("ROLLBACK_ABORTED: cannot extract the production deployment id from the packaged runtime module");
   process.exit(1);
 }
 if (!MODE_DIAGNOSE && DEPLOYMENT_ID !== productionDeploymentId) {

@@ -25,6 +25,7 @@ avaya_case_review_runtime/gmail_legacy_backend.py
 avaya_case_review_runtime/gmail_mcp_server.py
 docs/ANTIGRAVITY_INSTALLATION_GUIDE.html
 docs/ANTIGRAVITY_INSTALLATION_GUIDE.md
+docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md
 docs/Avaya_Case_Review_Suite_Presentation.pptx
 docs/GMAIL_CLOUD_BRIDGE.md
 docs/GMAIL_EDGE_BROKER.md

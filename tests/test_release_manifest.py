@@ -40,6 +40,7 @@ REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
         ".codex-plugin/plugin.json",
         ".mcp.json",
         "INSTALL.md",
+        "docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md",
         "docs/GMAIL_CLOUD_BRIDGE.md",
         "docs/GMAIL_EDGE_BROKER.md",
         "tools/casetomd/casetomd_mcp_bridge.py",

@@ -282,8 +282,8 @@ project.
    available for development and clean-profile tests.
 7. Install `avaya-case-review@avaya-case-review-pack`.
 8. Verify the installed plugin identity and version and confirm that `codex mcp
-   get` reports relative Gmail and CaseToMD launch arguments without unresolved
-   variables.
+   get` reports the Gmail and CaseToMD `python -m avaya_case_review_runtime.*`
+   module arguments without unresolved variables.
 9. Report success and require a new Codex task.
 
 `-DryRun` performs only local parsing, manifest, attestation-schema, and source

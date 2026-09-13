@@ -13,7 +13,7 @@ import test from "node:test";
 const here = dirname(fileURLToPath(import.meta.url));
 const CLOUD_DIR = resolve(here, "../../tools/gmail/cloud");
 const SCRIPT = join(CLOUD_DIR, "rollback_bridge_v3.mjs");
-const REAL_EDGE_COMMON = resolve(here, "../../tools/gmail/gmail_edge_common.py");
+const REAL_EDGE_COMMON = resolve(here, "../../avaya_case_review_runtime/gmail_edge_common.py");
 const TEST_SCRIPT_ID = "1TestScriptIdForRollbackTool000000000000";
 const IS_WIN = process.platform === "win32";
 
@@ -44,7 +44,8 @@ function buildSandbox({ probeFixture = "ok", shimExtraFile = false, shimClasp = 
   if (tamperSnapshot) {
     writeFileSync(join(cloud, "rollback_bridge_v3.txt"), readFileSync(join(cloud, "rollback_bridge_v3.txt"), "utf8") + "\n// tampered");
   }
-  copyFileSync(REAL_EDGE_COMMON, join(sandbox, "tools", "gmail", "gmail_edge_common.py"));
+  mkdirSync(join(sandbox, "avaya_case_review_runtime"), { recursive: true });
+  copyFileSync(REAL_EDGE_COMMON, join(sandbox, "avaya_case_review_runtime", "gmail_edge_common.py"));
   copyFileSync(resolve(here, "../../tools/gmail/cloud/GmailMcpBridge.gs"), join(sandbox, "remote-fixture-v4.gs"));
   writeFileSync(join(sandbox, "tools", "gmail", "gmail_mcp_server.py"), PROBE_FIXTURES[probeFixture]);
   const claspBridge = join(sandbox, "tmp", "clasp-bridge");
