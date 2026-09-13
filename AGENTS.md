@@ -186,7 +186,7 @@ gh release create vNEW ./avaya-case-review-pack-vNEW.zip --title "..." --notes-f
 gh release edit vPREV --notes-file SUPERSEDED.md
 ```
 
-Version history (all on GitHub Releases, most recent first):
+Release history (most recent first; published versions are on GitHub Releases):
 
 - **v1.10.1 (unreleased)** — GitHub URL plugin bootstrap and runtime-packaged Codex MCP launch repair
 - **v1.10.0** — Investigation-complete reviews, QA scoring, and alarm audit

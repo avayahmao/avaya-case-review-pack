@@ -18,12 +18,13 @@ or SSO evidence recorded here.
 - [ ] Confirm the attestation plugin version, bridge version, and contract
   revision match the candidate: `________________`.
 
-## Host and package contract
+## Module-package MCP launch contract
 
-The historical CLI result is `RELATIVE_MCP_ARGS=UNSUPPORTED`: relative script
-arguments fail outside the installed plugin working directory. Record the CLI
-result and the desktop `NOT-USED` result in the release evidence as historical
-context only; neither is a release launch option.
+The release launch contract is the installed `avaya_case_review_runtime`
+package. Do not use, test, or record relative script paths as an MCP launch
+option: the module-package commands below are the only supported launch gates.
+- [ ] From a non-plugin working directory, confirm the installed runtime
+  package resolves without `PYTHONPATH`, `cwd`, or a private Codex cache path.
 - [ ] In the installed marketplace, Gmail is exactly
   `python -m avaya_case_review_runtime.gmail_mcp_server`.
 - [ ] In the installed marketplace, CaseToMD is exactly
