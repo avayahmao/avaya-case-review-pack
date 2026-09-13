@@ -385,6 +385,10 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
             "ＴＯＯＬＳ/extra.py",
             "tools./extra.py",
             "TOOLS／extra.py",
+            "avaya_case_review_runtime/gmail_mcp_server.py.",
+            "avaya_case_review_runtime/gmail_mcp_server.py ",
+            "CON/extra.py",
+            "package/NUL.txt",
         )
         with TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -418,6 +422,25 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertNotIn("Traceback", completed.stdout + completed.stderr)
+
+    def test_validate_wheel_rejects_casefolded_member_aliases(self):
+        required = {
+            "avaya_case_review_runtime/gmail_mcp_server.py",
+            "avaya_case_review_runtime/casetomd_mcp_bridge.py",
+        }
+        with TemporaryDirectory() as temporary:
+            wheel = Path(temporary) / "case-alias.whl"
+            self.write_wheel(
+                wheel,
+                members=required
+                | {"AVAYA_CASE_REVIEW_RUNTIME/GMAIL_MCP_SERVER.PY"},
+            )
+            completed = self.run_helper(
+                "validate-wheel", "--wheel", str(wheel), "--version", "1.10.0"
+            )
+
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertNotIn("Traceback", completed.stdout + completed.stderr)
 
     def test_cli_sanitizes_malformed_encrypted_and_invalid_utf8_wheels(self):
         required = {

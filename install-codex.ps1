@@ -538,10 +538,15 @@ function Test-InstalledCodexPlugin {
             -Stage "installed MCP verification ($Name)"
         $Transport = if ($null -ne $Definition.transport) { $Definition.transport } else { $Definition }
         Assert-ExactPropertyNames `
+            -Value $Transport `
+            -Expected @('type', 'command', 'args', 'env') `
+            -Label "installed $Name MCP transport"
+        Assert-ExactPropertyNames `
             -Value $Transport.env `
             -Expected @($ExpectedModules[$Name].Environment.Keys) `
             -Label "installed $Name MCP environment"
         if (
+            [string]$Transport.type -cne 'stdio' -or
             [string]$Transport.command -cne 'python' -or
             @($Transport.args).Count -ne 2 -or
             [string]$Transport.args[0] -cne '-m' -or

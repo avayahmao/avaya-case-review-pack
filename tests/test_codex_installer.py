@@ -219,14 +219,21 @@ if ($args.Count -ge 4 -and $args[0] -eq "mcp" -and $args[1] -eq "get") {
     } else {
         [pscustomobject]@{ PYTHONIOENCODING = "utf-8" }
     }
+    $TransportValues = [ordered]@{
+        type = if ($State.fail_stage -like "*mcp-transport-type*") { "http" } else { "stdio" }
+        command = "python"
+        args = @("-m", $Module)
+        env = $McpEnvironment
+    }
+    if ($State.fail_stage -like "*mcp-transport-cwd*") {
+        $TransportValues["cwd"] = "SENTINEL_CWD"
+    }
+    if ($State.fail_stage -like "*mcp-transport-extra*") {
+        $TransportValues["injected"] = "SENTINEL_EXTRA"
+    }
     [pscustomobject]@{
         name = $Name
-        transport = [pscustomobject]@{
-            type = "stdio"
-            command = "python"
-            args = @("-m", $Module)
-            env = $McpEnvironment
-        }
+        transport = [pscustomobject]$TransportValues
     } | ConvertTo-Json -Depth 8
     exit 0
 }
@@ -1260,6 +1267,27 @@ class CodexInstallerTests(unittest.TestCase):
                     plugin_installed=True,
                     plugin_enabled=True,
                     **options,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("mcp", result.stderr.lower())
+                self.assertEqual(state.marketplace_sha, "old-sha")
+                self.assertEqual(state.runtime_version, "1.9.9")
+
+    def test_installed_mcp_transport_rejects_cwd_extra_fields_and_non_stdio_type(self):
+        for fail_stage in (
+            "mcp-transport-cwd",
+            "mcp-transport-extra",
+            "mcp-transport-type",
+        ):
+            with self.subTest(fail_stage=fail_stage):
+                self.log_path.unlink(missing_ok=True)
+                result, _, state = self.run_stateful_installer(
+                    runtime_version="1.9.9",
+                    skip_dependency=False,
+                    existing_sha="old-sha",
+                    plugin_installed=True,
+                    plugin_enabled=True,
+                    fail_stage=fail_stage,
                 )
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("mcp", result.stderr.lower())

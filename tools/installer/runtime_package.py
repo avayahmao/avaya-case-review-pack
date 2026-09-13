@@ -61,6 +61,16 @@ def _canonical_member_name(value: str) -> str:
     if any(part in {"", ".", ".."} for part in parts):
         raise RuntimePackageError("wheel member path is invalid")
     canonical_parts = [part.casefold() for part in parts]
+    reserved = {"con", "prn", "aux", "nul"} | {
+        f"{prefix}{number}"
+        for prefix in ("com", "lpt")
+        for number in range(1, 10)
+    }
+    for part in canonical_parts:
+        if part.endswith((" ", ".")) or ":" in part:
+            raise RuntimePackageError("wheel member path is invalid")
+        if part.split(".", 1)[0].rstrip(" .") in reserved:
+            raise RuntimePackageError("wheel member path is invalid")
     if canonical_parts[0].rstrip(" .") == "tools":
         raise RuntimePackageError("wheel contains a forbidden package")
     return "/".join(canonical_parts)
