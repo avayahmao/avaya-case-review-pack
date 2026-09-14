@@ -61,7 +61,10 @@ LOGIN_POLL_INTERVAL_MS = 1_000
 LOGIN_VERIFY_QUERY = "subject:__avaya_gmail_edge_broker_verify__"
 _CACHE_BUSTER_PARAM = "cache_bust"
 _CONTENT_DELIVERY_ATTEMPTS = 3
-_ADAPTER_EXECUTION_DEADLINE_SECONDS = EXECUTION_TIMEOUT_SECONDS - 5
+_PAGE_CLOSE_TIMEOUT_SECONDS = 5
+_ADAPTER_EXECUTION_DEADLINE_SECONDS = (
+    EXECUTION_TIMEOUT_SECONDS - _PAGE_CLOSE_TIMEOUT_SECONDS - 1
+)
 
 _SAFE_READ_METHODS = frozenset(
     {
@@ -96,6 +99,10 @@ class BrowserAdapter(Protocol):
 
 class BrowserAdapterError(RuntimeError):
     """The browser process or automation transport failed."""
+
+
+class BrowserOperationTimeout(BrowserAdapterError):
+    """The adapter's bounded operation deadline elapsed."""
 
 
 class BrowserLoginError(BrowserAdapterError):
@@ -205,18 +212,25 @@ class ManagedEdgeAdapter:
             raise BrowserAdapterError("Managed Edge is not started")
         logical_url = self._build_method_url(method, params)
         try:
-            async with asyncio.timeout(_ADAPTER_EXECUTION_DEADLINE_SECONDS):
-                for attempt in range(_CONTENT_DELIVERY_ATTEMPTS):
-                    result = await self._execute_navigation_attempt(logical_url)
-                    if result is not None:
-                        return result
-                    if attempt + 1 == _CONTENT_DELIVERY_ATTEMPTS:
-                        raise BrowserApplicationError(
-                            "Apps Script content delivery failed"
-                        )
-        except TimeoutError as exc:
-            raise BrowserAdapterError("Managed Edge request timed out") from exc
+            return await asyncio.wait_for(
+                self._execute_with_transient_retry(method, logical_url),
+                timeout=_ADAPTER_EXECUTION_DEADLINE_SECONDS,
+            )
+        except asyncio.TimeoutError as exc:
+            raise BrowserOperationTimeout("Managed Edge request timed out") from exc
 
+    async def _execute_with_transient_retry(
+        self,
+        method: str,
+        logical_url: str,
+    ) -> str:
+        attempts = _CONTENT_DELIVERY_ATTEMPTS if method in _SAFE_READ_METHODS else 1
+        for attempt in range(attempts):
+            result = await self._execute_navigation_attempt(logical_url)
+            if result is not None:
+                return result
+            if attempt + 1 == attempts:
+                raise BrowserApplicationError("Apps Script content delivery failed")
         raise AssertionError("content delivery retry loop exhausted")
 
     async def _execute_navigation_attempt(self, logical_url: str) -> str | None:
@@ -239,7 +253,11 @@ class ManagedEdgeAdapter:
             body = (
                 await page.text_content("body", timeout=self._response_timeout_ms) or ""
             ).strip()
-            if self._is_transient_content_delivery_failure(page.url, body):
+            if self._is_transient_content_delivery_failure(
+                page.url,
+                http_status,
+                body,
+            ):
                 return None
             state = classify_response(page.url, http_status, body)
             self._raise_for_state(state)
@@ -257,13 +275,22 @@ class ManagedEdgeAdapter:
         finally:
             if page is not None:
                 with contextlib.suppress(Exception):
-                    await page.close()
+                    await asyncio.wait_for(
+                        page.close(),
+                        timeout=_PAGE_CLOSE_TIMEOUT_SECONDS,
+                    )
 
     @staticmethod
-    def _is_transient_content_delivery_failure(final_url: str, body: str) -> bool:
+    def _is_transient_content_delivery_failure(
+        final_url: str,
+        http_status: int | None,
+        body: str,
+    ) -> bool:
         host = urlparse(final_url).netloc.lower()
-        return host.endswith("script.googleusercontent.com") and not body.lstrip().startswith(
-            ("{", "[")
+        return (
+            http_status == 200
+            and host.endswith("script.googleusercontent.com")
+            and not body.lstrip().startswith(("{", "["))
         )
 
     async def interactive_login(self) -> AuthState:
@@ -1053,6 +1080,12 @@ class GmailEdgeBroker:
                     BrokerErrorCode.APP_ERROR,
                     "Gmail application request failed",
                 ) from exc
+            except BrowserOperationTimeout as exc:
+                self._edge_state = AuthState.BROWSER_ERROR.value
+                raise _RequestFailure(
+                    BrokerErrorCode.REQUEST_TIMEOUT,
+                    "Managed Edge request timed out",
+                ) from exc
             except BrowserAdapterError as exc:
                 self._browser_crash_count += 1
                 self._edge_state = AuthState.BROWSER_ERROR.value
@@ -1373,6 +1406,7 @@ __all__ = [
     "BrowserApplicationError",
     "BrowserAuthRequired",
     "BrowserLoginError",
+    "BrowserOperationTimeout",
     "GmailEdgeBroker",
     "ManagedEdgeAdapter",
     "build_parser",

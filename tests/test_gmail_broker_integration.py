@@ -9,6 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 
+import tools.gmail.gmail_edge_broker as gmail_edge_broker
 from tools.gmail.gmail_broker_protocol import PROTOCOL_VERSION
 from tools.gmail.gmail_broker_state import (
     AlreadyRunning,
@@ -116,6 +117,13 @@ class FakeBrowserAdapter:
                 raise BrowserAdapterError(
                     f"browser crashed {params.get('secret', '')}"
                 )
+            if mode == "adapter_timeout":
+                timeout_type = getattr(
+                    gmail_edge_broker,
+                    "BrowserOperationTimeout",
+                    BrowserAdapterError,
+                )
+                raise timeout_type("adapter deadline exhausted")
             if mode == "retry_once" and attempt == 1:
                 raise BrowserAdapterError("browser crashed once")
             if mode == "timeout":
@@ -473,6 +481,20 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fake.execute_counts["retry_once"], 2)
         self.assertEqual(fake.start_count, 2)
         self.assertEqual(broker.diagnostics()["browser_crash_count"], 1)
+
+    async def test_adapter_deadline_is_terminal_request_timeout_without_retry(self):
+        fake = FakeBrowserAdapter()
+        broker, _store = await self.make_broker(fake)
+
+        response = await self.request(
+            broker,
+            "adapter-timeout-id",
+            params={"mode": "adapter_timeout"},
+        )
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["error"]["code"], "REQUEST_TIMEOUT")
+        self.assertEqual(fake.execute_counts["adapter_timeout"], 1)
 
     async def test_new_safe_read_methods_retry_once_after_browser_error(self):
         for method in (

@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
+import tools.gmail.gmail_edge_broker as gmail_edge_broker
 from tools.gmail.gmail_edge_broker import (
     _SAFE_READ_METHODS,
     BrowserAdapterError,
@@ -415,6 +416,122 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(context.created_pages), 3)
         self.assertEqual(pages[3].goto_calls, [])
         self.assertTrue(all(page.close_calls == 1 for page in pages[:3]))
+        await adapter.close()
+
+    async def test_gmail_send_does_not_retry_transient_content_delivery_failure(self):
+        pages = [
+            FakePage(final_url=CONTENT_SERVICE_URL, body="<html>Page Not Found</html>")
+            for _ in range(3)
+        ]
+        context = FakeContext(*pages)
+        adapter, _starter, _playwright = self.make_adapter(
+            context,
+            nonce_factory=iter(("attempt-1", "attempt-2", "attempt-3")).__next__,
+        )
+        await adapter.start()
+
+        with self.assertRaises(BrowserApplicationError) as raised:
+            await adapter.execute(
+                "gmail_send",
+                {"to": "user@example.com", "subject": "subject", "body": "body"},
+            )
+
+        self.assertEqual(str(raised.exception), "Apps Script content delivery failed")
+        self.assertEqual(len(context.created_pages), 1)
+        self.assertEqual(pages[1].goto_calls, [])
+        self.assertEqual(pages[2].goto_calls, [])
+        await adapter.close()
+
+    async def test_does_not_retry_non_200_content_service_response(self):
+        pages = [
+            FakePage(
+                final_url=CONTENT_SERVICE_URL,
+                status=503,
+                body="<html>Service Unavailable</html>",
+            )
+            for _ in range(3)
+        ]
+        context = FakeContext(*pages)
+        adapter, _starter, _playwright = self.make_adapter(context)
+        await adapter.start()
+
+        with self.assertRaises(BrowserApplicationError):
+            await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(len(context.created_pages), 1)
+        self.assertEqual(pages[1].goto_calls, [])
+        self.assertEqual(pages[2].goto_calls, [])
+        await adapter.close()
+
+    async def test_execute_remains_compatible_without_asyncio_timeout(self):
+        page = FakePage(body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+        await adapter.start()
+
+        with patch.object(asyncio, "timeout", None, create=True):
+            try:
+                result = await adapter.execute("gmail_search", {"query": "case"})
+            except TypeError:
+                result = None
+
+        self.assertEqual(result, '{"status":"success"}')
+        await adapter.close()
+
+    async def test_internal_deadline_uses_distinct_terminal_timeout_error(self):
+        entered = asyncio.Event()
+
+        class BlockingPage(FakePage):
+            async def text_content(self, selector, **kwargs):
+                entered.set()
+                await asyncio.Event().wait()
+
+        page = BlockingPage(final_url=CONTENT_SERVICE_URL)
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+        timeout_type = getattr(
+            gmail_edge_broker,
+            "BrowserOperationTimeout",
+            BrowserAdapterError,
+        )
+        await adapter.start()
+
+        with patch.object(gmail_edge_broker, "_ADAPTER_EXECUTION_DEADLINE_SECONDS", 0.01):
+            with self.assertRaises(timeout_type) as raised:
+                await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertTrue(entered.is_set())
+        self.assertIsNot(timeout_type, BrowserAdapterError)
+        self.assertNotIn("case", str(raised.exception))
+        await adapter.close()
+
+    async def test_internal_deadline_bounds_page_close_cleanup(self):
+        class BlockingPage(FakePage):
+            async def text_content(self, selector, **kwargs):
+                await asyncio.Event().wait()
+
+            async def close(self):
+                self.close_calls += 1
+                await asyncio.sleep(0.2)
+
+        page = BlockingPage(final_url=CONTENT_SERVICE_URL)
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+        timeout_type = getattr(
+            gmail_edge_broker,
+            "BrowserOperationTimeout",
+            BrowserAdapterError,
+        )
+        await adapter.start()
+        started = asyncio.get_running_loop().time()
+
+        with patch.object(gmail_edge_broker, "_ADAPTER_EXECUTION_DEADLINE_SECONDS", 0.01), patch.object(
+            gmail_edge_broker,
+            "_PAGE_CLOSE_TIMEOUT_SECONDS",
+            0.01,
+        ):
+            with self.assertRaises(timeout_type):
+                await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertLess(asyncio.get_running_loop().time() - started, 0.1)
+        self.assertEqual(page.close_calls, 1)
         await adapter.close()
 
     async def test_does_not_retry_json_errors_or_non_content_html(self):
