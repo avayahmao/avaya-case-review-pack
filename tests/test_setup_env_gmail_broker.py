@@ -810,8 +810,30 @@ class InstallerContractTests(unittest.TestCase):
         completed = fixture.run("10", login_sleep=5, login_timeout=1)
 
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
-        self.assertIn("timed out", (completed.stdout + completed.stderr).lower())
-        self.assertEqual(fixture.broker_event_lines(), ["verify-bridge", "login", "stop"])
+        output = completed.stdout + completed.stderr
+        self.assertIn(
+            "Gmail authentication is required. Waiting for Managed Edge SSO/MFA...",
+            output,
+        )
+        self.assertIn("Stage 'Gmail broker login' timed out after 1 seconds.", output)
+        broker_events = fixture.broker_event_lines()
+        self.assertEqual(broker_events[0], "verify-bridge")
+        self.assertEqual(broker_events[-1], "stop")
+        events = fixture.event_lines()
+        preflight_events = {
+            "python-version",
+            "attestation-validate",
+            f"runtime-version:{fixture.plugin_version}",
+            "runtime-smoke",
+            "verify-bridge",
+            "login",
+            "stop",
+        }
+        self.assertEqual(
+            [event for event in events if event not in preflight_events],
+            [],
+            events,
+        )
         self.assertEqual(fixture.snapshot(), before)
 
     def test_login_timeout_defaults_to_330_seconds(self):
