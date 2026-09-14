@@ -107,7 +107,7 @@ flowchart TD
 **Recommended (works under corporate Group Policy):**
 1. Unzip the pack.
 2. **Double-click `install.bat`** (or from a terminal: `.\install.bat`).
-3. The installer deploys the single Managed Edge broker and checks authentication. If its status exits `10`, run `python %USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py login` and complete SSO/MFA in the opened Edge window.
+3. `setup_env.ps1` automatically runs `verify-bridge`, opens Managed Edge login when authentication is required, and retries `verify-bridge`; the user only completes the visible SSO/MFA flow.
 4. Restart **Antigravity**.
 
 `install.bat` is a thin wrapper that runs `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1`, which is required because Windows PowerShell's default execution policy (`Restricted` / `AllSigned`) blocks unsigned `.ps1` files *before* any code inside the script can adjust the policy.

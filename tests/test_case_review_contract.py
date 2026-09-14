@@ -808,6 +808,45 @@ class CaseReviewContractTests(unittest.TestCase):
                 )
                 self.assertNotIn(stale_claim, content.lower())
 
+    def test_antigravity_install_docs_describe_automatic_verify_login_retry(self):
+        documents = [
+            README_MD,
+            README_HTML,
+            MANAGER_MD,
+            MANAGER_HTML,
+            TDD_MD,
+            TDD_HTML,
+            PRESENTATION_HTML,
+        ]
+        for path in documents:
+            with self.subTest(document=path.name):
+                content = normalize_contract_item(read(path))
+                self.assertIn(
+                    "setup_env.ps1 automatically runs verify-bridge",
+                    content,
+                )
+                self.assertIn("opens Managed Edge login", content)
+                self.assertIn("retries verify-bridge", content)
+                self.assertIn("user only completes the visible SSO/MFA", content)
+                self.assertNotIn(
+                    "If its status exits 10, run python %USERPROFILE%",
+                    content,
+                )
+                self.assertNotIn(
+                    "Runs broker status and requests interactive login",
+                    content,
+                )
+
+        agents = read(AGENTS_MD)
+        self.assertIn(
+            "entries are published on GitHub Releases only after their release gates complete",
+            agents,
+        )
+        self.assertNotIn(
+            "Release history (most recent first; published versions are on GitHub Releases)",
+            agents,
+        )
+
     def test_core_docs_do_not_claim_local_installation_is_completely_automated(self):
         for path in [TDD_MD, TDD_HTML]:
             with self.subTest(document=path.name):

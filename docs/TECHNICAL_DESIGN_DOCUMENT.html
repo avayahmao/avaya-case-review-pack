@@ -420,6 +420,7 @@ function sendDailyManagerDigest() { ... }</pre>
 
     <h2>5. Deployment & Installation Architecture</h2>
     <p>The Gmail Apps Script deployment is a maintainer release gate, documented in <code>docs/GMAIL_CLOUD_BRIDGE.md</code>; end users do not deploy the cloud source or provide a production Case ID during installation. The v1.10.1 stable contract requires a unique temporary checkout created with <code>git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack &lt;unique-temp-directory&gt;</code> and requires <code>git describe --exact-match --tags HEAD</code> to return <code>v1.10.1</code>. After inspecting <code>INSTALL.md</code>, the agent runs no-flag <code>install-codex.ps1</code> or <code>install.bat</code>; each validates local attestation and live cloud compatibility before activation. SSO/MFA is the only intentional pause, followed by a new Codex task or Antigravity restart. These instructions do not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.</p>
+    <p>For Antigravity, <code>setup_env.ps1</code> automatically runs <code>verify-bridge</code>, opens Managed Edge login when authentication is required, and retries <code>verify-bridge</code>; the user only completes the visible SSO/MFA flow.</p>
     <p>The Antigravity setup path performs these local phases:</p>
 <pre># 1. Environment Verification
 # Checks Python 3.10+, PowerShell 5.1+, and Antigravity App directory
@@ -435,7 +436,7 @@ playwright install chromium
 # Copies plugins/avaya-case-review to %USERPROFILE%\.gemini\config\plugins\
 # Copies broker modules and configures GMAIL_BACKEND=edge_broker
 # Configures %USERPROFILE%\.gemini\config\mcp_config.json for CaseToMD & Gmail MCP servers
-# Checks broker status; runs gmail_brokerctl.py login only on exit code 10</pre>
+# setup_env.ps1 runs verify-bridge, opens Managed Edge login when required, and retries verify-bridge</pre>
     <p>Both supported installers enforce the tested <code>mcp==1.28.1</code> requirement. This keeps fresh environments on the MCP 1.x server API used by the packaged runtime instead of selecting MCP 2.x, which removed that API.</p>
 
     <h2>6. Verification &amp; Validation Framework</h2>

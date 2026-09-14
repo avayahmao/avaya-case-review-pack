@@ -14,6 +14,12 @@ if (-not $Automated) {
 
 $ResolvedRepositoryRoot = (Resolve-Path -LiteralPath $RepositoryRoot).Path
 $ResolvedAttestationPath = (Resolve-Path -LiteralPath $BridgeAttestationPath).Path
+if (-not (Test-Path -LiteralPath $ResolvedRepositoryRoot -PathType Container)) {
+    throw "RepositoryRoot must resolve to a directory."
+}
+if (-not (Test-Path -LiteralPath $ResolvedAttestationPath -PathType Leaf)) {
+    throw "BridgeAttestationPath must resolve to a file."
+}
 $TestRoot = Join-Path ([IO.Path]::GetTempPath()) ("avaya-codex-clean-profile-" + [guid]::NewGuid().ToString("N"))
 $TestCodexHome = Join-Path $TestRoot ".codex"
 $PreviousCodexHome = $env:CODEX_HOME
@@ -36,6 +42,67 @@ $HandshakeWorkDirectory = Join-Path $TestRoot "unrelated-working-directory"
 $StatePath = Join-Path $TestRoot "state.json"
 $InstallerLog = Join-Path $TestRoot "installer.log"
 $Summary = $null
+$FixtureFiles = @()
+
+function Get-ReleaseManifestFiles {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    $ManifestPath = Join-Path $Root "release-manifest.txt"
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        throw "The clean-profile source does not contain release-manifest.txt."
+    }
+
+    $RootPrefix = $Root.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    $Seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+    $Files = @()
+    foreach ($RawLine in Get-Content -LiteralPath $ManifestPath -Encoding UTF8) {
+        $Entry = $RawLine.Trim()
+        if ([string]::IsNullOrWhiteSpace($Entry) -or $Entry.StartsWith("#")) {
+            continue
+        }
+        $Segments = @($Entry.Split('/'))
+        if (
+            [IO.Path]::IsPathRooted($Entry) -or
+            $Entry.Contains("\") -or
+            $Segments -contains ".." -or
+            $Segments -contains "." -or
+            $Segments -contains "" -or
+            -not $Seen.Add($Entry)
+        ) {
+            throw "Release manifest contains an unsafe or duplicate path."
+        }
+
+        $SourcePath = [IO.Path]::GetFullPath((Join-Path $Root ($Entry.Replace('/', [IO.Path]::DirectorySeparatorChar))))
+        if (-not $SourcePath.StartsWith($RootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Release manifest path resolves outside RepositoryRoot."
+        }
+        if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
+            throw "Release manifest path is missing or is not a file: $Entry"
+        }
+        $ResolvedSourcePath = (Resolve-Path -LiteralPath $SourcePath).Path
+        if (-not $ResolvedSourcePath.StartsWith($RootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Release manifest source resolves outside RepositoryRoot."
+        }
+        $Files += [pscustomobject]@{ Entry = $Entry; Source = $ResolvedSourcePath }
+    }
+    return $Files
+}
+
+function Copy-ReleaseManifestFiles {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Files,
+        [Parameter(Mandatory = $true)][string]$DestinationRoot
+    )
+
+    foreach ($File in $Files) {
+        $DestinationPath = Join-Path $DestinationRoot ([string]$File.Entry).Replace('/', [IO.Path]::DirectorySeparatorChar)
+        $DestinationParent = Split-Path -Parent $DestinationPath
+        if (-not (Test-Path -LiteralPath $DestinationParent -PathType Container)) {
+            New-Item -ItemType Directory -Path $DestinationParent -Force | Out-Null
+        }
+        Copy-Item -LiteralPath ([string]$File.Source) -Destination $DestinationPath -Force
+    }
+}
 
 function Set-SmokeTextFile {
     param(
@@ -173,10 +240,31 @@ function Invoke-McpHandshake {
 
 try {
     New-Item -ItemType Directory -Path $TestRoot, $TestCodexHome, $FixtureRepository, $AdapterRoot, $RuntimeTarget, $HandshakeWorkDirectory -Force | Out-Null
-    Get-ChildItem -LiteralPath $ResolvedRepositoryRoot -Force |
-        Where-Object { $_.Name -ne ".git" } |
-        Copy-Item -Destination $FixtureRepository -Recurse -Force
+    $ReleaseFiles = @(Get-ReleaseManifestFiles -Root $ResolvedRepositoryRoot)
+    Copy-ReleaseManifestFiles -Files $ReleaseFiles -DestinationRoot $FixtureRepository
+
+    $BridgeSourcePath = Join-Path $FixtureRepository "tools\gmail\cloud\GmailMcpBridge.gs"
+    $BridgeIdentityPath = Join-Path $FixtureRepository "tools\gmail\cloud\bridge_identity.py"
+    $PluginVersion = [string]((Get-Content -LiteralPath (Join-Path $FixtureRepository ".codex-plugin\plugin.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version)
+    $null = & $RealPythonPath -B $BridgeIdentityPath validate `
+        --source $BridgeSourcePath `
+        --attestation $ResolvedAttestationPath `
+        --plugin-version $PluginVersion 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "The supplied bridge attestation failed source verification."
+    }
     Copy-Item -LiteralPath $ResolvedAttestationPath -Destination (Join-Path $FixtureRepository "tools\gmail\cloud\bridge_release_attestation.json") -Force
+    $FixtureFiles = @(
+        Get-ChildItem -LiteralPath $FixtureRepository -File -Recurse |
+            ForEach-Object { $_.FullName.Substring($FixtureRepository.Length + 1).Replace('\', '/') } |
+            Sort-Object
+    )
+    $ExpectedFixtureFiles = @($ReleaseFiles | ForEach-Object { [string]$_.Entry } | Sort-Object)
+    $FixtureDifference = @(Compare-Object -ReferenceObject $ExpectedFixtureFiles -DifferenceObject $FixtureFiles)
+    if ($FixtureDifference.Count -ne 0) {
+        $DifferentPaths = @($FixtureDifference | ForEach-Object { [string]$_.InputObject }) -join ", "
+        throw "Fixture repository files do not exactly match release-manifest.txt: $DifferentPaths"
+    }
     Write-SmokeAdapters -Path $AdapterRoot
     [pscustomobject]@{
         marketplace_installed = $false
@@ -212,6 +300,7 @@ try {
         marketplace = [ordered]@{ installed = [bool]$State.marketplace_installed }
         plugin = [ordered]@{ enabled = [bool]$State.plugin_installed }
         tools = [ordered]@{ gmail = @($GmailTools); CaseToMD = @($CaseTools) }
+        fixture_files = @($FixtureFiles)
     }
 } finally {
     if ($null -eq $PreviousCodexHome) {

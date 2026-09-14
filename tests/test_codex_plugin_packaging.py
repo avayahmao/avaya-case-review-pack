@@ -27,6 +27,10 @@ TDD_MD = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.md"
 TDD_HTML = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.html"
 RELEASE_NOTES_MD = ROOT / "docs/RELEASE_NOTES.md"
 RELEASE_NOTES_HTML = ROOT / "docs/RELEASE_NOTES.html"
+RELEASE_CHECKLIST = ROOT / "docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md"
+IMPLEMENTATION_PLAN = (
+    ROOT / "docs/superpowers/plans/2026-09-09-codex-url-install-repair.md"
+)
 URL_INSTALL_DOCS = (
     README_MD,
     README_HTML,
@@ -240,6 +244,54 @@ class CodexPluginPackagingTests(unittest.TestCase):
         self.assertIn("restart Antigravity", install_contract)
         self.assertIn("End users do not deploy", install_contract)
         self.assertIn("production Case ID", install_contract)
+
+    def test_release_docs_gate_main_tag_url_acceptance_and_tagged_zip_in_order(self):
+        publication_docs = (AGENTS, IMPLEMENTATION_PLAN, RELEASE_CHECKLIST)
+        ordered_markers = (
+            "Push the candidate branch and verify its exact remote SHA",
+            "Run explicit-SHA clean-profile acceptance",
+            "git push origin HEAD:main",
+            "$RemoteMainSha",
+            "Verify the default-branch README",
+            "git tag -a v1.10.1 $CandidateSha",
+            "Run URL-only acceptance",
+            "Build and verify the release ZIP",
+            "gh release create v1.10.1",
+        )
+        for path in publication_docs:
+            with self.subTest(document=path.name):
+                content = re.sub(
+                    r"\s+", " ", path.read_text(encoding="utf-8-sig")
+                )
+                positions = []
+                for marker in ordered_markers:
+                    self.assertIn(marker, content)
+                    positions.append(content.index(marker))
+                self.assertEqual(positions, sorted(positions))
+                self.assertIn("git clone --depth 1 --branch main", content)
+                self.assertIn("$StableBootstrap", content)
+                self.assertIn("never force", content)
+                self.assertIn("refs/tags/v1.10.1^{}", content)
+                self.assertIn("fresh, clean, detached checkout", content)
+                self.assertIn("git clone --no-checkout", content)
+                self.assertIn("checkout --detach", content)
+                self.assertIn("status --porcelain", content)
+
+        for path in (IMPLEMENTATION_PLAN, RELEASE_CHECKLIST):
+            with self.subTest(zip_verification=path.name):
+                content = re.sub(
+                    r"\s+", " ", path.read_text(encoding="utf-8-sig")
+                )
+                self.assertIn("$TaggedSha -cne $CandidateSha", content)
+                self.assertIn("actual != manifest", content)
+                self.assertIn(
+                    "archive.read(name) != (checkout / name).read_bytes()",
+                    content,
+                )
+                self.assertIn("Do not build from the candidate worktree", content)
+
+        checklist = RELEASE_CHECKLIST.read_text(encoding="utf-8-sig")
+        self.assertNotIn("Build the ZIP strictly from `release-manifest.txt`", checklist)
 
     def test_dependency_docs_publish_the_tested_mcp_pin(self):
         for path in DEPENDENCY_CONTRACT_DOCS:

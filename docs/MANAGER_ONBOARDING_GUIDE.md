@@ -67,13 +67,13 @@ Follow the v1.10.1 installer instructions only after exact-tag verification.
 3. **Deploys Plugins**: Copies `plugins/avaya-case-review` to `C:\Users\<username>\.gemini\config\plugins\avaya-case-review`.
 4. **Deploys Gmail broker modules**: Copies the broker, client, control CLI, thin MCP adapter, and explicit legacy backend into `C:\Users\<username>\.gemini\tools\gmail\`.
 5. **Updates Configuration**: Configures `mcp_config.json` with `gmail` (`GMAIL_BACKEND=edge_broker`) and `CaseToMD` MCP server definitions.
-6. **Checks broker authentication**: Runs broker status and requests interactive login only when status exits `10`.
+6. **Checks broker authentication**: `setup_env.ps1` automatically runs `verify-bridge`, opens Managed Edge login when authentication is required, and retries `verify-bridge`; the user only completes the visible SSO/MFA flow.
 
 ---
 
 ## 3. Google SSO Authentication (One-Time Setup)
 
-During setup, the installer checks the single Managed Edge broker. If interactive authentication is required, `gmail_brokerctl.py login` opens the dedicated Edge profile and the broker restores its headless context after the login probe.
+During setup, `setup_env.ps1` automatically runs `verify-bridge`, opens Managed Edge login when authentication is required, and retries `verify-bridge`; the user only completes the visible SSO/MFA flow. The broker restores its headless context after the login probe.
 
 1. **Log In**: If prompted, log into your `@avaya.com` account and complete any Duo / SSO MFA prompts.
 2. **Authorize**: Accept any Google authorization prompts to allow email search/read access.

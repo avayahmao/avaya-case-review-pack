@@ -167,26 +167,75 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 
 ## 7. Release workflow
 
-```bash
-# 1. Build the zip locally from the tracked release manifest (never mirror a prior ZIP)
-python -c "
-import zipfile
-from pathlib import Path
-manifest = [line.strip() for line in Path('release-manifest.txt').read_text(encoding='utf-8').splitlines() if line.strip() and not line.startswith('#')]
-with zipfile.ZipFile('avaya-case-review-pack-vNEW.zip','w',zipfile.ZIP_DEFLATED,9) as z:
-    for name in manifest: z.write(name)
-"
-# 2. Commit code changes (NOT the zip — it's gitignored)
-git add <changed files>
-git commit -m "..."
-git push origin main
-# 3. Publish the release + attach the zip
-gh release create vNEW ./avaya-case-review-pack-vNEW.zip --title "..." --notes-file NOTES.md --latest
-# 4. If it fixes bugs from the prior release, edit that release's notes with a superseded banner
-gh release edit vPREV --notes-file SUPERSEDED.md
+The v1.10.1 publication gates are sequential. Do not skip or reorder them, and
+never force a branch or tag update.
+
+### 1. Push the candidate branch and verify its exact remote SHA
+
+```powershell
+$CandidateBranch = (git branch --show-current).Trim()
+$CandidateSha = (git rev-parse HEAD).Trim()
+git push origin "HEAD:refs/heads/$CandidateBranch"
+$RemoteCandidateSha = ((git ls-remote origin "refs/heads/$CandidateBranch") -split '\s+')[0]
+if ($RemoteCandidateSha -cne $CandidateSha) { throw "Remote candidate SHA mismatch" }
 ```
 
-Release history (most recent first; published versions are on GitHub Releases):
+### 2. Run explicit-SHA clean-profile acceptance
+
+Complete and record the supervised explicit-SHA install using `$CandidateSha`.
+
+### 3. Fast-forward and verify the default branch
+
+```powershell
+git push origin HEAD:main
+$RemoteMainSha = ((git ls-remote origin refs/heads/main) -split '\s+')[0]
+if ($RemoteMainSha -cne $CandidateSha) { throw "Remote main SHA mismatch" }
+$DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
+git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
+$DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
+$StableBootstrap = "git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.10.1 bootstrap" }
+```
+
+Never force this update. Verify the default-branch README in a fresh checkout
+exposes the exact stable v1.10.1 bootstrap before creating the tag.
+
+### 4. Create and verify the immutable tag
+
+```powershell
+git tag -a v1.10.1 $CandidateSha -m "v1.10.1"
+git push origin refs/tags/v1.10.1
+$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.10.1^{}") -split '\s+')[0]
+if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
+```
+
+### 5. Run URL-only acceptance
+
+Run the canonical GitHub-URL-only install in a second clean Windows profile.
+
+### 6. Build and verify the release ZIP
+
+Build outside Git only from a fresh, clean, detached checkout of `v1.10.1`.
+Confirm the tag peels to `$CandidateSha`, use that checkout's
+`release-manifest.txt`, require `git status --porcelain` to be empty, require
+the ZIP entry list to equal the manifest exactly, and compare every ZIP member
+byte-for-byte with the corresponding tagged-checkout file. Do not build from
+the candidate worktree. The exact executable procedure is maintained in
+`docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md`.
+
+```powershell
+git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
+git -C $ReleaseCheckout checkout --detach v1.10.1
+git -C $ReleaseCheckout status --porcelain
+```
+
+### 7. Publish the GitHub Release
+
+```powershell
+gh release create v1.10.1 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.10.1.md --latest
+```
+
+Release history (most recent first; entries are published on GitHub Releases only after their release gates complete):
 
 - **v1.10.1 (2026-09-14)** — GitHub URL plugin bootstrap, Version-17 complete-response repair, and runtime-packaged Codex MCP launch repair
 - **v1.10.0** — Investigation-complete reviews, QA scoring, and alarm audit

@@ -1268,7 +1268,7 @@ python -m unittest tests.test_release_manifest -v
 Expected: all tests pass and extracted-archive validation can run the identity
 validator from the packaged files.
 
-- [ ] **Step 7: Commit and push the release candidate**
+- [ ] **Step 7: Push the candidate branch and verify its exact remote SHA**
 
 Stage only intended files; inspect staged names before committing:
 
@@ -1276,13 +1276,17 @@ Stage only intended files; inspect staged names before committing:
 git add tools/gmail/cloud/bridge_release_attestation.json release-manifest.txt tests/test_release_manifest.py docs/RELEASE_NOTES.md docs/RELEASE_NOTES.html
 git diff --cached --name-status
 git commit -m "chore(release): prepare v1.10.1"
-git push origin HEAD
+$CandidateBranch = (git branch --show-current).Trim()
 $CandidateSha = (git rev-parse HEAD).Trim()
+git push origin "HEAD:refs/heads/$CandidateBranch"
+$RemoteCandidateSha = ((git ls-remote origin "refs/heads/$CandidateBranch") -split '\s+')[0]
+if ($RemoteCandidateSha -cne $CandidateSha) { throw "Remote candidate SHA mismatch" }
 ```
 
-Do not stage the ZIP or any pre-existing unrelated file.
+Do not stage the ZIP or any pre-existing unrelated file, and never force the
+candidate-branch update.
 
-- [ ] **Step 8: Validate the real GitHub source at the candidate SHA**
+- [ ] **Step 8: Run explicit-SHA clean-profile acceptance**
 
 On a clean Windows account, give an installation-capable AI agent only the
 GitHub URL and the explicit release-candidate SHA override. Require it to clone
@@ -1291,20 +1295,41 @@ that SHA, inspect `INSTALL.md`, run the installer, complete SSO/MFA when
 verify the marketplace checkout SHA, and expose all six MCP tools in a new
 Codex task. Record only sanitized results in the release checklist.
 
-- [ ] **Step 9: Create and verify the immutable release tag**
+- [ ] **Step 9: Fast-forward and verify the default branch**
 
-After the candidate SHA passes:
+Only after explicit-SHA acceptance succeeds, fast-forward `origin/main` to the
+accepted candidate and verify its exact identity:
+
+```powershell
+git push origin HEAD:main
+$RemoteMainSha = ((git ls-remote origin refs/heads/main) -split '\s+')[0]
+if ($RemoteMainSha -cne $CandidateSha) { throw "Remote main SHA mismatch" }
+$DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
+git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
+$DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
+$StableBootstrap = "git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.10.1 bootstrap" }
+```
+
+Never force this update. Verify the default-branch README in a new shallow
+`main` checkout exposes the exact stable v1.10.1 clone command and exact-tag
+check before creating the tag.
+
+- [ ] **Step 10: Create and verify the immutable release tag**
+
+After the default branch and candidate SHA checks pass:
 
 ```powershell
 git tag -a v1.10.1 $CandidateSha -m "v1.10.1"
-git push origin v1.10.1
-git ls-remote --tags origin refs/tags/v1.10.1
+git push origin refs/tags/v1.10.1
+$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.10.1^{}") -split '\s+')[0]
+if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
 ```
 
 Expected: the remote tag resolves to `$CandidateSha`. Repository protection
 must prevent moving or deleting `v*` tags.
 
-- [ ] **Step 10: Repeat the URL-only acceptance test**
+- [ ] **Step 11: Run URL-only acceptance**
 
 In a second clean Windows profile, give the AI agent only:
 
@@ -1317,17 +1342,53 @@ installation without `-CloudBridgeVerified`, pause only for SSO/MFA, start a
 new task, discover all six MCP tools, and perform one non-production
 evidence-complete case review.
 
-- [ ] **Step 11: Build and verify the release ZIP**
+- [ ] **Step 12: Build and verify the release ZIP**
+
+Do not build from the candidate worktree. Create a fresh, clean, detached
+checkout of the immutable tag, verify that the tag peels to the accepted
+candidate SHA, and keep the archive outside Git:
 
 ```powershell
-python -c "import zipfile; from pathlib import Path; names=[line.strip() for line in Path('release-manifest.txt').read_text(encoding='utf-8').splitlines() if line.strip() and not line.startswith('#')]; archive=zipfile.ZipFile('avaya-case-review-pack-v1.10.1.zip','w',zipfile.ZIP_DEFLATED,9); [archive.write(name) for name in names]; archive.close()"
+$ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.10.1-" + [guid]::NewGuid().ToString("N"))
+$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.10.1.zip"
+git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
+git -C $ReleaseCheckout checkout --detach v1.10.1
+$TaggedSha = (git -C $ReleaseCheckout rev-parse HEAD).Trim()
+if ($TaggedSha -cne $CandidateSha) { throw "Tagged checkout SHA mismatch" }
+if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout is not clean" }
+@'
+import sys
+import zipfile
+from pathlib import Path
+
+checkout = Path(sys.argv[1])
+archive_path = Path(sys.argv[2])
+manifest = [
+    line.strip()
+    for line in (checkout / "release-manifest.txt").read_text(encoding="utf-8").splitlines()
+    if line.strip() and not line.lstrip().startswith("#")
+]
+with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    for name in manifest:
+        archive.write(checkout / name, name)
+with zipfile.ZipFile(archive_path) as archive:
+    actual = archive.namelist()
+    if actual != manifest:
+        raise SystemExit("ZIP entry list does not exactly equal release-manifest.txt")
+    for name in manifest:
+        if archive.read(name) != (checkout / name).read_bytes():
+            raise SystemExit(f"ZIP member bytes differ from tagged checkout: {name}")
+'@ | python - $ReleaseCheckout $ArchivePath
+if ($LASTEXITCODE -ne 0) { throw "Release ZIP verification failed" }
+if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout changed during ZIP build" }
 ```
 
-Open the archive listing and assert it equals the manifest, includes the bridge
-identity helper and attestation, and excludes profiles, state, credentials, and
-temporary test evidence. Do not add the ZIP to Git.
+The ZIP entry list must equal that checkout's manifest exactly and every ZIP
+member must equal the corresponding tagged file byte-for-byte. Confirm it
+includes the bridge identity helper and attestation and excludes profiles,
+state, credentials, and temporary test evidence. Do not add the ZIP to Git.
 
-- [ ] **Step 12: Publish and verify the GitHub Release**
+- [ ] **Step 13: Publish and verify the GitHub Release**
 
 After explicit release authorization:
 

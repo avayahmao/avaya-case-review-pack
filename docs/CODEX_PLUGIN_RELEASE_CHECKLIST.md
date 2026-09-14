@@ -35,6 +35,104 @@ or SSO evidence recorded here.
   obtain separate maintainer authorization before updating the existing Web
   App. Restart every cloud verification gate after any authorized update.
 
+## Publication sequence
+
+Complete these gates in order. Leave every box unchecked until that exact
+external action has fresh evidence, and never force a branch or tag update.
+
+- [ ] **Push the candidate branch and verify its exact remote SHA.**
+
+  ```powershell
+  $CandidateBranch = (git branch --show-current).Trim()
+  $CandidateSha = (git rev-parse HEAD).Trim()
+  git push origin "HEAD:refs/heads/$CandidateBranch"
+  $RemoteCandidateSha = ((git ls-remote origin "refs/heads/$CandidateBranch") -split '\s+')[0]
+  if ($RemoteCandidateSha -cne $CandidateSha) { throw "Remote candidate SHA mismatch" }
+  ```
+
+- [ ] **Run explicit-SHA clean-profile acceptance.** Use the pushed
+  `$CandidateSha` in a clean Windows profile and record only sanitized results.
+
+- [ ] **Fast-forward and verify `origin/main`.**
+
+  ```powershell
+  git push origin HEAD:main
+  $RemoteMainSha = ((git ls-remote origin refs/heads/main) -split '\s+')[0]
+  if ($RemoteMainSha -cne $CandidateSha) { throw "Remote main SHA mismatch" }
+  $DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
+  git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
+  $DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
+  $StableBootstrap = "git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+  if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.10.1 bootstrap" }
+  ```
+
+  Verify the default-branch README from a new shallow `main` checkout exposes
+  the exact stable v1.10.1 clone command and exact-tag check before creating
+  the tag.
+
+- [ ] **Create and verify the annotated immutable tag at the accepted SHA.**
+
+  ```powershell
+  git tag -a v1.10.1 $CandidateSha -m "v1.10.1"
+  git push origin refs/tags/v1.10.1
+  $RemoteTagSha = ((git ls-remote origin "refs/tags/v1.10.1^{}") -split '\s+')[0]
+  if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
+  ```
+
+- [ ] **Run URL-only acceptance** in a second clean Windows profile using only
+  the canonical GitHub URL request.
+
+- [ ] **Build and verify the release ZIP.** Do not build from the candidate
+  worktree. Use this exact procedure to build outside Git from a fresh, clean,
+  detached checkout of `v1.10.1`, and confirm the tag peels to the accepted
+  candidate SHA:
+
+  ```powershell
+  $ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.10.1-" + [guid]::NewGuid().ToString("N"))
+  $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.10.1.zip"
+  git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
+  git -C $ReleaseCheckout checkout --detach v1.10.1
+  $TaggedSha = (git -C $ReleaseCheckout rev-parse HEAD).Trim()
+  if ($TaggedSha -cne $CandidateSha) { throw "Tagged checkout SHA mismatch" }
+  if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout is not clean" }
+  @'
+  import sys
+  import zipfile
+  from pathlib import Path
+
+  checkout = Path(sys.argv[1])
+  archive_path = Path(sys.argv[2])
+  manifest = [
+      line.strip()
+      for line in (checkout / "release-manifest.txt").read_text(encoding="utf-8").splitlines()
+      if line.strip() and not line.lstrip().startswith("#")
+  ]
+  with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+      for name in manifest:
+          archive.write(checkout / name, name)
+  with zipfile.ZipFile(archive_path) as archive:
+      actual = archive.namelist()
+      if actual != manifest:
+          raise SystemExit("ZIP entry list does not exactly equal release-manifest.txt")
+      for name in manifest:
+          if archive.read(name) != (checkout / name).read_bytes():
+              raise SystemExit(f"ZIP member bytes differ from tagged checkout: {name}")
+  '@ | python - $ReleaseCheckout $ArchivePath
+  if ($LASTEXITCODE -ne 0) { throw "Release ZIP verification failed" }
+  if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout changed during ZIP build" }
+  ```
+
+  Require the ZIP entry list to equal the tagged checkout's manifest exactly
+  and every member to equal its corresponding tagged file byte-for-byte. Keep
+  the ZIP outside Git.
+
+- [ ] **Publish and verify the GitHub Release.** Only after every prior gate:
+
+  ```powershell
+  gh release create v1.10.1 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.10.1.md --latest
+  gh release view v1.10.1
+  ```
+
 ## Module-package MCP launch contract
 
 The release launch contract is the installed `avaya_case_review_runtime`
@@ -63,10 +161,10 @@ option: the module-package commands below are the only supported launch gates.
   shipped `*.ps1`, `*.bat`, and `*.cmd` begins with a UTF-8 BOM and contains
   CRLF only; record the command and pass result without file contents.
 - [ ] Run `git diff --check` and record a clean result.
-- [ ] Build the ZIP strictly from `release-manifest.txt`, then compare the
-  normalized sorted ZIP entry list with the non-comment manifest entries and
-  fail on any missing, extra, duplicate, traversal, or backslash entry. Do not
-  add the ZIP to Git.
+- [ ] Validate `release-manifest.txt` without building the final ZIP: reject
+  missing, extra, duplicate, rooted, traversal, or backslash entries. Build
+  the release ZIP only in the ordered publication sequence, after the
+  immutable tag and URL-only acceptance gates.
 
 ## Supervised installation
 

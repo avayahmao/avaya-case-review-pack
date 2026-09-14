@@ -247,7 +247,7 @@ git describe --exact-match --tags HEAD</code></pre>
     <ol>
         <li>Unzip the pack.</li>
         <li><strong>Double-click <code>install.bat</code></strong> (or from a terminal: <code>.\install.bat</code>).</li>
-        <li>The installer deploys the single Managed Edge broker and checks authentication. If status exits <code>10</code>, run <code>python %USERPROFILE%\.gemini\tools\gmail\gmail_brokerctl.py login</code> and complete SSO/MFA in the opened Edge window.</li>
+        <li><code>setup_env.ps1</code> automatically runs <code>verify-bridge</code>, opens Managed Edge login when authentication is required, and retries <code>verify-bridge</code>; the user only completes the visible SSO/MFA flow.</li>
         <li>Restart <strong>Antigravity</strong>.</li>
     </ol>
     <p><code>install.bat</code> is a thin wrapper that runs <code>powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</code>, which is required because Windows PowerShell's default execution policy (<code>Restricted</code> / <code>AllSigned</code>) blocks unsigned <code>.ps1</code> files <em>before</em> any code inside the script can adjust the policy.</p>

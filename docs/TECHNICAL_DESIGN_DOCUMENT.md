@@ -260,6 +260,8 @@ This payload applies only to a manually deployed optional extension and a separa
 
 The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source or provide a production Case ID during installation. The v1.10.1 stable contract requires a unique temporary checkout created with `git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>` and requires `git describe --exact-match --tags HEAD` to return `v1.10.1`. After inspecting `INSTALL.md`, the agent runs no-flag `install-codex.ps1` or `install.bat`; each validates local attestation and live cloud compatibility before activation. SSO/MFA is the only intentional pause, followed by a new Codex task or Antigravity restart. These instructions do not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.
 
+For Antigravity, `setup_env.ps1` automatically runs `verify-bridge`, opens Managed Edge login when authentication is required, and retries `verify-bridge`; the user only completes the visible SSO/MFA flow.
+
 The Antigravity setup path performs these local phases:
 
 ```powershell
@@ -277,7 +279,7 @@ playwright install chromium
 # Copies plugins/avaya-case-review to %USERPROFILE%\.gemini\config\plugins\
 # Copies the broker modules and configures GMAIL_BACKEND=edge_broker
 # Configures %USERPROFILE%\.gemini\config\mcp_config.json for CaseToMD & Gmail MCP servers
-# Checks broker status; runs gmail_brokerctl.py login only on exit code 10
+# setup_env.ps1 runs verify-bridge, opens Managed Edge login when required, and retries verify-bridge
 ```
 
 Both supported installers enforce the tested `mcp==1.28.1` requirement. This keeps fresh environments on the MCP 1.x server API used by the packaged runtime instead of selecting MCP 2.x, which removed that API.
