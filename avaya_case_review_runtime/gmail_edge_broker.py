@@ -44,6 +44,7 @@ from .gmail_edge_common import (
     classify_response,
     validate_profile_path,
 )
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
 
@@ -61,10 +62,11 @@ LOGIN_POLL_INTERVAL_MS = 1_000
 LOGIN_VERIFY_QUERY = "subject:__avaya_gmail_edge_broker_verify__"
 _CACHE_BUSTER_PARAM = "cache_bust"
 _CONTENT_DELIVERY_ATTEMPTS = 3
+_SAFE_READ_ATTEMPT_TIMEOUT_SECONDS = 12
+_SAFE_READ_NAVIGATION_TIMEOUT_MS = 10_000
+_SINGLE_ATTEMPT_TIMEOUT_SECONDS = 48
 _PAGE_CLOSE_TIMEOUT_SECONDS = 5
-_ADAPTER_EXECUTION_DEADLINE_SECONDS = (
-    EXECUTION_TIMEOUT_SECONDS - _PAGE_CLOSE_TIMEOUT_SECONDS - 1
-)
+_ADAPTER_EXECUTION_DEADLINE_SECONDS = 54
 
 _SAFE_READ_METHODS = frozenset(
     {
@@ -103,6 +105,10 @@ class BrowserAdapterError(RuntimeError):
 
 class BrowserOperationTimeout(BrowserAdapterError):
     """The adapter's bounded operation deadline elapsed."""
+
+
+class _NavigationAttemptTimeout(RuntimeError):
+    """One Apps Script navigation timed out within its attempt budget."""
 
 
 class BrowserLoginError(BrowserAdapterError):
@@ -224,28 +230,62 @@ class ManagedEdgeAdapter:
         method: str,
         logical_url: str,
     ) -> str:
-        attempts = _CONTENT_DELIVERY_ATTEMPTS if method in _SAFE_READ_METHODS else 1
+        safe_read = method in _SAFE_READ_METHODS
+        attempts = _CONTENT_DELIVERY_ATTEMPTS if safe_read else 1
+        attempt_timeout = (
+            _SAFE_READ_ATTEMPT_TIMEOUT_SECONDS
+            if safe_read
+            else _SINGLE_ATTEMPT_TIMEOUT_SECONDS
+        )
+        navigation_timeout_ms = self._navigation_timeout_ms
+        if safe_read:
+            navigation_timeout_ms = min(
+                navigation_timeout_ms,
+                _SAFE_READ_NAVIGATION_TIMEOUT_MS,
+            )
         for attempt in range(attempts):
-            result = await self._execute_navigation_attempt(logical_url)
+            try:
+                result = await self._execute_navigation_attempt(
+                    logical_url,
+                    attempt_timeout=attempt_timeout,
+                    navigation_timeout_ms=navigation_timeout_ms,
+                )
+            except _NavigationAttemptTimeout as exc:
+                if attempt + 1 < attempts:
+                    continue
+                raise BrowserOperationTimeout(
+                    "Managed Edge request timed out"
+                ) from exc
             if result is not None:
                 return result
             if attempt + 1 == attempts:
                 raise BrowserApplicationError("Apps Script content delivery failed")
         raise AssertionError("content delivery retry loop exhausted")
 
-    async def _execute_navigation_attempt(self, logical_url: str) -> str | None:
+    async def _execute_navigation_attempt(
+        self,
+        logical_url: str,
+        *,
+        attempt_timeout: float,
+        navigation_timeout_ms: int,
+    ) -> str | None:
         context = self._context
         if context is None:
             raise BrowserAdapterError("Managed Edge is not started")
         url = self._navigation_url(logical_url)
         page = None
-        try:
+        phase = "page"
+
+        async def navigate_and_read() -> str | None:
+            nonlocal page, phase
             page = await context.new_page()
+            phase = "navigation"
             response = await page.goto(
                 url,
                 wait_until="domcontentloaded",
-                timeout=self._navigation_timeout_ms,
+                timeout=navigation_timeout_ms,
             )
+            phase = "response"
             http_status = response.status if response is not None else None
             early_state = classify_response(page.url, http_status, "")
             if early_state in _AUTH_REQUIRED_STATES:
@@ -266,8 +306,20 @@ class ManagedEdgeAdapter:
                     "Apps Script returned an unrecognized response"
                 )
             return body
+
+        try:
+            return await self._wait_for_drained(
+                navigate_and_read(),
+                timeout=attempt_timeout,
+            )
         except (BrowserAuthRequired, BrowserApplicationError):
             raise
+        except (asyncio.TimeoutError, PlaywrightTimeoutError) as exc:
+            if phase == "navigation":
+                raise _NavigationAttemptTimeout(
+                    "Managed Edge navigation timed out"
+                ) from exc
+            raise BrowserOperationTimeout("Managed Edge request timed out") from exc
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -275,10 +327,16 @@ class ManagedEdgeAdapter:
         finally:
             if page is not None:
                 with contextlib.suppress(Exception):
-                    await asyncio.wait_for(
+                    await self._wait_for_drained(
                         page.close(),
                         timeout=_PAGE_CLOSE_TIMEOUT_SECONDS,
                     )
+
+    @staticmethod
+    async def _wait_for_drained(awaitable: Any, *, timeout: float) -> Any:
+        # wait_for waits for cancellation to finish before it raises, so the
+        # Playwright coroutine cannot be abandoned with an unread exception.
+        return await asyncio.wait_for(awaitable, timeout=timeout)
 
     @staticmethod
     def _is_transient_content_delivery_failure(
@@ -1189,6 +1247,12 @@ class GmailEdgeBroker:
             raise _RequestFailure(
                 BrokerErrorCode.APP_ERROR,
                 "Interactive Gmail login verification failed",
+            ) from exc
+        except BrowserOperationTimeout as exc:
+            self._edge_state = AuthState.BROWSER_ERROR.value
+            raise _RequestFailure(
+                BrokerErrorCode.REQUEST_TIMEOUT,
+                "Managed Edge login verification timed out",
             ) from exc
         except BrowserAdapterError as exc:
             self._browser_crash_count += 1

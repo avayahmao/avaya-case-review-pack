@@ -8,6 +8,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
 import tools.gmail.gmail_edge_broker as gmail_edge_broker
 from tools.gmail.gmail_edge_broker import (
     _SAFE_READ_METHODS,
@@ -15,6 +17,7 @@ from tools.gmail.gmail_edge_broker import (
     BrowserApplicationError,
     BrowserAuthRequired,
     BrowserLoginError,
+    BrowserOperationTimeout,
     GmailEdgeBroker,
     ManagedEdgeAdapter,
 )
@@ -590,6 +593,143 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(page.close_calls, 1)
         await adapter.close()
 
+    async def test_navigation_timeout_retries_within_total_adapter_budget(self):
+        class ScaledNavigationTimeoutPage(FakePage):
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+                if kwargs["timeout"] * 3 + 15_000 >= 54_000:
+                    await asyncio.Event().wait()
+                raise PlaywrightTimeoutError("navigation timed out")
+
+            async def close(self):
+                await super().close()
+
+        first = ScaledNavigationTimeoutPage()
+        second = FakePage(body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(
+            FakeContext(first, second),
+            nonce_factory=iter(("attempt-1", "attempt-2")).__next__,
+        )
+        await adapter.start()
+
+        with patch.object(
+            gmail_edge_broker,
+            "_ADAPTER_EXECUTION_DEADLINE_SECONDS",
+            0.5,
+        ):
+            result = await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(result, '{"status":"success"}')
+        self.assertEqual(len(first.goto_calls), 1)
+        self.assertEqual(len(second.goto_calls), 1)
+        self.assertNotEqual(first.goto_calls[0][0], second.goto_calls[0][0])
+        self.assertEqual(first.close_calls, 1)
+        self.assertEqual(second.close_calls, 1)
+        await adapter.close()
+
+    async def test_three_navigation_timeouts_exhaust_without_fourth_attempt(self):
+        class ScaledNavigationTimeoutPage(FakePage):
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+                if kwargs["timeout"] * 3 + 15_000 >= 54_000:
+                    await asyncio.Event().wait()
+                raise PlaywrightTimeoutError("navigation timed out")
+
+            async def close(self):
+                await super().close()
+
+        pages = [ScaledNavigationTimeoutPage() for _ in range(4)]
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(*pages))
+        await adapter.start()
+
+        with patch.object(
+            gmail_edge_broker,
+            "_ADAPTER_EXECUTION_DEADLINE_SECONDS",
+            0.5,
+        ):
+            with self.assertRaises(BrowserOperationTimeout):
+                await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertTrue(all(len(page.goto_calls) == 1 for page in pages[:3]))
+        self.assertEqual(pages[3].goto_calls, [])
+        self.assertTrue(all(page.close_calls == 1 for page in pages[:3]))
+        await adapter.close()
+
+    async def test_timed_out_navigation_is_drained_before_page_cleanup(self):
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+
+        class ShieldedNavigationPage(FakePage):
+            def __init__(self):
+                super().__init__()
+                self.navigation_cancelled = False
+
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+
+                async def delayed_timeout():
+                    delay = 0.005 if kwargs["timeout"] <= 10_000 else 0.6
+                    await asyncio.sleep(delay)
+                    raise PlaywrightTimeoutError("navigation timed out")
+
+                navigation = asyncio.create_task(delayed_timeout())
+                try:
+                    return await asyncio.shield(navigation)
+                except asyncio.CancelledError:
+                    self.navigation_cancelled = True
+                    raise
+
+            async def close(self):
+                self.events.append("close-start")
+                await asyncio.sleep(0.002)
+                await super().close()
+
+        first = ShieldedNavigationPage()
+        second = FakePage(body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(
+            FakeContext(first, second)
+        )
+        await adapter.start()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        try:
+            with patch.object(
+                gmail_edge_broker,
+                "_ADAPTER_EXECUTION_DEADLINE_SECONDS",
+                0.5,
+            ):
+                result = await adapter.execute("gmail_search", {"query": "case"})
+            await asyncio.sleep(0.2)
+        finally:
+            loop.set_exception_handler(previous_handler)
+
+        self.assertEqual(result, '{"status":"success"}')
+        self.assertFalse(first.navigation_cancelled)
+        self.assertEqual(first.close_calls, 1)
+        self.assertEqual(loop_errors, [])
+        await adapter.close()
+
+    async def test_gmail_send_navigation_timeout_is_not_retried(self):
+        page = FakePage(goto_error=PlaywrightTimeoutError("navigation timed out"))
+        unused = FakePage(body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(
+            FakeContext(page, unused)
+        )
+        await adapter.start()
+
+        with self.assertRaises(BrowserOperationTimeout):
+            await adapter.execute(
+                "gmail_send",
+                {"to": "user@example.com", "subject": "subject", "body": "body"},
+            )
+
+        self.assertEqual(len(page.goto_calls), 1)
+        self.assertEqual(unused.goto_calls, [])
+        await adapter.close()
+
     async def test_does_not_retry_json_errors_or_non_content_html(self):
         cases = (
             (
@@ -1088,6 +1228,41 @@ class LoginVerificationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events[0:2], ["start", "login"])
         self.assertEqual(events[2][0:2], ("verify", "gmail_search"))
         self.assertEqual(set(events[2][2]), {"query"})
+
+    async def test_login_verification_timeout_maps_to_terminal_request_timeout(self):
+        events = []
+
+        class TimeoutAdapter:
+            async def start(self):
+                events.append("start")
+
+            async def close(self):
+                events.append("close")
+
+            async def interactive_login(self):
+                events.append("login")
+                return AuthState.AUTHENTICATED
+
+            async def execute(self, method, params):
+                events.append(("verify", method, params))
+                raise BrowserOperationTimeout("verification timed out")
+
+        broker = GmailEdgeBroker(TimeoutAdapter())
+        response = await broker._dispatch(
+            BrokerRequest(
+                version=PROTOCOL_VERSION,
+                id="login-timeout-id",
+                token="test-token",
+                method="auth_login",
+                params={},
+            )
+        )
+
+        self.assertFalse(response.ok)
+        self.assertIs(response.error.code, BrokerErrorCode.REQUEST_TIMEOUT)
+        self.assertEqual(events[0:2], ["start", "login"])
+        self.assertEqual(events[2][0:2], ("verify", "gmail_search"))
+        self.assertNotIn("close", events)
 
 
 class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
