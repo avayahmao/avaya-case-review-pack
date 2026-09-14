@@ -228,8 +228,21 @@ if ($args.Count -ge 4 -and $args[0] -eq "mcp" -and $args[1] -eq "get") {
         args = @("-m", $Module)
         env = $McpEnvironment
     }
+    if ($State.mcp_transport_shape -ne "legacy-omitted") {
+        $TransportValues["cwd"] = $null
+        $TransportValues["env_vars"] = @()
+    }
     if ($State.fail_stage -like "*mcp-transport-cwd*") {
         $TransportValues["cwd"] = "SENTINEL_CWD"
+    }
+    if ($State.fail_stage -like "*mcp-transport-env-vars-nonempty*") {
+        $TransportValues["env_vars"] = @("SENTINEL_ENV_VAR")
+    }
+    if ($State.fail_stage -like "*mcp-transport-env-vars-scalar*") {
+        $TransportValues["env_vars"] = "SENTINEL_ENV_VAR"
+    }
+    if ($State.fail_stage -like "*mcp-transport-env-vars-object*") {
+        $TransportValues["env_vars"] = [pscustomobject]@{ injected = "SENTINEL_ENV_VAR" }
     }
     if ($State.fail_stage -like "*mcp-transport-extra*") {
         $TransportValues["injected"] = "SENTINEL_EXTRA"
@@ -502,6 +515,7 @@ class CodexInstallerTests(unittest.TestCase):
         prior_broker_build="",
         prior_start_exit=0,
         prior_status_exit=0,
+        mcp_transport_shape="current-defaults",
     ):
         state = {
             "marketplace_exists": bool(existing_sha),
@@ -529,6 +543,7 @@ class CodexInstallerTests(unittest.TestCase):
             "broker_build": prior_broker_build or runtime_version,
             "prior_start_exit": prior_start_exit,
             "prior_status_exit": prior_status_exit,
+            "mcp_transport_shape": mcp_transport_shape,
         }
         self.state_path.write_text(json.dumps(state), encoding="utf-8-sig")
         broker_state = self.temp_root / "local/AvayaCaseReview/gmail-broker/state.json"
@@ -614,6 +629,7 @@ class CodexInstallerTests(unittest.TestCase):
         prior_broker_build="",
         prior_start_exit=0,
         prior_status_exit=0,
+        mcp_transport_shape="current-defaults",
         python_available=True,
     ):
         fixture_root = self.temp_root / "stateful-installer"
@@ -740,6 +756,7 @@ class CodexInstallerTests(unittest.TestCase):
             prior_broker_build=prior_broker_build,
             prior_start_exit=prior_start_exit,
             prior_status_exit=prior_status_exit,
+            mcp_transport_shape=mcp_transport_shape,
         )
         installer_arguments = [
             shutil.which("powershell.exe") or "powershell.exe",
@@ -1605,6 +1622,16 @@ class CodexInstallerTests(unittest.TestCase):
         )
         self.assertEqual(state.runtime_version, "1.10.1")
 
+    def test_successful_upgrade_accepts_transport_with_optional_defaults_omitted(self):
+        result, _, state = self.run_stateful_installer(
+            runtime_version="1.9.9",
+            skip_dependency=False,
+            mcp_transport_shape="legacy-omitted",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(state.runtime_version, "1.10.1")
+
     def test_plugin_failure_restores_codex_then_prior_runtime(self):
         result, events, state = self.run_stateful_installer(
             runtime_version="1.9.9",
@@ -1673,9 +1700,12 @@ class CodexInstallerTests(unittest.TestCase):
                 self.assertEqual(state.marketplace_sha, "old-sha")
                 self.assertEqual(state.runtime_version, "1.9.9")
 
-    def test_installed_mcp_transport_rejects_cwd_extra_fields_and_non_stdio_type(self):
+    def test_installed_mcp_transport_rejects_unsafe_defaults_unknown_fields_and_non_stdio_type(self):
         for fail_stage in (
             "mcp-transport-cwd",
+            "mcp-transport-env-vars-nonempty",
+            "mcp-transport-env-vars-scalar",
+            "mcp-transport-env-vars-object",
             "mcp-transport-extra",
             "mcp-transport-type",
         ):

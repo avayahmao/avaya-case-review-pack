@@ -562,10 +562,36 @@ function Test-InstalledCodexPlugin {
             -Result $Result `
             -Stage "installed MCP verification ($Name)"
         $Transport = if ($null -ne $Definition.transport) { $Definition.transport } else { $Definition }
-        Assert-ExactPropertyNames `
-            -Value $Transport `
-            -Expected @('type', 'command', 'args', 'env') `
-            -Label "installed $Name MCP transport"
+        $RequiredTransportProperties = @('type', 'command', 'args', 'env')
+        $AllowedTransportProperties = @($RequiredTransportProperties) + @('cwd', 'env_vars')
+        $ActualTransportProperties = @($Transport.PSObject.Properties.Name)
+        $MissingTransportProperties = @(
+            $RequiredTransportProperties | Where-Object { $ActualTransportProperties -notcontains $_ }
+        )
+        $UnexpectedTransportProperties = @(
+            $ActualTransportProperties | Where-Object { $AllowedTransportProperties -notcontains $_ }
+        )
+        if ($MissingTransportProperties.Count -ne 0 -or $UnexpectedTransportProperties.Count -ne 0) {
+            throw "Local bridge attestation installed $Name MCP transport does not match the required contract."
+        }
+        if ($ActualTransportProperties -contains 'cwd') {
+            $WorkingDirectory = $Transport.cwd
+            if (
+                $null -ne $WorkingDirectory -and
+                (-not ($WorkingDirectory -is [string]) -or $WorkingDirectory.Length -ne 0)
+            ) {
+                throw "Stage 'installed MCP verification ($Name)' failed."
+            }
+        }
+        if ($ActualTransportProperties -contains 'env_vars') {
+            $InheritedEnvironment = $Transport.env_vars
+            if (
+                $null -ne $InheritedEnvironment -and
+                (-not ($InheritedEnvironment -is [array]) -or @($InheritedEnvironment).Count -ne 0)
+            ) {
+                throw "Stage 'installed MCP verification ($Name)' failed."
+            }
+        }
         Assert-ExactPropertyNames `
             -Value $Transport.env `
             -Expected @($ExpectedModules[$Name].Environment.Keys) `
