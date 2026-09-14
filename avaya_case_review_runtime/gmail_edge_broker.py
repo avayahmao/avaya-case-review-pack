@@ -63,11 +63,11 @@ LOGIN_VERIFY_QUERY = "subject:__avaya_gmail_edge_broker_verify__"
 _CACHE_BUSTER_PARAM = "cache_bust"
 _CONTENT_DELIVERY_ATTEMPTS = 3
 _ADAPTER_EXECUTION_DEADLINE_SECONDS = 54
-_PAGE_CLOSE_TIMEOUT_SECONDS = 2
-_SAFE_READ_DEADLINE_RESERVE_SECONDS = 3
-_SAFE_READ_ATTEMPT_TIMEOUT_SECONDS = (
+_PAGE_CLOSE_TIMEOUT_SECONDS = 5
+_SAFE_READ_DEADLINE_RESERVE_SECONDS = 1
+_SAFE_READ_OPERATION_BUDGET_SECONDS = (
     _ADAPTER_EXECUTION_DEADLINE_SECONDS - _SAFE_READ_DEADLINE_RESERVE_SECONDS
-) / _CONTENT_DELIVERY_ATTEMPTS - _PAGE_CLOSE_TIMEOUT_SECONDS
+)
 _SAFE_READ_NAVIGATION_TIMEOUT_MS = 12_000
 _SINGLE_ATTEMPT_TIMEOUT_SECONDS = 48
 
@@ -235,18 +235,30 @@ class ManagedEdgeAdapter:
     ) -> str:
         safe_read = method in _SAFE_READ_METHODS
         attempts = _CONTENT_DELIVERY_ATTEMPTS if safe_read else 1
-        attempt_timeout = (
-            _SAFE_READ_ATTEMPT_TIMEOUT_SECONDS
+        safe_read_deadline = (
+            asyncio.get_running_loop().time() + _SAFE_READ_OPERATION_BUDGET_SECONDS
             if safe_read
-            else _SINGLE_ATTEMPT_TIMEOUT_SECONDS
+            else None
         )
-        navigation_timeout_ms = self._navigation_timeout_ms
-        if safe_read:
-            navigation_timeout_ms = min(
-                navigation_timeout_ms,
-                _SAFE_READ_NAVIGATION_TIMEOUT_MS,
-            )
         for attempt in range(attempts):
+            if safe_read:
+                attempts_remaining = attempts - attempt
+                remaining_budget = (
+                    safe_read_deadline - asyncio.get_running_loop().time()
+                )
+                attempt_timeout = (
+                    remaining_budget / attempts_remaining
+                ) - _PAGE_CLOSE_TIMEOUT_SECONDS
+                if attempt_timeout <= 0:
+                    raise BrowserOperationTimeout("Managed Edge request timed out")
+                navigation_timeout_ms = min(
+                    self._navigation_timeout_ms,
+                    _SAFE_READ_NAVIGATION_TIMEOUT_MS,
+                    max(1, int(attempt_timeout * 1000)),
+                )
+            else:
+                attempt_timeout = _SINGLE_ATTEMPT_TIMEOUT_SECONDS
+                navigation_timeout_ms = self._navigation_timeout_ms
             try:
                 result = await self._execute_navigation_attempt(
                     logical_url,

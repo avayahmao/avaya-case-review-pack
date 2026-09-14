@@ -251,16 +251,23 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         navigation_seconds = (
             gmail_edge_broker._SAFE_READ_NAVIGATION_TIMEOUT_MS / 1000
         )
-        attempt_seconds = gmail_edge_broker._SAFE_READ_ATTEMPT_TIMEOUT_SECONDS
         cleanup_seconds = gmail_edge_broker._PAGE_CLOSE_TIMEOUT_SECONDS
-        total_seconds = gmail_edge_broker._CONTENT_DELIVERY_ATTEMPTS * (
-            attempt_seconds + cleanup_seconds
+        attempts = gmail_edge_broker._CONTENT_DELIVERY_ATTEMPTS
+        initial_attempt_seconds = (
+            gmail_edge_broker._SAFE_READ_OPERATION_BUDGET_SECONDS / attempts
+        ) - cleanup_seconds
+        allocated_seconds = attempts * (
+            initial_attempt_seconds + cleanup_seconds
         )
 
         self.assertGreater(navigation_seconds, 10)
-        self.assertLess(navigation_seconds, attempt_seconds)
+        self.assertLess(navigation_seconds, initial_attempt_seconds)
+        self.assertEqual(
+            allocated_seconds,
+            gmail_edge_broker._SAFE_READ_OPERATION_BUDGET_SECONDS,
+        )
         self.assertLess(
-            total_seconds,
+            gmail_edge_broker._SAFE_READ_OPERATION_BUDGET_SECONDS,
             gmail_edge_broker._ADAPTER_EXECUTION_DEADLINE_SECONDS,
         )
         self.assertLess(
@@ -464,12 +471,12 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(
             gmail_edge_broker,
-            "_SAFE_READ_ATTEMPT_TIMEOUT_SECONDS",
-            0.2,
-        ), patch.object(
-            gmail_edge_broker,
             "_PAGE_CLOSE_TIMEOUT_SECONDS",
             0.01,
+        ), patch.object(
+            gmail_edge_broker,
+            "_SAFE_READ_OPERATION_BUDGET_SECONDS",
+            0.6,
         ), patch.object(
             gmail_edge_broker,
             "_ADAPTER_EXECUTION_DEADLINE_SECONDS",
@@ -974,6 +981,56 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             ["body-cancel-start", "body-cancel-finished", "page-close"],
         )
         self.assertEqual(page.close_calls, 1)
+        self.assertEqual(loop_errors, [])
+        await adapter.close()
+
+    async def test_slow_page_close_finishes_before_next_retry_without_future_leak(self):
+        events = []
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+
+        class SlowClosePage(FakePage):
+            async def close(self):
+                self.close_calls += 1
+                events.append("close-start")
+
+                async def finish_close():
+                    await asyncio.sleep(4.1)
+                    self.closed = True
+                    events.append("close-finished")
+                    raise RuntimeError("close completed with browser error")
+
+                await asyncio.shield(asyncio.create_task(finish_close()))
+
+        class NextAttemptPage(FakePage):
+            async def goto(self, url, **kwargs):
+                events.append("next-page-open")
+                return await super().goto(url, **kwargs)
+
+        first = SlowClosePage(
+            final_url=CONTENT_SERVICE_URL,
+            body="<html>Page Not Found</html>",
+        )
+        second = NextAttemptPage(body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(
+            FakeContext(first, second)
+        )
+        await adapter.start()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        try:
+            result = await adapter.execute("gmail_search", {"query": "case"})
+            await asyncio.sleep(0.2)
+        finally:
+            loop.set_exception_handler(previous_handler)
+
+        self.assertEqual(result, '{"status":"success"}')
+        self.assertGreater(gmail_edge_broker._PAGE_CLOSE_TIMEOUT_SECONDS, 4.1)
+        self.assertLess(
+            events.index("close-finished"),
+            events.index("next-page-open"),
+        )
+        self.assertEqual(first.close_calls, 1)
         self.assertEqual(loop_errors, [])
         await adapter.close()
 
