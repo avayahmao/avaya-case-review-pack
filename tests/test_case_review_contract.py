@@ -763,7 +763,7 @@ class CaseReviewContractTests(unittest.TestCase):
         ]:
             self.assertIn(marker, runbook)
 
-    def test_core_docs_assign_cloud_deployment_to_maintainers(self):
+    def test_core_docs_assign_cloud_deployment_to_maintainers_and_prohibit_end_user_deployment(self):
         documents = [
             read(README_MD),
             read(README_HTML),
@@ -781,9 +781,17 @@ class CaseReviewContractTests(unittest.TestCase):
                 self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", content)
                 self.assertNotIn("Before either local installation, deploy", content)
 
-        runbook = read(GMAIL_CLOUD_BRIDGE_MD)
-        self.assertIn("## Maintainer release gate", runbook)
-        self.assertIn("URL-only stable installation becomes active only after this gate", runbook)
+        runbook = normalize_contract_item(read(GMAIL_CLOUD_BRIDGE_MD))
+        self.assertIn("Maintainer release gate", runbook)
+        self.assertIn("a maintainer separately authorizes that update", runbook)
+        self.assertIn(
+            "End users never deploy this cloud source or provide a production Case ID during installation.",
+            runbook,
+        )
+        self.assertNotIn(
+            "URL-only stable installation becomes active only after this gate",
+            runbook,
+        )
 
     def test_manager_guides_describe_managed_edge_default_and_chromium_rollback(self):
         stale_claim = "headless browser engine required for Gmail automation"
@@ -1547,7 +1555,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
-    def test_release_metadata_keeps_v1_10_1_as_unreleased_candidate(self):
+    def test_release_metadata_identifies_v1_10_1_as_stable_release(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
         self.assertIn("[v1.8.0]", release_md)
@@ -1560,8 +1568,16 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.5.0", release_html)
         self.assertIn("[v1.4.0]", release_md)
         self.assertIn("v1.4.0", release_html)
-        self.assertIn("[Unreleased]", release_md)
-        self.assertIn(">Unreleased<", release_html)
+        self.assertIn(
+            "[v1.10.1] - 2026-09-14: GitHub URL Plugin Bootstrap and Complete-Response Repair",
+            release_md,
+        )
+        self.assertIn(
+            "2026-09-14 - GitHub URL Plugin Bootstrap and Complete-Response Repair",
+            release_html,
+        )
+        self.assertNotIn("[Unreleased]", release_md)
+        self.assertNotIn(">Unreleased<", release_html)
         self.assertIn("Single Managed Edge Gmail Broker", release_md)
         self.assertIn("Single Managed Edge Gmail Broker", release_html)
         self.assertIn("Layered Executive and Technical Reporting", release_md)
@@ -1587,18 +1603,26 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.4", release_html)
         self.assertIn("Cloud Bridge Pagination Speedup", release_md)
         self.assertIn("Cloud Bridge Pagination Speedup", release_html)
-        self.assertIn("v1.10.1 release preparation", release_md)
-        self.assertIn("v1.10.1 release preparation", release_html)
-        self.assertIn("GitHub URL Plugin Bootstrap Repair", release_md)
-        self.assertIn("GitHub URL Plugin Bootstrap Repair", release_html)
+        self.assertNotIn("v1.10.1 release preparation", release_md)
+        self.assertNotIn("v1.10.1 release preparation", release_html)
+        self.assertIn(
+            "GitHub URL Plugin Bootstrap and Complete-Response Repair",
+            release_md,
+        )
+        self.assertIn(
+            "GitHub URL Plugin Bootstrap and Complete-Response Repair",
+            release_html,
+        )
         plugin = json.loads(read(PLUGIN_JSON))
         self.assertEqual("1.10.1", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("v1.10.0 - latest published release", content)
-                self.assertIn("v1.10.1 release candidate", content)
+                self.assertIn("stable v1.10.1 installation contract", content)
+                self.assertIn("v1.10.1 release contract and upgrade guidance", content)
+                self.assertNotIn("v1.10.0 - latest published release", content)
+                self.assertNotIn("v1.10.1 release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
         agents = read(AGENTS_MD)
