@@ -37,8 +37,12 @@ CONTENT_SERVICE_URL = (
 
 
 class FakeResponse:
-    def __init__(self, status=200):
+    def __init__(self, status=200, *, page):
         self.status = status
+        self.page = page
+
+    async def text(self):
+        return await self.page.response_text()
 
 
 class FakePage:
@@ -47,6 +51,7 @@ class FakePage:
         *,
         final_url=SUCCESS_URL,
         body='{"status":"success"}',
+        dom_body=None,
         status=200,
         bodies=None,
         urls=None,
@@ -58,6 +63,7 @@ class FakePage:
         self.url = "about:blank"
         self.final_url = final_url
         self.body = body
+        self.dom_body = body if dom_body is None else dom_body
         self.status = status
         self.bodies = deque(bodies or [])
         self.urls = deque(urls or [])
@@ -69,6 +75,7 @@ class FakePage:
         self.load_state_calls = []
         self.events = []
         self.text_calls = 0
+        self.response_text_calls = 0
         self.wait_calls = 0
         self.close_calls = 0
         self.closed = False
@@ -79,7 +86,12 @@ class FakePage:
         if self.goto_error is not None:
             raise self.goto_error
         self.url = self.final_url
-        return FakeResponse(self.status)
+        return FakeResponse(self.status, page=self)
+
+    async def response_text(self):
+        self.events.append("response")
+        self.response_text_calls += 1
+        return self.body
 
     async def wait_for_load_state(self, state, **kwargs):
         self.events.append(f"wait:{state}")
@@ -96,7 +108,7 @@ class FakePage:
             self.url = self.urls.popleft()
         if self.bodies:
             return self.bodies.popleft()
-        return self.body
+        return self.dom_body
 
     async def wait_for_timeout(self, milliseconds):
         self.events.append("poll")
@@ -243,8 +255,31 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                 "timeout": gmail_edge_broker._SAFE_READ_NAVIGATION_TIMEOUT_MS,
             },
         )
-        self.assertEqual(page.text_calls, 1)
-        self.assertLess(page.events.index("goto"), page.events.index("body"))
+        self.assertEqual(page.response_text_calls, 1)
+        self.assertLess(page.events.index("goto"), page.events.index("response"))
+        await adapter.close()
+
+    async def test_committed_response_uses_complete_body_not_partial_dom(self):
+        complete_body = '{"status":"success","messages":[{"id":"message-1"}]}'
+        page = FakePage(
+            body=complete_body,
+            dom_body='{"status":"success","messages":[{"id":"message-1"',
+        )
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+        await adapter.start()
+
+        result = await adapter.execute(
+            "gmail_read_thread_page",
+            {
+                "thread_id": "thread-1",
+                "snapshot_before": "2026-09-14T00:00:00Z",
+                "cursor": "",
+            },
+        )
+
+        self.assertEqual(result, complete_body)
+        self.assertEqual(page.response_text_calls, 1)
+        self.assertEqual(page.text_calls, 0)
         await adapter.close()
 
     def test_safe_read_budget_allows_slow_redirects_and_all_three_attempts(self):
@@ -358,7 +393,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(query.pop("action"), [action])
             self.assertEqual(query, params)
             self.assertEqual(page.load_state_calls, [])
-            self.assertLess(page.events.index("goto"), page.events.index("body"))
+            self.assertLess(page.events.index("goto"), page.events.index("response"))
             self.assertEqual(page.close_calls, 1)
 
         await adapter.close()
@@ -455,9 +490,9 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.Event().wait()
                 return await super().goto(url, **kwargs)
 
-            async def text_content(self, selector, **kwargs):
+            async def response_text(self):
                 await asyncio.sleep(0.01)
-                return await super().text_content(selector, **kwargs)
+                return await super().response_text()
 
         pages = [
             CommitBodyPage(
@@ -486,7 +521,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                 await adapter.execute("gmail_search", {"query": "case"})
 
         self.assertEqual(str(raised.exception), "Apps Script content delivery failed")
-        self.assertTrue(all(page.text_calls == 1 for page in pages))
+        self.assertTrue(all(page.response_text_calls == 1 for page in pages))
         self.assertTrue(all(page.close_calls == 1 for page in pages))
         await adapter.close()
 
@@ -630,7 +665,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         entered = asyncio.Event()
 
         class BlockingPage(FakePage):
-            async def text_content(self, selector, **kwargs):
+            async def response_text(self):
                 entered.set()
                 await asyncio.Event().wait()
 
@@ -654,7 +689,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_internal_deadline_bounds_page_close_cleanup(self):
         class BlockingPage(FakePage):
-            async def text_content(self, selector, **kwargs):
+            async def response_text(self):
                 await asyncio.Event().wait()
 
             async def close(self):
@@ -943,9 +978,9 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         previous_handler = loop.get_exception_handler()
 
         class CancelAwareBodyPage(FakePage):
-            async def text_content(self, selector, **kwargs):
-                self.events.append("body")
-                self.text_calls += 1
+            async def response_text(self):
+                self.events.append("response")
+                self.response_text_calls += 1
                 entered.set()
                 try:
                     await asyncio.Event().wait()
@@ -1159,7 +1194,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                 await adapter.execute("gmail_search", {"query": "case"})
 
         self.assertIs(raised.exception.state, AuthState.AUTH_REQUIRED_MICROSOFT)
-        self.assertEqual(page.text_calls, 0)
+        self.assertEqual(page.response_text_calls, 0)
         self.assertEqual(page.load_state_calls, [])
         self.assertEqual(page.close_calls, 1)
         self.assertNotIn(sentinel, repr(log_call.call_args_list))

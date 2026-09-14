@@ -305,9 +305,16 @@ class ManagedEdgeAdapter:
             early_state = classify_response(page.url, http_status, "")
             if early_state in _AUTH_REQUIRED_STATES:
                 self._raise_for_state(early_state)
-            body = (
-                await page.text_content("body", timeout=self._response_timeout_ms) or ""
-            ).strip()
+            if response is not None:
+                body = (await response.text() or "").strip()
+            else:
+                body = (
+                    await page.text_content(
+                        "body",
+                        timeout=self._response_timeout_ms,
+                    )
+                    or ""
+                ).strip()
             if self._is_transient_content_delivery_failure(
                 page.url,
                 http_status,
