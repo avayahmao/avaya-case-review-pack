@@ -766,6 +766,9 @@ if (-not $ProjectVersion.Success -or $ProjectVersion.Groups[1].Value -cne $Plugi
     throw "Runtime package version does not match the Codex plugin version."
 }
 Test-McpManifestContract -Path $McpManifestPath
+if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) {
+    throw "python was not found in PATH."
+}
 Invoke-LocalBridgeAttestationValidation `
     -PythonCommand "python" `
     -ValidatorPath $BridgeIdentityPath `
@@ -774,7 +777,7 @@ Invoke-LocalBridgeAttestationValidation `
     -PluginVersion $PluginVersion
 
 if (-not $DryRun) {
-    foreach ($RequiredCommand in @("python", "codex", "git")) {
+    foreach ($RequiredCommand in @("codex", "git")) {
         if (-not (Get-Command $RequiredCommand -ErrorAction SilentlyContinue)) {
             throw "$RequiredCommand was not found in PATH."
         }

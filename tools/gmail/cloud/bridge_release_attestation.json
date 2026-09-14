@@ -1,0 +1,16 @@
+{
+  "bridge_source_sha256": "14f8542b9ed19f1bb84ea2fb0209f8c70151f0d427b48453b904683187e884c0",
+  "bridge_version": 4,
+  "checks": {
+    "advanced_gmail_v1": true,
+    "cursor_exhaustion": true,
+    "manifest_message_count_hashes": true,
+    "sensitive_output_absent": true,
+    "stable_snapshot_pagination": true,
+    "zero_result_complete": true
+  },
+  "contract_revision": 1,
+  "plugin_version": "1.10.1",
+  "schema_version": 1,
+  "verified_at_utc": "2026-09-14T07:39:02Z"
+}

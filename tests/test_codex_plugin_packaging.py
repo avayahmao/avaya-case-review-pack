@@ -20,19 +20,25 @@ INSTALL_CONTRACT = ROOT / "INSTALL.md"
 RELEASE_MANIFEST = ROOT / "release-manifest.txt"
 README_MD = ROOT / "README.md"
 README_HTML = ROOT / "README.html"
+GMAIL_CLOUD_BRIDGE_MD = ROOT / "docs/GMAIL_CLOUD_BRIDGE.md"
 MANAGER_MD = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.md"
 MANAGER_HTML = ROOT / "docs/MANAGER_ONBOARDING_GUIDE.html"
 TDD_MD = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.md"
 TDD_HTML = ROOT / "docs/TECHNICAL_DESIGN_DOCUMENT.html"
+RELEASE_NOTES_MD = ROOT / "docs/RELEASE_NOTES.md"
+RELEASE_NOTES_HTML = ROOT / "docs/RELEASE_NOTES.html"
 URL_INSTALL_DOCS = (
     README_MD,
     README_HTML,
     AGENTS,
     INSTALL_CONTRACT,
+    GMAIL_CLOUD_BRIDGE_MD,
     MANAGER_MD,
     MANAGER_HTML,
     TDD_MD,
     TDD_HTML,
+    RELEASE_NOTES_MD,
+    RELEASE_NOTES_HTML,
 )
 
 
@@ -141,6 +147,8 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 "tools/gmail/cloud/bridge_identity.py",
                 "tools/installer/runtime_package.py",
                 "tools/installer/windows_common.ps1",
+                "avaya_case_review_runtime/__init__.py",
+                "avaya_case_review_runtime/bridge_identity.py",
             ):
                 destination = fixture / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -175,14 +183,14 @@ class CodexPluginPackagingTests(unittest.TestCase):
         self.assertIn("Planned stage: new plugin add", dry_run.stdout)
         self.assertIn("no state changes were made", dry_run.stdout)
 
-    def test_github_bootstrap_is_first_and_rejects_skill_installer(self):
+    def test_github_bootstrap_is_first_and_uses_stable_plugin_release(self):
         readme = README_MD.read_text(encoding="utf-8")
         bootstrap = readme.index("AI Agent Installation")
         overview = readme.index("Overview")
         self.assertLess(bootstrap, overview)
         self.assertIn("Codex plugin marketplace, not a standalone skill", readme)
-        self.assertIn("v1.10.1 release candidate", readme)
-        self.assertNotIn("git clone --depth 1 --branch v1.10.1", readme)
+        self.assertIn("git clone --depth 1 --branch v1.10.1", readme)
+        self.assertIn("git describe --exact-match --tags HEAD", readme)
         self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", readme)
 
         for path in (README_MD, README_HTML, AGENTS, INSTALL_CONTRACT, MANAGER_MD, MANAGER_HTML):
@@ -196,17 +204,31 @@ class CodexPluginPackagingTests(unittest.TestCase):
 
         self.assertFalse((ROOT / "SKILL.md").exists())
 
-    def test_docs_keep_v1_10_1_unreleased_until_the_release_gate(self):
+    def test_docs_publish_the_v1_10_1_stable_url_install_contract(self):
         for path in URL_INSTALL_DOCS:
             with self.subTest(document=path.name):
                 text = path.read_text(encoding="utf-8-sig")
                 self.assertIn("v1.10.1", text)
                 self.assertIn("install-codex.ps1", text)
                 self.assertNotIn("Before either local installation, deploy", text)
-                self.assertNotIn("git clone --depth 1 --branch v1.10.1", text)
+                self.assertIn("git clone --depth 1 --branch v1.10.1", text)
+                self.assertIn("git describe --exact-match --tags HEAD", text)
+                self.assertNotRegex(
+                    text,
+                    re.compile(
+                        r"v1\.10\.1.{0,80}(?:unreleased|not published|do not (?:install|clone|run))"
+                        r"|(?:unreleased|not published|do not (?:install|clone|run)).{0,80}v1\.10\.1",
+                        re.IGNORECASE | re.DOTALL,
+                    ),
+                )
 
-        self.assertIn("v1.10.0 - latest published release", README_MD.read_text(encoding="utf-8"))
-        self.assertIn("v1.10.0 - latest published release", README_HTML.read_text(encoding="utf-8"))
+        install_contract = INSTALL_CONTRACT.read_text(encoding="utf-8")
+        self.assertIn("install.bat", install_contract)
+        self.assertIn("SSO/MFA", install_contract)
+        self.assertIn("start a new Codex task", install_contract)
+        self.assertIn("restart Antigravity", install_contract)
+        self.assertIn("End users do not deploy", install_contract)
+        self.assertIn("production Case ID", install_contract)
 
     def test_readme_has_a_github_mermaid_workflow_and_html_equivalent(self):
         markdown = README_MD.read_text(encoding="utf-8")

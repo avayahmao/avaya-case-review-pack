@@ -28,34 +28,37 @@ Use the exact AI-agent request below. This repository is a Codex plugin marketpl
 install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 ```
 
-The **v1.10.1 release candidate is not published**. Do not clone a presumed
-`v1.10.1` tag or use URL-only installation until maintainers complete the Gmail
-cloud attestation, create the tag, and publish the release. **v1.10.0 remains
-the latest published release.** The published v1.10.1 bootstrap will require a
-unique temporary checkout and exact-tag verification before an installer runs.
-End users do not deploy the Gmail Apps Script Web App; that is a maintainer
-release responsibility.
+The stable v1.10.1 contract uses a unique temporary checkout:
+
+```text
+git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git describe --exact-match --tags HEAD
+```
+
+The tag check must return `v1.10.1`. Inspect `INSTALL.md`, then run the no-flag
+installer for the selected host. End users do not deploy the Gmail Apps Script
+Web App or provide a production Case ID during installation. Only SSO/MFA may
+pause installation. These instructions do not claim the tag, GitHub release,
+release asset, or URL-only acceptance run already succeeded.
 
 ### Codex Setup
 
-For Codex, follow [`../INSTALL.md`](../INSTALL.md). After the v1.10.1 release
-gate, use the checked-out no-flag `install-codex.ps1` installer.
+For Codex, follow [`../INSTALL.md`](../INSTALL.md) and use the checked-out
+no-flag `install-codex.ps1` installer.
 
 Start a new Codex task after the installer reports success. The Antigravity-specific steps below are not required for a Codex-only installation.
 
 ### Antigravity Local Component Setup
 
-After the release gate, configure the local components using the checked-out
-`install.bat` entry point.
+Configure the local components using the checked-out no-flag `install.bat`
+entry point.
 
 ### Step-by-Step Execution
 
-After the release gate, follow the published installer instructions. Do not run
-the unreleased v1.10.1 candidate from a presumed tag.
+Follow the v1.10.1 installer instructions only after exact-tag verification.
 
 > [!TIP]
-> The published bootstrap provides the supported PowerShell invocation after
-> the release gate completes.
+> The bootstrap provides the supported no-flag installer invocation.
 
 ### What the Automated Script Does
 

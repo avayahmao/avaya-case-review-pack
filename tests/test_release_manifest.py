@@ -70,6 +70,32 @@ RUNTIME_PACKAGE_FILES = frozenset(
 )
 
 CLOUD_GMAIL_BRIDGE = "tools/gmail/cloud/GmailMcpBridge.gs"
+CLOUD_BRIDGE_IDENTITY = "tools/gmail/cloud/bridge_identity.py"
+CLOUD_BRIDGE_ATTESTATION = "tools/gmail/cloud/bridge_release_attestation.json"
+CLOUD_RELEASE_FILES = frozenset(
+    {CLOUD_GMAIL_BRIDGE, CLOUD_BRIDGE_IDENTITY, CLOUD_BRIDGE_ATTESTATION}
+)
+PROHIBITED_ATTESTATION_FIELDS = frozenset(
+    {
+        "identity",
+        "deployment",
+        "deployment_id",
+        "deployment_url",
+        "case",
+        "case_id",
+        "thread",
+        "thread_id",
+        "message",
+        "message_id",
+        "message_hash",
+        "token",
+        "page_token",
+        "cursor",
+        "body",
+        "message_body",
+        "body_hash",
+    }
+)
 
 
 def manifest_entries():
@@ -184,8 +210,68 @@ class ReleaseManifestTests(unittest.TestCase):
         entries = set(manifest_entries())
         installer_files = set(installer_gmail_deployment_files())
 
-        self.assertIn(CLOUD_GMAIL_BRIDGE, entries)
+        self.assertFalse(
+            CLOUD_RELEASE_FILES - entries,
+            f"missing cloud release files: {sorted(CLOUD_RELEASE_FILES - entries)}",
+        )
         self.assertNotIn("GmailMcpBridge.gs", installer_files)
+
+    def test_extracted_cloud_attestation_is_valid_and_contains_no_sensitive_fields(self):
+        entries = manifest_entries()
+        with TemporaryDirectory() as tmp:
+            temp_root = Path(tmp)
+            archive = temp_root / "release.zip"
+            with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
+                for name in entries:
+                    bundle.write(ROOT / name, name)
+            extracted = temp_root / "extracted"
+            with zipfile.ZipFile(archive) as bundle:
+                bundle.extractall(extracted)
+
+            for name in CLOUD_RELEASE_FILES:
+                self.assertTrue((extracted / name).is_file(), name)
+
+            validator_command = [
+                sys.executable,
+                str(extracted / CLOUD_BRIDGE_IDENTITY),
+                "validate",
+                "--source",
+                str(extracted / CLOUD_GMAIL_BRIDGE),
+                "--attestation",
+                str(extracted / CLOUD_BRIDGE_ATTESTATION),
+                "--plugin-version",
+                "1.10.1",
+            ]
+            validation = subprocess.run(
+                validator_command,
+                cwd=extracted,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=20,
+                check=False,
+            )
+            self.assertEqual(validation.returncode, 0, validation.stderr)
+
+            attestation_path = extracted / CLOUD_BRIDGE_ATTESTATION
+            attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+            for field in PROHIBITED_ATTESTATION_FIELDS:
+                with self.subTest(prohibited_field=field):
+                    prohibited = dict(attestation)
+                    prohibited[field] = "PROHIBITED"
+                    attestation_path.write_text(
+                        json.dumps(prohibited), encoding="utf-8"
+                    )
+                    rejected = subprocess.run(
+                        validator_command,
+                        cwd=extracted,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=20,
+                        check=False,
+                    )
+                    self.assertNotEqual(rejected.returncode, 0)
 
     def test_manifest_excludes_runtime_profiles_state_and_optional_examples(self):
         entries = manifest_entries()

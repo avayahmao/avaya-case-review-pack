@@ -75,6 +75,7 @@ class FakePage:
         self.load_state_calls = []
         self.events = []
         self.text_calls = 0
+        self.text_content_calls = []
         self.response_text_calls = 0
         self.wait_calls = 0
         self.close_calls = 0
@@ -100,6 +101,7 @@ class FakePage:
     async def text_content(self, selector, **kwargs):
         self.events.append("body")
         self.text_calls += 1
+        self.text_content_calls.append((selector, kwargs))
         if self.text_errors:
             error = self.text_errors.popleft()
             if error is not None:
@@ -280,6 +282,31 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, complete_body)
         self.assertEqual(page.response_text_calls, 1)
         self.assertEqual(page.text_calls, 0)
+        await adapter.close()
+
+    async def test_missing_navigation_response_uses_bounded_dom_fallback(self):
+        class NoResponsePage(FakePage):
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+                self.url = self.final_url
+                return None
+
+        response_timeout_ms = 1_234
+        page = NoResponsePage(dom_body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(
+            FakeContext(page), response_timeout_ms=response_timeout_ms
+        )
+        await adapter.start()
+
+        result = await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(result, '{"status":"success"}')
+        self.assertEqual(
+            page.text_content_calls,
+            [("body", {"timeout": response_timeout_ms})],
+        )
+        self.assertEqual(page.response_text_calls, 0)
         await adapter.close()
 
     def test_safe_read_budget_allows_slow_redirects_and_all_three_attempts(self):

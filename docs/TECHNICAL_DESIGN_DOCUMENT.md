@@ -258,7 +258,7 @@ This payload applies only to a manually deployed optional extension and a separa
 
 ## 5. Deployment & Installation Architecture
 
-The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source. `v1.10.1` is an unreleased release candidate, so URL-only stable installation is unavailable until maintainers complete attestation, create the immutable tag, and publish the release. `v1.10.0` remains the latest published release. After publication, the no-flag `install-codex.ps1` and `install.bat` installers validate local attestation and live cloud compatibility before activation; neither deploys the cloud source.
+The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source or provide a production Case ID during installation. The v1.10.1 stable contract requires a unique temporary checkout created with `git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>` and requires `git describe --exact-match --tags HEAD` to return `v1.10.1`. After inspecting `INSTALL.md`, the agent runs no-flag `install-codex.ps1` or `install.bat`; each validates local attestation and live cloud compatibility before activation. SSO/MFA is the only intentional pause, followed by a new Codex task or Antigravity restart. These instructions do not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.
 
 The Antigravity setup path performs these local phases:
 

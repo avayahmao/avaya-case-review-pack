@@ -111,22 +111,25 @@
 
 <div class="main-container">
 
-    <!-- UNRELEASED -->
+    <!-- VERSION 1.10.1 -->
     <div>
-        <span class="version-tag">Unreleased</span>
-        <span class="version-date">v1.10.1 release preparation - GitHub URL Plugin Bootstrap Repair</span>
-        <h3>v1.10.1 release preparation: GitHub URL Plugin Bootstrap Repair</h3>
+        <span class="version-tag">v1.10.1</span>
+        <span class="version-date">2026-09-14 - GitHub URL Plugin Bootstrap and Complete-Response Repair</span>
+        <h3>GitHub URL Plugin Bootstrap and Complete-Response Repair</h3>
         <h3>Deterministic AI Agent Installation</h3>
         <ul>
-            <li>Prepares a first-screen GitHub URL bootstrap for the immutable <code>v1.10.1</code> tag. It is not active until maintainers complete cloud attestation, create the tag, and publish the release; <code>v1.10.0</code> remains the latest published release.</li>
+            <li>Publishes the stable installation contract: <code>git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack &lt;unique-temp-directory&gt;</code>, followed by <code>git describe --exact-match --tags HEAD</code>, inspection of <code>INSTALL.md</code>, and the selected no-flag installer. This does not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.</li>
             <li>Corrects incorrect skill-installer routing: the repository root is a Codex plugin marketplace, not a standalone skill, and end users are not instructed to search for a root <code>SKILL.md</code>.</li>
             <li>Removes the end-user manual Gmail cloud deployment gate. Maintainers deploy and verify the Apps Script bridge as a release gate; local installers perform release-attestation and live compatibility checks.</li>
         </ul>
         <h3>Codex Runtime Launch Repair</h3>
         <ul>
             <li>Resolves Codex MCP launch paths by running Gmail and CaseToMD from the installed <code>avaya-case-review-runtime</code> Python package rather than relative plugin scripts.</li>
-            <li>Bumps the shared plugin and runtime metadata to the <code>1.10.1</code> release candidate and keeps the Codex and Antigravity manifests aligned.</li>
+            <li>Keeps the shared Codex and Antigravity plugin and runtime metadata aligned at <code>1.10.1</code>.</li>
+            <li>Adds the Version-17 complete-response repair: Managed Edge consumes the committed Apps Script response body and retains a bounded DOM fallback when navigation returns no response object.</li>
         </ul>
+        <h3>Upgrade from v1.10.0</h3>
+        <p>Clone and verify the v1.10.1 tag as above, inspect <code>INSTALL.md</code>, then run no-flag <code>install-codex.ps1</code> for Codex or <code>install.bat</code> for Antigravity. Only SSO/MFA may pause the installer; start a new Codex task or restart Antigravity afterward. End users do not deploy Apps Script or provide a production Case ID.</p>
     </div>
 
     <!-- VERSION 1.10.0 -->

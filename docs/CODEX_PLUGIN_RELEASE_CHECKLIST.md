@@ -5,6 +5,17 @@ coverage uses temporary `CODEX_HOME` directories, synthetic attestation data,
 and command adapters; it never substitutes for the real marketplace, desktop,
 or SSO evidence recorded here.
 
+## Completed maintainer cloud gates
+
+- [x] Confirm Version 17 is active.
+- [x] Confirm live source identity and capabilities match the candidate.
+- [x] Complete all 6 repeated probes successfully.
+- [x] Complete exhaustive zero-result, page, cursor, count, manifest, UTF-8,
+  and body-integrity verification.
+- [x] Complete candidate `gmail_brokerctl.py verify-bridge` successfully.
+- [x] Validate the production release attestation against the candidate source
+  and plugin version.
+
 ## Candidate identity
 
 - [ ] Record the exact Codex CLI version: `________________`.

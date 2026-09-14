@@ -542,9 +542,16 @@ class CodexInstallerTests(unittest.TestCase):
         value = json.loads(self.state_path.read_text(encoding="utf-8-sig"))
         return SimpleNamespace(**value)
 
-    def _environment(self, mode="normal"):
+    def _environment(self, mode="normal", *, python_available=True):
         environment = os.environ.copy()
-        environment["PATH"] = str(self.bin_dir) + os.pathsep + environment["PATH"]
+        if python_available:
+            environment["PATH"] = str(self.bin_dir) + os.pathsep + environment["PATH"]
+        else:
+            no_python_bin = self.temp_root / "no-python-bin"
+            no_python_bin.mkdir(exist_ok=True)
+            for name in ("codex.ps1", "git.ps1"):
+                shutil.copy2(self.bin_dir / name, no_python_bin / name)
+            environment["PATH"] = str(no_python_bin)
         environment["AVAYA_INSTALL_TEST_LOG"] = str(self.log_path)
         environment["AVAYA_INSTALL_TEST_MODE"] = mode
         environment["AVAYA_INSTALL_TEST_STATE"] = str(self.state_path)
@@ -604,6 +611,7 @@ class CodexInstallerTests(unittest.TestCase):
         prior_broker_build="",
         prior_start_exit=0,
         prior_status_exit=0,
+        python_available=True,
     ):
         fixture_root = self.temp_root / "stateful-installer"
         for relative_path in (
@@ -731,7 +739,8 @@ class CodexInstallerTests(unittest.TestCase):
             prior_status_exit=prior_status_exit,
         )
         installer_arguments = [
-            "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+            shutil.which("powershell.exe") or "powershell.exe",
+            "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             str(fixture_root / INSTALLER.name), "-CloudBridgeVerified",
         ]
         if skip_dependency:
@@ -743,7 +752,7 @@ class CodexInstallerTests(unittest.TestCase):
         result = subprocess.run(
             installer_arguments,
             cwd=fixture_root,
-            env=self._environment(),
+            env=self._environment(python_available=python_available),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -1330,6 +1339,32 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(events, ["attestation-validate"])
         self.assertFalse(state.marketplace_exists)
         self.assertEqual(state.runtime_version, "1.10.1")
+
+    def test_missing_python_is_actionable_before_attestation_or_state_mutation(self):
+        sentinel = "UNSANITIZED_MISSING_PYTHON"
+        result, events, state = self.run_stateful_installer(
+            fixture_sentinel=sentinel,
+            python_available=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("python was not found in PATH.", result.stderr)
+        self.assertNotIn(sentinel, result.stdout + result.stderr)
+        self.assertEqual(events, [])
+        self.assertFalse(state.marketplace_exists)
+        self.assertFalse(state.plugin_installed)
+        self.assertEqual(state.runtime_version, "1.10.1")
+
+    def test_dry_run_missing_python_is_actionable_before_attestation(self):
+        result, events, state = self.run_stateful_installer(
+            extra_arguments=("-DryRun",),
+            python_available=False,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("python was not found in PATH.", result.stderr)
+        self.assertEqual(events, [])
+        self.assertFalse(state.marketplace_exists)
 
     def test_clean_install_prepares_candidate_runtime_before_live_verification(self):
         result, events, state = self.run_stateful_installer(

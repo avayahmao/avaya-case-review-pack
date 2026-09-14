@@ -169,7 +169,10 @@
     <p>Use this exact request with an AI agent:</p>
     <pre><code>install this plugin: https://github.com/avayahmao/avaya-case-review-pack</code></pre>
     <p>This repository is a <strong>Codex plugin marketplace, not a standalone skill</strong>. Do not use a skill installer; the repository root is the plugin selected by its marketplace manifest. Do not search for a root <code>SKILL.md</code> or route this URL to a skill-only install.</p>
-    <p>The <strong>v1.10.1 release candidate is not published</strong>. Do not attempt a URL-only install from a presumed <code>v1.10.1</code> tag or run its no-flag installer yet; <strong>v1.10.0 is the latest published release</strong>. URL-only stable installation becomes active only after maintainers complete the Gmail cloud attestation, create the <code>v1.10.1</code> tag, and publish the release. At that point the bootstrap will direct Codex users to <code>install-codex.ps1</code> and Antigravity users to <code>install.bat</code>, with the local attestation and live compatibility checks.</p>
+    <p>The stable v1.10.1 installation contract requires an installation-capable agent to clone the exact release into a unique temporary directory and verify the tag:</p>
+    <pre><code>git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack &lt;unique-temp-directory&gt;
+git describe --exact-match --tags HEAD</code></pre>
+    <p>The second command must return <code>v1.10.1</code>. The agent then inspects <code>INSTALL.md</code> and the selected local installer, runs no-flag <code>install-codex.ps1</code> for Codex or <code>install.bat</code> for Antigravity, and allows only SSO/MFA as an intentional pause. End users never deploy Apps Script or provide a production Case ID during installation. Start a new Codex task or restart Antigravity afterward. These instructions are the release contract published by this commit; they do not assert that the tag, GitHub release, release asset, or URL-only acceptance run has already been completed.</p>
 
     <h2>Overview</h2>
     <p>This package provides an automated <strong>Case Review Suite</strong> for Avaya Support & Operations Managers. It supports <strong>Codex</strong> and <strong>Antigravity</strong> and integrates <strong>CaseToMD</strong>, <strong>Gmail</strong>, and the <strong>Embedded 10-Domain Avaya Debugger Knowledge Base</strong> to produce executive-ready case reviews for Siebel SRs and ServiceNow INCs with evidence-grounded technical direction checks.</p>
@@ -273,7 +276,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</pre>
         <ul>
             <li><strong>Release Notes &amp; Version Track</strong>:
                 <ul>
-                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> - v1.10.0 - latest published release; v1.10.1 release preparation</li>
+                    <li><a href="docs/RELEASE_NOTES.html">docs/RELEASE_NOTES.html</a> / <a href="docs/RELEASE_NOTES.md">docs/RELEASE_NOTES.md</a> - v1.10.1 release contract and upgrade guidance</li>
                 </ul>
             </li>
             <li><strong>Executive Presentation</strong>:

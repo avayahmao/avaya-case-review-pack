@@ -4,20 +4,23 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
-## [Unreleased]
-
-### v1.10.1 release preparation: GitHub URL Plugin Bootstrap Repair
+## [v1.10.1] - 2026-09-14: GitHub URL Plugin Bootstrap and Complete-Response Repair
 
 ### Deterministic AI Agent Installation
 
-* Prepares a first-screen GitHub URL bootstrap for the immutable `v1.10.1` tag. It is not active until maintainers complete cloud attestation, create the tag, and publish the release; `v1.10.0` remains the latest published release.
+* Publishes the stable installation contract: `git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>`, followed by `git describe --exact-match --tags HEAD`, inspection of `INSTALL.md`, and the selected no-flag installer. This does not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.
 * Corrects incorrect skill-installer routing: the repository root is a Codex plugin marketplace, not a standalone skill, and end users are not instructed to search for a root `SKILL.md`.
 * Removes the end-user manual Gmail cloud deployment gate. Maintainers deploy and verify the Apps Script bridge as a release gate; local installers perform release-attestation and live compatibility checks.
 
 ### Codex Runtime Launch Repair
 
 * Resolves Codex MCP launch paths by running Gmail and CaseToMD from the installed `avaya-case-review-runtime` Python package rather than relative plugin scripts.
-* Bumps the shared plugin and runtime metadata to the `1.10.1` release candidate and keeps the Codex and Antigravity manifests aligned.
+* Keeps the shared Codex and Antigravity plugin and runtime metadata aligned at `1.10.1`.
+* Adds the Version-17 complete-response repair: Managed Edge consumes the committed Apps Script response body and retains a bounded DOM fallback when navigation returns no response object.
+
+### Upgrade from v1.10.0
+
+Clone and verify the v1.10.1 tag as above, inspect `INSTALL.md`, then run no-flag `install-codex.ps1` for Codex or `install.bat` for Antigravity. Only SSO/MFA may pause the installer; start a new Codex task or restart Antigravity afterward. End users do not deploy Apps Script or provide a production Case ID.
 
 ---
 

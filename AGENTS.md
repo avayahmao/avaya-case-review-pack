@@ -34,12 +34,12 @@ install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 Follow [`INSTALL.md`](INSTALL.md). Do not execute a remote script directly: clone the repository into a unique temporary directory, inspect the checked-out installer, and select the current host's supported entry point.
 
 - **Do not use a skill installer.** This is a Codex plugin marketplace, not a standalone skill; the repository root is the plugin selected by its marketplace manifest.
-- **Release status:** `v1.10.1` is an unreleased release candidate; `v1.10.0` remains the latest published release. Do not clone a presumed `v1.10.1` tag or run URL-only installation until maintainers complete cloud attestation, create the tag, and publish the release.
-- **Codex:** after that release gate, run the checked-out no-flag `install-codex.ps1`. It installs the runtime package, validates local attestation and live cloud compatibility, registers the Git-backed marketplace, installs `avaya-case-review@avaya-case-review-pack`, and completes Managed Edge login when required.
-- **Antigravity:** after that release gate, run the checked-out `install.bat`; it validates the same release and retains the existing `setup_env.ps1` deployment into `%USERPROFILE%\.gemini\`.
+- **Stable checkout:** run `git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>`, then require `git describe --exact-match --tags HEAD` to return exactly `v1.10.1`. These are the release instructions published by this commit; they do not assert that the tag, GitHub release, release asset, or URL-only acceptance already succeeded.
+- **Codex:** run the checked-out no-flag `install-codex.ps1`. It installs the runtime package, validates local attestation and live cloud compatibility, registers the Git-backed marketplace, installs `avaya-case-review@avaya-case-review-pack`, and completes Managed Edge login when required.
+- **Antigravity:** run the checked-out no-flag `install.bat`; it validates the same release and retains the existing `setup_env.ps1` deployment into `%USERPROFILE%\.gemini\`.
 - **Claude Code:** out of scope. Do not create or install a `.claude-plugin` package.
 
-Interactive SSO/MFA is a legitimate pause; never claim it succeeded without evidence. After installation, start a new Codex task or restart Antigravity.
+Interactive SSO/MFA is the only legitimate pause; never claim it succeeded without evidence. Never ask end users to deploy Apps Script or provide a production Case ID during installation. After installation, start a new Codex task or restart Antigravity.
 
 ---
 
@@ -188,7 +188,7 @@ gh release edit vPREV --notes-file SUPERSEDED.md
 
 Release history (most recent first; published versions are on GitHub Releases):
 
-- **v1.10.1 (unreleased)** — GitHub URL plugin bootstrap and runtime-packaged Codex MCP launch repair
+- **v1.10.1 (2026-09-14)** — GitHub URL plugin bootstrap, Version-17 complete-response repair, and runtime-packaged Codex MCP launch repair
 - **v1.10.0** — Investigation-complete reviews, QA scoring, and alarm audit
 - **v1.9.4** — Cloud bridge pagination speedup
 - **v1.9.3** — Whole-case storyline and problem lineage

@@ -15,13 +15,22 @@ not use a skill installer; the repository root is the plugin selected by its
 marketplace manifest. Do not search for a root `SKILL.md` or route this URL to
 a skill-only install.
 
-The **v1.10.1 release candidate is not published**. Do not attempt a URL-only
-install from a presumed `v1.10.1` tag or run its no-flag installer yet;
-**v1.10.0 is the latest published release**. URL-only stable installation
-becomes active only after maintainers complete the Gmail cloud attestation,
-create the `v1.10.1` tag, and publish the release. At that point the bootstrap
-will direct Codex users to `install-codex.ps1` and Antigravity users to
-`install.bat`, with the local attestation and live compatibility checks.
+The stable v1.10.1 installation contract requires an installation-capable agent
+to clone the exact release into a unique temporary directory and verify the tag:
+
+```text
+git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git describe --exact-match --tags HEAD
+```
+
+The second command must return `v1.10.1`. The agent then inspects `INSTALL.md`
+and the selected local installer, runs no-flag `install-codex.ps1` for Codex or
+`install.bat` for Antigravity, and allows only SSO/MFA as an intentional pause.
+End users never deploy Apps Script or provide a production Case ID during
+installation. Start a new Codex task or restart Antigravity afterward. These
+instructions are the release contract published by this commit; they do not
+assert that the tag, GitHub release, release asset, or URL-only acceptance run
+has already been completed.
 
 ## Overview
 
@@ -133,7 +142,7 @@ The broker owns one dedicated Edge context and serializes requests from all Gmai
 All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](docs/)** directory:
 
 - **Release Notes & Version Track**:
-  - **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** - v1.10.0 - latest published release; v1.10.1 release preparation
+  - **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** - v1.10.1 release contract and upgrade guidance
 - **Executive Presentation**:
   - **[docs/PRESENTATION.html](docs/PRESENTATION.html)** - Interactive Browser Slide Deck
   - **[docs/Avaya_Case_Review_Suite_Presentation.pptx](docs/Avaya_Case_Review_Suite_Presentation.pptx)** - PowerPoint Presentation Deck

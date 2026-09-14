@@ -1,15 +1,22 @@
 # Gmail Cloud Bridge Maintainer Release Runbook
 
-This maintainer-only runbook verifies the already-deployed exhaustive Gmail MCP
-cloud endpoint against the **v1.10.1 release candidate**. It does not redeploy
+This maintainer-only runbook records the completed verification of the
+already-deployed exhaustive Gmail MCP cloud endpoint for **v1.10.1**. It does not redeploy
 the existing Gmail MCP Apps Script Web App unless verification proves a
 mismatch and a maintainer separately authorizes that update. It never deploys
 the optional governance example in
-`examples/optional-appsscript/Code.gs`. `v1.10.0` remains the latest published
-release. URL-only stable installation becomes active only after this gate
-creates the v1.10.1 attestation, tag, and release; then `install-codex.ps1` or
-`install.bat` performs local release-attestation and live compatibility checks
-automatically and must not be used to deploy this cloud source.
+`examples/optional-appsscript/Code.gs`. The stable installation contract is:
+
+```text
+git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git describe --exact-match --tags HEAD
+```
+
+The tag check must return `v1.10.1`; then the agent inspects `INSTALL.md` and
+runs no-flag `install-codex.ps1` or `install.bat`. End users never deploy this
+cloud source or provide a production Case ID during installation. These are
+the release instructions published by this commit, not a claim that the tag,
+GitHub release, release asset, or URL-only acceptance run already succeeded.
 
 ## Maintainer release gate
 
