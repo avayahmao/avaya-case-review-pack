@@ -68,7 +68,6 @@ def classify_response(
     host = parsed.netloc.lower()
     path = parsed.path.lower()
     body_prefix = body[:1000].lower()
-    url_lower = final_url.lower()
 
     if (
         host == "login.microsoftonline.com"
@@ -77,7 +76,7 @@ def classify_response(
         or path == "/aad_login"
     ):
         return AuthState.AUTH_REQUIRED_MICROSOFT
-    if host == "accounts.google.com" or "servicelogin" in url_lower:
+    if host == "accounts.google.com" or "servicelogin" in path:
         return AuthState.AUTH_REQUIRED_GOOGLE
     if http_status is not None and http_status >= 400:
         return AuthState.APP_ERROR

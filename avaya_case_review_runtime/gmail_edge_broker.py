@@ -282,7 +282,7 @@ class ManagedEdgeAdapter:
             phase = "navigation"
             response = await page.goto(
                 url,
-                wait_until="domcontentloaded",
+                wait_until="commit",
                 timeout=navigation_timeout_ms,
             )
             phase = "response"

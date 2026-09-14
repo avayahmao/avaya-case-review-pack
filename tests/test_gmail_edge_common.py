@@ -35,6 +35,15 @@ class AuthClassificationTests(unittest.TestCase):
         )
         self.assertIs(state, AuthState.AUTH_REQUIRED_GOOGLE)
 
+    def test_does_not_classify_apps_script_query_text_as_google_login(self):
+        state = classify_response(
+            "https://script.google.com/macros/s/bridge/exec?query=servicelogin",
+            None,
+            "",
+        )
+
+        self.assertIs(state, AuthState.APP_ERROR)
+
     def test_classifies_apps_script_json(self):
         state = classify_response(
             "https://script.googleusercontent.com/macros/echo",

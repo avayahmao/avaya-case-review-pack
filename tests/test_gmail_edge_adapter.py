@@ -227,6 +227,23 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(context.close_calls, 1)
         self.assertEqual(playwright.stop_calls, 1)
 
+    async def test_request_navigation_waits_for_commit_then_reads_body(self):
+        page = FakePage(body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+        await adapter.start()
+
+        result = await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(result, '{"status":"success"}')
+        self.assertEqual(len(page.goto_calls), 1)
+        self.assertEqual(
+            page.goto_calls[0][1],
+            {"wait_until": "commit", "timeout": 10_000},
+        )
+        self.assertEqual(page.text_calls, 1)
+        self.assertLess(page.events.index("goto"), page.events.index("body"))
+        await adapter.close()
+
     async def test_maps_all_gmail_methods_and_creates_one_page_per_execute(self):
         pages = [FakePage(body=f'{{"response":{index}}}') for index in range(6)]
         context = FakeContext(*pages)
@@ -397,6 +414,48 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             [parse_qs(urlparse(url).query)["cache_bust"] for url in urls],
             [["attempt-1"], ["attempt-2"], ["attempt-3"]],
         )
+        self.assertTrue(all(page.close_calls == 1 for page in pages))
+        await adapter.close()
+
+    async def test_three_commit_and_body_attempts_fit_the_adapter_budget(self):
+        class CommitBodyPage(FakePage):
+            async def goto(self, url, **kwargs):
+                if kwargs["wait_until"] != "commit":
+                    await asyncio.Event().wait()
+                return await super().goto(url, **kwargs)
+
+            async def text_content(self, selector, **kwargs):
+                await asyncio.sleep(0.01)
+                return await super().text_content(selector, **kwargs)
+
+        pages = [
+            CommitBodyPage(
+                final_url=CONTENT_SERVICE_URL,
+                body="<html>Page Not Found</html>",
+            )
+            for _ in range(3)
+        ]
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(*pages))
+        await adapter.start()
+
+        with patch.object(
+            gmail_edge_broker,
+            "_SAFE_READ_ATTEMPT_TIMEOUT_SECONDS",
+            0.2,
+        ), patch.object(
+            gmail_edge_broker,
+            "_PAGE_CLOSE_TIMEOUT_SECONDS",
+            0.01,
+        ), patch.object(
+            gmail_edge_broker,
+            "_ADAPTER_EXECUTION_DEADLINE_SECONDS",
+            0.7,
+        ):
+            with self.assertRaises(BrowserApplicationError) as raised:
+                await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(str(raised.exception), "Apps Script content delivery failed")
+        self.assertTrue(all(page.text_calls == 1 for page in pages))
         self.assertTrue(all(page.close_calls == 1 for page in pages))
         await adapter.close()
 
@@ -770,6 +829,33 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("login.microsoftonline.com", str(raised.exception))
                 await adapter.close()
 
+    async def test_navigation_timeout_query_text_is_not_auth_and_retries(self):
+        class RedirectTimeoutPage(FakePage):
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+                self.url = self.final_url
+                raise PlaywrightTimeoutError("navigation timed out")
+
+        query_text_page = RedirectTimeoutPage(
+            final_url=(
+                "https://script.google.com/macros/s/bridge/exec"
+                "?query=servicelogin"
+            )
+        )
+        success_page = FakePage(body='{"status":"success"}')
+        adapter, _starter, _playwright = self.make_adapter(
+            FakeContext(query_text_page, success_page)
+        )
+        await adapter.start()
+
+        result = await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(result, '{"status":"success"}')
+        self.assertEqual(len(query_text_page.goto_calls), 1)
+        self.assertEqual(len(success_page.goto_calls), 1)
+        await adapter.close()
+
     async def test_external_cancellation_drains_navigation_before_page_cleanup(self):
         events = []
         entered = asyncio.Event()
@@ -813,6 +899,55 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             events,
             ["navigation-cancel-start", "navigation-cancel-finished", "page-close"],
+        )
+        self.assertEqual(page.close_calls, 1)
+        self.assertEqual(loop_errors, [])
+        await adapter.close()
+
+    async def test_external_cancellation_drains_body_before_page_cleanup(self):
+        events = []
+        entered = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+
+        class CancelAwareBodyPage(FakePage):
+            async def text_content(self, selector, **kwargs):
+                self.events.append("body")
+                self.text_calls += 1
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    events.append("body-cancel-start")
+                    await asyncio.sleep(0.01)
+                    events.append("body-cancel-finished")
+                    raise
+
+            async def close(self):
+                events.append("page-close")
+                await super().close()
+
+        page = CancelAwareBodyPage()
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+        await adapter.start()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        task = asyncio.create_task(
+            adapter.execute("gmail_search", {"query": "case"})
+        )
+        try:
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+            await asyncio.sleep(0)
+        finally:
+            loop.set_exception_handler(previous_handler)
+
+        self.assertEqual(page.goto_calls[0][1]["wait_until"], "commit")
+        self.assertEqual(
+            events,
+            ["body-cancel-start", "body-cancel-finished", "page-close"],
         )
         self.assertEqual(page.close_calls, 1)
         self.assertEqual(loop_errors, [])
