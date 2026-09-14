@@ -730,6 +730,94 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(unused.goto_calls, [])
         await adapter.close()
 
+    async def test_navigation_timeout_after_auth_redirect_stops_without_retry(self):
+        cases = (
+            (
+                "https://accounts.google.com/v3/signin/identifier",
+                AuthState.AUTH_REQUIRED_GOOGLE,
+            ),
+            (
+                "https://login.microsoftonline.com/tenant/saml2",
+                AuthState.AUTH_REQUIRED_MICROSOFT,
+            ),
+        )
+
+        class RedirectTimeoutPage(FakePage):
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+                self.url = self.final_url
+                raise PlaywrightTimeoutError("navigation timed out")
+
+        for final_url, expected_state in cases:
+            with self.subTest(expected_state=expected_state):
+                pages = [
+                    RedirectTimeoutPage(final_url=final_url),
+                    FakePage(body='{"status":"success"}'),
+                ]
+                context = FakeContext(*pages)
+                adapter, _starter, _playwright = self.make_adapter(context)
+                await adapter.start()
+
+                with self.assertRaises(BrowserAuthRequired) as raised:
+                    await adapter.execute("gmail_search", {"query": "case"})
+
+                self.assertIs(raised.exception.state, expected_state)
+                self.assertEqual(len(context.created_pages), 1)
+                self.assertEqual(len(pages[0].goto_calls), 1)
+                self.assertEqual(pages[1].goto_calls, [])
+                self.assertNotIn("accounts.google.com", str(raised.exception))
+                self.assertNotIn("login.microsoftonline.com", str(raised.exception))
+                await adapter.close()
+
+    async def test_external_cancellation_drains_navigation_before_page_cleanup(self):
+        events = []
+        entered = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+
+        class CancelAwarePage(FakePage):
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+                entered.set()
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    events.append("navigation-cancel-start")
+                    await asyncio.sleep(0.01)
+                    events.append("navigation-cancel-finished")
+                    raise
+
+            async def close(self):
+                events.append("page-close")
+                await super().close()
+
+        page = CancelAwarePage()
+        adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+        await adapter.start()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        task = asyncio.create_task(
+            adapter.execute("gmail_search", {"query": "case"})
+        )
+        try:
+            await entered.wait()
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+            await asyncio.sleep(0)
+        finally:
+            loop.set_exception_handler(previous_handler)
+
+        self.assertEqual(
+            events,
+            ["navigation-cancel-start", "navigation-cancel-finished", "page-close"],
+        )
+        self.assertEqual(page.close_calls, 1)
+        self.assertEqual(loop_errors, [])
+        await adapter.close()
+
     async def test_does_not_retry_json_errors_or_non_content_html(self):
         cases = (
             (
@@ -1380,6 +1468,41 @@ class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await broker._discard_browser()
             await adapter.close()
+
+    async def test_broker_maps_timed_out_auth_redirect_without_retry(self):
+        cases = (
+            "https://accounts.google.com/v3/signin/identifier",
+            "https://tenant.access.mcas.ms/aad_login",
+        )
+
+        class RedirectTimeoutPage(FakePage):
+            async def goto(self, url, **kwargs):
+                self.events.append("goto")
+                self.goto_calls.append((url, kwargs))
+                self.url = self.final_url
+                raise PlaywrightTimeoutError("navigation timed out")
+
+        for index, final_url in enumerate(cases):
+            with self.subTest(final_url=final_url):
+                pages = [
+                    RedirectTimeoutPage(final_url=final_url),
+                    FakePage(body='{"status":"success"}'),
+                ]
+                context = FakeContext(*pages)
+                broker, adapter, _starter, _playwright = self.make_broker(context)
+                try:
+                    response = await broker._dispatch(
+                        self.request("gmail_search", f"auth-timeout-{index}")
+                    )
+
+                    self.assertFalse(response.ok)
+                    self.assertIs(response.error.code, BrokerErrorCode.AUTH_REQUIRED)
+                    self.assertEqual(len(context.created_pages), 1)
+                    self.assertEqual(len(pages[0].goto_calls), 1)
+                    self.assertEqual(pages[1].goto_calls, [])
+                finally:
+                    await broker._discard_browser()
+                    await adapter.close()
 
     async def test_failed_headless_restore_is_discarded_and_next_read_restarts(self):
         restored_page = FakePage(body='{"status":"success","messages":[]}')

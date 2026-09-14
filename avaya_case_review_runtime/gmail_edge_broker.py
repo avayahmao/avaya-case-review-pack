@@ -316,6 +316,9 @@ class ManagedEdgeAdapter:
             raise
         except (asyncio.TimeoutError, PlaywrightTimeoutError) as exc:
             if phase == "navigation":
+                auth_state = self._auth_state_after_navigation_timeout(page)
+                if auth_state is not None:
+                    raise BrowserAuthRequired(auth_state) from exc
                 raise _NavigationAttemptTimeout(
                     "Managed Edge navigation timed out"
                 ) from exc
@@ -337,6 +340,19 @@ class ManagedEdgeAdapter:
         # wait_for waits for cancellation to finish before it raises, so the
         # Playwright coroutine cannot be abandoned with an unread exception.
         return await asyncio.wait_for(awaitable, timeout=timeout)
+
+    @staticmethod
+    def _auth_state_after_navigation_timeout(page: Any | None) -> AuthState | None:
+        if page is None:
+            return None
+        try:
+            current_url = page.url
+            if not isinstance(current_url, str):
+                return None
+            state = classify_response(current_url, None, "")
+        except Exception:
+            return None
+        return state if state in _AUTH_REQUIRED_STATES else None
 
     @staticmethod
     def _is_transient_content_delivery_failure(
