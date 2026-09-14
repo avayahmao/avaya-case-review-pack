@@ -15,7 +15,7 @@ import sys
 import time
 import uuid
 from typing import Any, Callable, Protocol
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from .bridge_identity import BROKER_BUILD_ID
 from .gmail_broker_protocol import (
@@ -44,10 +44,7 @@ from .gmail_edge_common import (
     classify_response,
     validate_profile_path,
 )
-from playwright.async_api import (
-    TimeoutError as PlaywrightTimeoutError,
-    async_playwright,
-)
+from playwright.async_api import async_playwright
 
 
 QUEUE_WAIT_TIMEOUT_SECONDS = 300
@@ -63,6 +60,8 @@ INTERACTIVE_LOGIN_TIMEOUT_SECONDS = 300
 LOGIN_POLL_INTERVAL_MS = 1_000
 LOGIN_VERIFY_QUERY = "subject:__avaya_gmail_edge_broker_verify__"
 _CACHE_BUSTER_PARAM = "cache_bust"
+_CONTENT_DELIVERY_ATTEMPTS = 3
+_ADAPTER_EXECUTION_DEADLINE_SECONDS = EXECUTION_TIMEOUT_SECONDS - 5
 
 _SAFE_READ_METHODS = frozenset(
     {
@@ -204,7 +203,27 @@ class ManagedEdgeAdapter:
         context = self._context
         if context is None:
             raise BrowserAdapterError("Managed Edge is not started")
-        url = self._navigation_url(self._build_method_url(method, params))
+        logical_url = self._build_method_url(method, params)
+        try:
+            async with asyncio.timeout(_ADAPTER_EXECUTION_DEADLINE_SECONDS):
+                for attempt in range(_CONTENT_DELIVERY_ATTEMPTS):
+                    result = await self._execute_navigation_attempt(logical_url)
+                    if result is not None:
+                        return result
+                    if attempt + 1 == _CONTENT_DELIVERY_ATTEMPTS:
+                        raise BrowserApplicationError(
+                            "Apps Script content delivery failed"
+                        )
+        except TimeoutError as exc:
+            raise BrowserAdapterError("Managed Edge request timed out") from exc
+
+        raise AssertionError("content delivery retry loop exhausted")
+
+    async def _execute_navigation_attempt(self, logical_url: str) -> str | None:
+        context = self._context
+        if context is None:
+            raise BrowserAdapterError("Managed Edge is not started")
+        url = self._navigation_url(logical_url)
         page = None
         try:
             page = await context.new_page()
@@ -215,18 +234,13 @@ class ManagedEdgeAdapter:
             )
             http_status = response.status if response is not None else None
             early_state = classify_response(page.url, http_status, "")
-            if early_state in _AUTH_REQUIRED_STATES or (
-                http_status is not None and http_status >= 400
-            ):
+            if early_state in _AUTH_REQUIRED_STATES:
                 self._raise_for_state(early_state)
-            try:
-                await page.wait_for_load_state(
-                    "networkidle",
-                    timeout=self._response_timeout_ms,
-                )
-            except PlaywrightTimeoutError:
-                pass
-            body = (await page.text_content("body") or "").strip()
+            body = (
+                await page.text_content("body", timeout=self._response_timeout_ms) or ""
+            ).strip()
+            if self._is_transient_content_delivery_failure(page.url, body):
+                return None
             state = classify_response(page.url, http_status, body)
             self._raise_for_state(state)
             if state is not AuthState.AUTHENTICATED:
@@ -244,6 +258,13 @@ class ManagedEdgeAdapter:
             if page is not None:
                 with contextlib.suppress(Exception):
                     await page.close()
+
+    @staticmethod
+    def _is_transient_content_delivery_failure(final_url: str, body: str) -> bool:
+        host = urlparse(final_url).netloc.lower()
+        return host.endswith("script.googleusercontent.com") and not body.lstrip().startswith(
+            ("{", "[")
+        )
 
     async def interactive_login(self) -> AuthState:
         if self._context is None or self._playwright is None:

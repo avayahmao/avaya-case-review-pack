@@ -60,6 +60,15 @@ class AuthClassificationTests(unittest.TestCase):
 
         self.assertIs(state, AuthState.APP_ERROR)
 
+    def test_rejects_html_script_google_response(self):
+        state = classify_response(
+            "https://script.google.com/macros/s/bridge/exec",
+            200,
+            "<html><title>Page Not Found</title></html>",
+        )
+
+        self.assertIs(state, AuthState.APP_ERROR)
+
     def test_classifies_http_error(self):
         state = classify_response(
             "https://script.googleusercontent.com/macros/echo",

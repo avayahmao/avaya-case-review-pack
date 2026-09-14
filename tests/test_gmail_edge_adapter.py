@@ -27,6 +27,9 @@ from tools.gmail.gmail_edge_common import AuthState
 
 APP_URL = "https://script.google.com/a/macros/avaya.com/s/test/exec"
 SUCCESS_URL = "https://script.googleusercontent.com/macros/echo"
+CONTENT_SERVICE_URL = (
+    "https://script.googleusercontent.com/macros/echo?user_content_key=transient"
+)
 
 
 class FakeResponse:
@@ -78,7 +81,7 @@ class FakePage:
         self.events.append(f"wait:{state}")
         self.load_state_calls.append((state, kwargs))
 
-    async def text_content(self, selector):
+    async def text_content(self, selector, **kwargs):
         self.events.append("body")
         self.text_calls += 1
         if self.text_errors:
@@ -302,8 +305,8 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(query.pop("cache_bust")), 1)
             self.assertEqual(query.pop("action"), [action])
             self.assertEqual(query, params)
-            self.assertEqual(page.load_state_calls[0][0], "networkidle")
-            self.assertLess(page.events.index("wait:networkidle"), page.events.index("body"))
+            self.assertEqual(page.load_state_calls, [])
+            self.assertLess(page.events.index("goto"), page.events.index("body"))
             self.assertEqual(page.close_calls, 1)
 
         await adapter.close()
@@ -358,6 +361,95 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("cache_bust", str(raised.exception))
         self.assertEqual(context.created_pages, [])
         await adapter.close()
+
+    async def test_retries_transient_content_delivery_until_third_response_is_json(self):
+        pages = [
+            FakePage(final_url=CONTENT_SERVICE_URL, body="<html>Page Not Found</html>"),
+            FakePage(final_url=CONTENT_SERVICE_URL, body="<html>Page Not Found</html>"),
+            FakePage(
+                final_url=CONTENT_SERVICE_URL,
+                body='{"status":"success","messages":[]}',
+            ),
+        ]
+        context = FakeContext(*pages)
+        nonces = iter(("attempt-1", "attempt-2", "attempt-3"))
+        adapter, _starter, _playwright = self.make_adapter(
+            context,
+            nonce_factory=nonces.__next__,
+        )
+        await adapter.start()
+
+        try:
+            result = await adapter.execute("gmail_search", {"query": "case"})
+        except BrowserApplicationError:
+            result = None
+
+        self.assertEqual(result, '{"status":"success","messages":[]}')
+        self.assertEqual(context.created_pages, pages)
+        self.assertTrue(all(page.load_state_calls == [] for page in pages))
+        urls = [page.goto_calls[0][0] for page in pages]
+        self.assertEqual(len(set(urls)), 3)
+        self.assertEqual(
+            [parse_qs(urlparse(url).query)["cache_bust"] for url in urls],
+            [["attempt-1"], ["attempt-2"], ["attempt-3"]],
+        )
+        self.assertTrue(all(page.close_calls == 1 for page in pages))
+        await adapter.close()
+
+    async def test_transient_content_delivery_exhaustion_stops_after_three_attempts(self):
+        pages = [
+            FakePage(final_url=CONTENT_SERVICE_URL, body="<html>Page Not Found</html>")
+            for _ in range(4)
+        ]
+        context = FakeContext(*pages)
+        adapter, _starter, _playwright = self.make_adapter(
+            context,
+            nonce_factory=iter(("attempt-1", "attempt-2", "attempt-3", "attempt-4")).__next__,
+        )
+        await adapter.start()
+
+        with self.assertRaises(BrowserApplicationError) as raised:
+            await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(str(raised.exception), "Apps Script content delivery failed")
+        self.assertEqual(len(context.created_pages), 3)
+        self.assertEqual(pages[3].goto_calls, [])
+        self.assertTrue(all(page.close_calls == 1 for page in pages[:3]))
+        await adapter.close()
+
+    async def test_does_not_retry_json_errors_or_non_content_html(self):
+        cases = (
+            (
+                CONTENT_SERVICE_URL,
+                '{"status":"error","message":"semantic failure"}',
+            ),
+            ("https://script.google.com/macros/s/bridge/exec", "<html>Page Not Found</html>"),
+            ("https://example.invalid/error", "<html>Page Not Found</html>"),
+        )
+        for final_url, body in cases:
+            with self.subTest(final_url=final_url):
+                page = FakePage(final_url=final_url, body=body)
+                adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
+                await adapter.start()
+
+                with self.assertRaises(BrowserApplicationError):
+                    await adapter.execute("gmail_search", {"query": "case"})
+
+                self.assertEqual(page.close_calls, 1)
+                await adapter.close()
+
+    def test_default_nonce_factory_generates_distinct_navigation_urls(self):
+        adapter, _starter, _playwright = self.make_adapter(FakeContext())
+        logical_url = adapter._build_method_url("bridge_capabilities", {})
+
+        first = adapter._navigation_url(logical_url)
+        second = adapter._navigation_url(logical_url)
+
+        self.assertNotEqual(first, second)
+        self.assertEqual(
+            parse_qs(urlparse(first).query).keys(),
+            parse_qs(urlparse(second).query).keys(),
+        )
 
     def test_bridge_capabilities_maps_to_parameter_free_cloud_action(self):
         context = FakeContext()
@@ -470,7 +562,11 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         await adapter.close()
 
     async def test_maps_application_and_browser_failures_to_adapter_errors(self):
-        app_page = FakePage(status=503, body="PRIVATE_ERROR_BODY")
+        app_page = FakePage(
+            final_url=APP_URL,
+            status=503,
+            body="PRIVATE_ERROR_BODY",
+        )
         browser_page = FakePage(goto_error=RuntimeError("target crashed"))
         context = FakeContext(app_page, browser_page)
         adapter, _starter, _playwright = self.make_adapter(context)
@@ -630,6 +726,31 @@ class ManagedEdgeAdapterLoginTests(unittest.IsolatedAsyncioTestCase):
                 "q": ["subject:__avaya_gmail_edge_broker_verify__"],
             },
         )
+        await adapter.close()
+
+    async def test_two_login_verifications_use_distinct_navigation_urls(self):
+        first_login = FakePage(body='{"status":"success"}')
+        second_login = FakePage(body='{"status":"success"}')
+        adapter, _playwright = self.make_adapter(
+            FakeContext(),
+            FakeContext(first_login),
+            FakeContext(),
+            FakeContext(second_login),
+            FakeContext(),
+        )
+        await adapter.start()
+
+        self.assertIs(await adapter.interactive_login(), AuthState.AUTHENTICATED)
+        self.assertIs(await adapter.interactive_login(), AuthState.AUTHENTICATED)
+
+        first_url = first_login.goto_calls[0][0]
+        second_url = second_login.goto_calls[0][0]
+        self.assertNotEqual(first_url, second_url)
+        first_query = parse_qs(urlparse(first_url).query)
+        second_query = parse_qs(urlparse(second_url).query)
+        first_query.pop("cache_bust")
+        second_query.pop("cache_bust")
+        self.assertEqual(first_query, second_query)
         await adapter.close()
 
     async def test_login_timeout_raises_auth_required_and_restores_headless(self):
@@ -893,9 +1014,11 @@ class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
         await self.assert_restored_headless_survives_login_error(page)
 
     async def test_broker_never_returns_html_bridge_error_as_success(self):
-        error_page = FakePage(body="<html>Page Not Found</html>")
+        error_pages = [
+            FakePage(body="<html>Page Not Found</html>") for _ in range(3)
+        ]
         broker, adapter, _starter, _playwright = self.make_broker(
-            FakeContext(error_page),
+            FakeContext(*error_pages),
         )
         try:
             response = await broker._dispatch(
@@ -905,6 +1028,7 @@ class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(response.ok)
             self.assertIs(response.error.code, BrokerErrorCode.APP_ERROR)
             self.assertIsNone(response.result)
+            self.assertTrue(all(page.close_calls == 1 for page in error_pages))
         finally:
             await broker._discard_browser()
             await adapter.close()
