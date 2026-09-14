@@ -397,6 +397,62 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(page.close_calls == 1 for page in pages))
         await adapter.close()
 
+    async def test_retries_404_content_delivery_until_200_json_response(self):
+        pages = [
+            FakePage(
+                final_url=CONTENT_SERVICE_URL,
+                status=404,
+                body="<html>Page Not Found</html>",
+            ),
+            FakePage(
+                final_url=CONTENT_SERVICE_URL,
+                status=200,
+                body='{"status":"success","messages":[]}',
+            ),
+        ]
+        context = FakeContext(*pages)
+        adapter, _starter, _playwright = self.make_adapter(
+            context,
+            nonce_factory=iter(("attempt-1", "attempt-2")).__next__,
+        )
+        await adapter.start()
+
+        try:
+            result = await adapter.execute("gmail_search", {"query": "case"})
+        except BrowserApplicationError:
+            result = None
+
+        self.assertEqual(result, '{"status":"success","messages":[]}')
+        self.assertEqual(len(context.created_pages), 2)
+        urls = [page.goto_calls[0][0] for page in pages]
+        self.assertEqual(len(set(urls)), 2)
+        self.assertEqual(
+            [parse_qs(urlparse(url).query)["cache_bust"] for url in urls],
+            [["attempt-1"], ["attempt-2"]],
+        )
+        await adapter.close()
+
+    async def test_404_content_delivery_exhaustion_stops_after_three_attempts(self):
+        pages = [
+            FakePage(
+                final_url=CONTENT_SERVICE_URL,
+                status=404,
+                body="<html>Page Not Found</html>",
+            )
+            for _ in range(4)
+        ]
+        context = FakeContext(*pages)
+        adapter, _starter, _playwright = self.make_adapter(context)
+        await adapter.start()
+
+        with self.assertRaises(BrowserApplicationError) as raised:
+            await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertEqual(str(raised.exception), "Apps Script content delivery failed")
+        self.assertEqual(len(context.created_pages), 3)
+        self.assertEqual(pages[3].goto_calls, [])
+        await adapter.close()
+
     async def test_transient_content_delivery_exhaustion_stops_after_three_attempts(self):
         pages = [
             FakePage(final_url=CONTENT_SERVICE_URL, body="<html>Page Not Found</html>")

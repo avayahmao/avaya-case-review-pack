@@ -288,7 +288,7 @@ class ManagedEdgeAdapter:
     ) -> bool:
         host = urlparse(final_url).netloc.lower()
         return (
-            http_status == 200
+            http_status in {200, 404}
             and host.endswith("script.googleusercontent.com")
             and not body.lstrip().startswith(("{", "["))
         )
