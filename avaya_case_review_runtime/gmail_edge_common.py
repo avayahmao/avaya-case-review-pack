@@ -76,7 +76,7 @@ def classify_response(
         or path == "/aad_login"
     ):
         return AuthState.AUTH_REQUIRED_MICROSOFT
-    if host == "accounts.google.com" or "servicelogin" in path:
+    if host == "accounts.google.com":
         return AuthState.AUTH_REQUIRED_GOOGLE
     if http_status is not None and http_status >= 400:
         return AuthState.APP_ERROR
@@ -92,8 +92,6 @@ def classify_response(
             return AuthState.APP_ERROR
         return AuthState.AUTHENTICATED
 
-    if "sign in" in body_prefix:
-        return AuthState.AUTH_REQUIRED_GOOGLE
     return AuthState.UNKNOWN
 
 

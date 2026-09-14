@@ -238,11 +238,35 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(page.goto_calls), 1)
         self.assertEqual(
             page.goto_calls[0][1],
-            {"wait_until": "commit", "timeout": 10_000},
+            {
+                "wait_until": "commit",
+                "timeout": gmail_edge_broker._SAFE_READ_NAVIGATION_TIMEOUT_MS,
+            },
         )
         self.assertEqual(page.text_calls, 1)
         self.assertLess(page.events.index("goto"), page.events.index("body"))
         await adapter.close()
+
+    def test_safe_read_budget_allows_slow_redirects_and_all_three_attempts(self):
+        navigation_seconds = (
+            gmail_edge_broker._SAFE_READ_NAVIGATION_TIMEOUT_MS / 1000
+        )
+        attempt_seconds = gmail_edge_broker._SAFE_READ_ATTEMPT_TIMEOUT_SECONDS
+        cleanup_seconds = gmail_edge_broker._PAGE_CLOSE_TIMEOUT_SECONDS
+        total_seconds = gmail_edge_broker._CONTENT_DELIVERY_ATTEMPTS * (
+            attempt_seconds + cleanup_seconds
+        )
+
+        self.assertGreater(navigation_seconds, 10)
+        self.assertLess(navigation_seconds, attempt_seconds)
+        self.assertLess(
+            total_seconds,
+            gmail_edge_broker._ADAPTER_EXECUTION_DEADLINE_SECONDS,
+        )
+        self.assertLess(
+            gmail_edge_broker._ADAPTER_EXECUTION_DEADLINE_SECONDS,
+            gmail_edge_broker.EXECUTION_TIMEOUT_SECONDS,
+        )
 
     async def test_maps_all_gmail_methods_and_creates_one_page_per_execute(self):
         pages = [FakePage(body=f'{{"response":{index}}}') for index in range(6)]
@@ -731,7 +755,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
                 self.goto_calls.append((url, kwargs))
 
                 async def delayed_timeout():
-                    delay = 0.005 if kwargs["timeout"] <= 10_000 else 0.6
+                    delay = 0.005 if kwargs["timeout"] <= 12_000 else 0.6
                     await asyncio.sleep(delay)
                     raise PlaywrightTimeoutError("navigation timed out")
 

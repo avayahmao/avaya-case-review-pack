@@ -44,6 +44,44 @@ class AuthClassificationTests(unittest.TestCase):
 
         self.assertIs(state, AuthState.APP_ERROR)
 
+    def test_does_not_classify_arbitrary_sign_in_body_as_google_login(self):
+        state = classify_response(
+            "https://example.invalid/help",
+            200,
+            "<html>Please sign in to continue</html>",
+        )
+
+        self.assertIs(state, AuthState.UNKNOWN)
+
+    def test_does_not_classify_arbitrary_servicelogin_path_as_google_login(self):
+        state = classify_response(
+            "https://example.invalid/ServiceLogin",
+            200,
+            "",
+        )
+
+        self.assertIs(state, AuthState.UNKNOWN)
+
+    def test_trusted_authentication_hosts_remain_classified(self):
+        cases = (
+            (
+                "https://accounts.google.com/ServiceLogin",
+                AuthState.AUTH_REQUIRED_GOOGLE,
+            ),
+            (
+                "https://login.microsoftonline.com/tenant/saml2",
+                AuthState.AUTH_REQUIRED_MICROSOFT,
+            ),
+            (
+                "https://tenant.access.mcas.ms/aad_login",
+                AuthState.AUTH_REQUIRED_MICROSOFT,
+            ),
+        )
+
+        for url, expected in cases:
+            with self.subTest(url=url):
+                self.assertIs(classify_response(url, 200, ""), expected)
+
     def test_classifies_apps_script_json(self):
         state = classify_response(
             "https://script.googleusercontent.com/macros/echo",
