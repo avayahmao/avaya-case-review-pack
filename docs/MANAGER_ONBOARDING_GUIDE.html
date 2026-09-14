@@ -61,7 +61,7 @@ The bootstrap provides the supported no-flag installer invocation.</p>
 </blockquote>
 <h3>What the Automated Script Does</h3>
 <ol>
-<li><strong>Installs Python Libraries</strong>: Installs <code>mcp</code> and <code>playwright</code>.</li>
+<li><strong>Installs Python Libraries</strong>: Installs the tested <code>mcp==1.28.1</code> package and <code>playwright</code>. The exact MCP pin prevents a fresh install from selecting MCP 2.x, which removed the server API used by this patch release.</li>
 <li><strong>Installs Playwright Chromium</strong>: Downloads Chromium only for the explicit <code>legacy_playwright</code> rollback path; default Gmail operation uses the single Managed Edge broker.</li>
 <li><strong>Deploys Plugins</strong>: Copies <code>plugins/avaya-case-review</code> to <code>C:\Users\&lt;username&gt;\.gemini\config\plugins\avaya-case-review</code>.</li>
 <li><strong>Deploys Gmail broker modules</strong>: Copies the broker, client, control CLI, thin MCP adapter, and explicit legacy backend into <code>C:\Users\&lt;username&gt;\.gemini\tools\gmail\</code>.</li>

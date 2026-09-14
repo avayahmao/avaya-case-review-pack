@@ -121,6 +121,7 @@
             <li>Publishes the stable installation contract: <code>git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack &lt;unique-temp-directory&gt;</code>, followed by <code>git describe --exact-match --tags HEAD</code>, inspection of <code>INSTALL.md</code>, and the selected no-flag installer. This does not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.</li>
             <li>Corrects incorrect skill-installer routing: the repository root is a Codex plugin marketplace, not a standalone skill, and end users are not instructed to search for a root <code>SKILL.md</code>.</li>
             <li>Removes the end-user manual Gmail cloud deployment gate. Maintainers deploy and verify the Apps Script bridge as a release gate; local installers perform release-attestation and live compatibility checks.</li>
+            <li>Pins fresh Codex and Antigravity installs to the tested <code>mcp==1.28.1</code> package so pip cannot select MCP 2.x, which removed the server API used by the v1.10.1 runtime.</li>
         </ul>
         <h3>Codex Runtime Launch Repair</h3>
         <ul>

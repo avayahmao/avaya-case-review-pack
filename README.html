@@ -251,6 +251,7 @@ git describe --exact-match --tags HEAD</code></pre>
         <li>Restart <strong>Antigravity</strong>.</li>
     </ol>
     <p><code>install.bat</code> is a thin wrapper that runs <code>powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1</code>, which is required because Windows PowerShell's default execution policy (<code>Restricted</code> / <code>AllSigned</code>) blocks unsigned <code>.ps1</code> files <em>before</em> any code inside the script can adjust the policy.</p>
+    <p>Fresh Codex and Antigravity installs require the tested <code>mcp==1.28.1</code> package. The exact pin prevents pip from selecting MCP 2.x, which removed the server API used by this patch release.</p>
 
     <p><strong>Manual (if you prefer to invoke PowerShell yourself):</strong></p>
 <pre>cd Path\To\avaya-case-review-pack

@@ -18,6 +18,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$McpDependencyRequirement = "mcp==1.28.1"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $WindowsCommonPath = Join-Path $ScriptDir "tools\installer\windows_common.ps1"
 if (-not (Test-Path -LiteralPath $WindowsCommonPath -PathType Leaf)) {
@@ -788,11 +789,11 @@ try {
             -Stage "dependency install" `
             -Command $PythonCommand `
             -Arguments (@(
-                "-m", "pip", "install", "mcp", "playwright", "setuptools>=68", "--quiet"
+                "-m", "pip", "install", $McpDependencyRequirement, "playwright", "setuptools>=68", "--quiet"
             ) + $PipTrustedHosts) `
             -TimeoutSeconds $TimeoutPipSeconds `
             -Environment $BrokerEnvironment
-        Write-Host "  Python packages installed successfully." -ForegroundColor Green
+        Write-Host "  Python packages installed successfully ($McpDependencyRequirement)." -ForegroundColor Green
 
         $OldNodeTls = $env:NODE_TLS_REJECT_UNAUTHORIZED
         try {

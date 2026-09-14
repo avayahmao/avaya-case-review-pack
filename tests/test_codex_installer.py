@@ -439,6 +439,9 @@ if ($args.Count -ge 3 -and $args[0] -eq "-m" -and $args[1] -eq "pip") {
             }
         } else {
             Add-TestEvent "dependency-install"
+            $PinnedMcpCount = @($args | Where-Object { [string]$_ -ceq "mcp==1.28.1" }).Count
+            $BareMcpCount = @($args | Where-Object { [string]$_ -ceq "mcp" }).Count
+            if ($PinnedMcpCount -ne 1 -or $BareMcpCount -ne 0) { exit 45 }
         }
         exit 0
     }

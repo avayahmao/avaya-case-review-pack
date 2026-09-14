@@ -40,6 +40,16 @@ URL_INSTALL_DOCS = (
     RELEASE_NOTES_MD,
     RELEASE_NOTES_HTML,
 )
+DEPENDENCY_CONTRACT_DOCS = (
+    README_MD,
+    README_HTML,
+    MANAGER_MD,
+    MANAGER_HTML,
+    TDD_MD,
+    TDD_HTML,
+    RELEASE_NOTES_MD,
+    RELEASE_NOTES_HTML,
+)
 
 
 def load_json(path: Path):
@@ -179,6 +189,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
             )
         self.assertEqual(0, dry_run.returncode, dry_run.stderr)
         self.assertIn("Ref:         v1.10.1", dry_run.stdout)
+        self.assertIn("mcp==1.28.1", dry_run.stdout)
         self.assertIn("Planned stage: new marketplace add", dry_run.stdout)
         self.assertIn("Planned stage: new plugin add", dry_run.stdout)
         self.assertIn("no state changes were made", dry_run.stdout)
@@ -229,6 +240,13 @@ class CodexPluginPackagingTests(unittest.TestCase):
         self.assertIn("restart Antigravity", install_contract)
         self.assertIn("End users do not deploy", install_contract)
         self.assertIn("production Case ID", install_contract)
+
+    def test_dependency_docs_publish_the_tested_mcp_pin(self):
+        for path in DEPENDENCY_CONTRACT_DOCS:
+            with self.subTest(document=path.name):
+                text = path.read_text(encoding="utf-8-sig")
+                self.assertIn("mcp==1.28.1", text)
+                self.assertIn("MCP 2.x", text)
 
     def test_readme_has_a_github_mermaid_workflow_and_html_equivalent(self):
         markdown = README_MD.read_text(encoding="utf-8")

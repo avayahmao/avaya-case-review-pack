@@ -112,6 +112,8 @@ flowchart TD
 
 `install.bat` is a thin wrapper that runs `powershell -NoProfile -ExecutionPolicy Bypass -File .\setup_env.ps1`, which is required because Windows PowerShell's default execution policy (`Restricted` / `AllSigned`) blocks unsigned `.ps1` files *before* any code inside the script can adjust the policy.
 
+Fresh Codex and Antigravity installs require the tested `mcp==1.28.1` package. The exact pin prevents pip from selecting MCP 2.x, which removed the server API used by this patch release.
+
 **Manual (if you prefer to invoke PowerShell yourself):**
 ```powershell
 cd Path\To\avaya-case-review-pack

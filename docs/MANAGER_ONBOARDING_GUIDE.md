@@ -62,7 +62,7 @@ Follow the v1.10.1 installer instructions only after exact-tag verification.
 
 ### What the Automated Script Does
 
-1. **Installs Python Libraries**: Installs `mcp` and `playwright`.
+1. **Installs Python Libraries**: Installs the tested `mcp==1.28.1` package and `playwright`. The exact MCP pin prevents a fresh install from selecting MCP 2.x, which removed the server API used by this patch release.
 2. **Installs Playwright Chromium**: Downloads Chromium only for the explicit `legacy_playwright` rollback path; default Gmail operation uses the single Managed Edge broker.
 3. **Deploys Plugins**: Copies `plugins/avaya-case-review` to `C:\Users\<username>\.gemini\config\plugins\avaya-case-review`.
 4. **Deploys Gmail broker modules**: Copies the broker, client, control CLI, thin MCP adapter, and explicit legacy backend into `C:\Users\<username>\.gemini\tools\gmail\`.

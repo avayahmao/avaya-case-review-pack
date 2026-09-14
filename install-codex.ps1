@@ -15,6 +15,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$McpDependencyRequirement = "mcp==1.28.1"
 
 . (Join-Path $PSScriptRoot "tools\installer\windows_common.ps1")
 
@@ -796,7 +797,7 @@ if ($DryRun) {
     foreach ($Stage in @(
         "validate release attestation", "check Python and Codex versions",
         "snapshot runtime, Codex, and broker state", "verify retained rollback wheel",
-        "install dependencies and build runtime wheel", "validate runtime wheel",
+        "install dependencies ($McpDependencyRequirement) and build runtime wheel", "validate runtime wheel",
         "install runtime wheel", "smoke runtime MCP modules", "stop prior broker",
         "verify-bridge", "new marketplace add",
         "new plugin add", "verify plugin identity, version, and MCP definitions"
@@ -862,7 +863,7 @@ try {
         }
     } else {
         $PipArguments = @(
-            "-m", "pip", "install", "mcp", "playwright", "setuptools>=68", "--quiet",
+            "-m", "pip", "install", $McpDependencyRequirement, "playwright", "setuptools>=68", "--quiet",
             "--trusted-host", "pypi.org", "--trusted-host", "pypi.python.org",
             "--trusted-host", "files.pythonhosted.org"
         )
@@ -870,7 +871,7 @@ try {
             -Stage "dependency install" `
             -Command "python" `
             -Arguments $PipArguments `
-            -Description "Installing Python MCP dependencies and the local build backend" `
+            -Description "Installing tested Python dependency $McpDependencyRequirement, Playwright, and the local build backend" `
             -TimeoutSeconds $TimeoutPipSeconds | Out-Null
 
         if ($IncludeLegacyChromium) {

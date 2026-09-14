@@ -426,7 +426,7 @@ function sendDailyManagerDigest() { ... }</pre>
 
 # 2. Dependency Installation (Chromium remains for explicit rollback)
 python -m pip install --upgrade pip
-pip install mcp playwright urllib3 requests python-pptx
+pip install mcp==1.28.1 playwright urllib3 requests python-pptx
 
 # 3. Playwright Chromium Browser Setup for legacy rollback
 playwright install chromium
@@ -436,6 +436,7 @@ playwright install chromium
 # Copies broker modules and configures GMAIL_BACKEND=edge_broker
 # Configures %USERPROFILE%\.gemini\config\mcp_config.json for CaseToMD & Gmail MCP servers
 # Checks broker status; runs gmail_brokerctl.py login only on exit code 10</pre>
+    <p>Both supported installers enforce the tested <code>mcp==1.28.1</code> requirement. This keeps fresh environments on the MCP 1.x server API used by the packaged runtime instead of selecting MCP 2.x, which removed that API.</p>
 
     <h2>6. Verification &amp; Validation Framework</h2>
     <ol>

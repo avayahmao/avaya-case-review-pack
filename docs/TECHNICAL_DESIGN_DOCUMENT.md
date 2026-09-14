@@ -268,7 +268,7 @@ The Antigravity setup path performs these local phases:
 
 # 2. Dependency Installation (Chromium remains for explicit rollback)
 python -m pip install --upgrade pip
-pip install mcp playwright urllib3 requests python-pptx
+pip install mcp==1.28.1 playwright urllib3 requests python-pptx
 
 # 3. Playwright Chromium Browser Setup for legacy rollback
 playwright install chromium
@@ -279,6 +279,8 @@ playwright install chromium
 # Configures %USERPROFILE%\.gemini\config\mcp_config.json for CaseToMD & Gmail MCP servers
 # Checks broker status; runs gmail_brokerctl.py login only on exit code 10
 ```
+
+Both supported installers enforce the tested `mcp==1.28.1` requirement. This keeps fresh environments on the MCP 1.x server API used by the packaged runtime instead of selecting MCP 2.x, which removed that API.
 
 ---
 
