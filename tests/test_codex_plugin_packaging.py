@@ -248,6 +248,16 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 self.assertIn("mcp==1.28.1", text)
                 self.assertIn("MCP 2.x", text)
 
+        expected_command = "pip install mcp==1.28.1 playwright setuptools>=68"
+        for path in (TDD_MD, TDD_HTML):
+            with self.subTest(dependency_command=path.name):
+                commands = [
+                    line.strip()
+                    for line in path.read_text(encoding="utf-8-sig").splitlines()
+                    if line.strip().startswith("pip install mcp")
+                ]
+                self.assertEqual([expected_command], commands)
+
     def test_readme_has_a_github_mermaid_workflow_and_html_equivalent(self):
         markdown = README_MD.read_text(encoding="utf-8")
         html = README_HTML.read_text(encoding="utf-8")

@@ -268,7 +268,7 @@ The Antigravity setup path performs these local phases:
 
 # 2. Dependency Installation (Chromium remains for explicit rollback)
 python -m pip install --upgrade pip
-pip install mcp==1.28.1 playwright urllib3 requests python-pptx
+pip install mcp==1.28.1 playwright setuptools>=68
 
 # 3. Playwright Chromium Browser Setup for legacy rollback
 playwright install chromium
