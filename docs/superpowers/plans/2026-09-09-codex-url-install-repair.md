@@ -1393,7 +1393,7 @@ state, credentials, and temporary test evidence. Do not add the ZIP to Git.
 After explicit release authorization:
 
 ```powershell
-gh release create v1.10.1 .\avaya-case-review-pack-v1.10.1.zip --title "Codex URL installation repair" --notes-file NOTES-v1.10.1.md --latest
+gh release create v1.10.1 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.10.1.md --latest
 gh release view v1.10.1
 ```
 

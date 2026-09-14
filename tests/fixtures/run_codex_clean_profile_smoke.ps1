@@ -44,6 +44,25 @@ $InstallerLog = Join-Path $TestRoot "installer.log"
 $Summary = $null
 $FixtureFiles = @()
 
+function Assert-NoReparsePointComponent {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$Entry
+    )
+
+    $CurrentPath = $Root
+    foreach ($Segment in $Entry.Split('/')) {
+        $CurrentPath = Join-Path $CurrentPath $Segment
+        if (-not (Test-Path -LiteralPath $CurrentPath)) {
+            continue
+        }
+        $Item = Get-Item -LiteralPath $CurrentPath -Force
+        if (($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq [IO.FileAttributes]::ReparsePoint) {
+            throw "Release manifest path contains a reparse point: $Entry"
+        }
+    }
+}
+
 function Get-ReleaseManifestFiles {
     param([Parameter(Mandatory = $true)][string]$Root)
 
@@ -76,6 +95,7 @@ function Get-ReleaseManifestFiles {
         if (-not $SourcePath.StartsWith($RootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Release manifest path resolves outside RepositoryRoot."
         }
+        Assert-NoReparsePointComponent -Root $Root -Entry $Entry
         if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
             throw "Release manifest path is missing or is not a file: $Entry"
         }

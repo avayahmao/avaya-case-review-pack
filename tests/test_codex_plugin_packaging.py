@@ -293,6 +293,29 @@ class CodexPluginPackagingTests(unittest.TestCase):
         checklist = RELEASE_CHECKLIST.read_text(encoding="utf-8-sig")
         self.assertNotIn("Build the ZIP strictly from `release-manifest.txt`", checklist)
 
+    def test_release_commands_publish_the_archive_built_by_the_tagged_checkout(self):
+        for path in (AGENTS, IMPLEMENTATION_PLAN, RELEASE_CHECKLIST):
+            with self.subTest(document=path.name):
+                content = path.read_text(encoding="utf-8-sig")
+                build_start = content.index("Build and verify the release ZIP")
+                publish_start = content.index("Publish", build_start)
+                build = content[build_start:publish_start]
+                publish = content[publish_start:]
+                assignment = re.search(r"(?m)^\s*(\$ArchivePath)\s*=", build)
+                self.assertIsNotNone(assignment)
+                archive_variable = assignment.group(1)
+                if path != AGENTS:
+                    self.assertIn(
+                        f"python - $ReleaseCheckout {archive_variable}",
+                        build,
+                    )
+                release_command = re.search(
+                    r"(?m)^\s*gh release create v1\.10\.1\s+(\S+)",
+                    publish,
+                )
+                self.assertIsNotNone(release_command)
+                self.assertEqual(archive_variable, release_command.group(1))
+
     def test_dependency_docs_publish_the_tested_mcp_pin(self):
         for path in DEPENDENCY_CONTRACT_DOCS:
             with self.subTest(document=path.name):

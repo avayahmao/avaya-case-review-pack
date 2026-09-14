@@ -179,6 +179,98 @@ foreach ($RelativePath in $ForbiddenFixturePaths) {
         summary = json.loads(result.stdout)
         self.assertCountEqual(entries, summary["fixture_files"])
 
+    def test_manifest_copy_rejects_unsafe_missing_and_reparse_entries(self):
+        def invoke(repository: Path, attestation: Path):
+            return subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(SMOKE_SCRIPT),
+                    "-RepositoryRoot",
+                    str(repository),
+                    "-MarketplaceRef",
+                    "candidate-sha",
+                    "-BridgeAttestationPath",
+                    str(attestation),
+                    "-Automated",
+                ],
+                cwd=repository.parent,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=20,
+                check=False,
+            )
+
+        with TemporaryDirectory() as temporary:
+            temporary_root = Path(temporary)
+            repository = temporary_root / "repository-input"
+            repository.mkdir()
+            attestation = temporary_root / "attestation.json"
+            attestation.write_text("{}", encoding="utf-8")
+            rooted_file = temporary_root / "rooted.txt"
+            rooted_file.write_text("outside", encoding="utf-8")
+            outside_file = temporary_root / "outside.txt"
+            outside_file.write_text("outside", encoding="utf-8")
+            nested_file = repository / "nested" / "file.txt"
+            nested_file.parent.mkdir()
+            nested_file.write_text("inside", encoding="utf-8")
+
+            cases = (
+                (rooted_file.resolve().as_posix(), "unsafe or duplicate"),
+                ("../outside.txt", "unsafe or duplicate"),
+                (r"nested\file.txt", "unsafe or duplicate"),
+                ("missing.txt", "missing or is not a file"),
+            )
+            for entry, expected_error in cases:
+                with self.subTest(entry=entry):
+                    (repository / "release-manifest.txt").write_text(
+                        entry + "\n", encoding="utf-8"
+                    )
+                    result = invoke(repository, attestation)
+                    self.assertNotEqual(0, result.returncode)
+                    self.assertIn(expected_error, result.stderr)
+
+            target = temporary_root / "junction-target"
+            target.mkdir()
+            (target / "file.txt").write_text("outside", encoding="utf-8")
+            junction = repository / "linked"
+            junction_script = temporary_root / "create-junction.ps1"
+            junction_script.write_text(
+                "param([string]$Link,[string]$Target)\n"
+                "New-Item -ItemType Junction -Path $Link -Target $Target | Out-Null\n",
+                encoding="utf-8",
+            )
+            junction_result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(junction_script),
+                    "-Link",
+                    str(junction),
+                    "-Target",
+                    str(target),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=20,
+                check=False,
+            )
+            self.assertEqual(0, junction_result.returncode, junction_result.stderr)
+            (repository / "release-manifest.txt").write_text(
+                "linked/file.txt\n", encoding="utf-8"
+            )
+            result = invoke(repository, attestation)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("reparse point", result.stderr.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -224,6 +224,7 @@ the candidate worktree. The exact executable procedure is maintained in
 `docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md`.
 
 ```powershell
+$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.10.1.zip"
 git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
 git -C $ReleaseCheckout checkout --detach v1.10.1
 git -C $ReleaseCheckout status --porcelain
