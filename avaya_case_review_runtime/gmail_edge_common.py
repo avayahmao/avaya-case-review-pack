@@ -83,11 +83,12 @@ def classify_response(
         return AuthState.APP_ERROR
 
     compact_body = "".join(body_prefix.split())
-    is_script_response = host.endswith("script.googleusercontent.com") or (
-        host.endswith("script.google.com")
-        and body.lstrip().startswith(("{", "["))
+    is_script_response = host.endswith("script.googleusercontent.com") or host.endswith(
+        "script.google.com"
     )
     if is_script_response:
+        if not body.lstrip().startswith(("{", "[")):
+            return AuthState.APP_ERROR
         if '"status":"error"' in compact_body:
             return AuthState.APP_ERROR
         return AuthState.AUTHENTICATED

@@ -221,7 +221,7 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(playwright.stop_calls, 1)
 
     async def test_maps_all_gmail_methods_and_creates_one_page_per_execute(self):
-        pages = [FakePage(body=f"response-{index}") for index in range(6)]
+        pages = [FakePage(body=f'{{"response":{index}}}') for index in range(6)]
         context = FakeContext(*pages)
         adapter, _starter, playwright = self.make_adapter(context)
         await adapter.start()
@@ -255,7 +255,14 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             results,
-            ["response-0", "response-1", "response-2", "response-3", "response-4", "response-5"],
+            [
+                '{"response":0}',
+                '{"response":1}',
+                '{"response":2}',
+                '{"response":3}',
+                '{"response":4}',
+                '{"response":5}',
+            ],
         )
         self.assertEqual(len(context.created_pages), 6)
         self.assertEqual(len(playwright.chromium.launches), 1)
@@ -292,12 +299,64 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         for page, (action, params) in zip(pages, expected):
             url = page.goto_calls[0][0]
             query = parse_qs(urlparse(url).query)
+            self.assertEqual(len(query.pop("cache_bust")), 1)
             self.assertEqual(query.pop("action"), [action])
             self.assertEqual(query, params)
             self.assertEqual(page.load_state_calls[0][0], "networkidle")
             self.assertLess(page.events.index("wait:networkidle"), page.events.index("body"))
             self.assertEqual(page.close_calls, 1)
 
+        await adapter.close()
+
+    async def test_execute_uses_unique_url_encoded_cache_busters_without_mutating_params(self):
+        pages = [FakePage(), FakePage()]
+        context = FakeContext(*pages)
+        nonces = iter(("navigation 1/2", "navigation 3/4"))
+        adapter, _starter, _playwright = self.make_adapter(
+            context,
+            nonce_factory=nonces.__next__,
+        )
+        params = {}
+        await adapter.start()
+
+        await adapter.execute("bridge_capabilities", params)
+        await adapter.execute("bridge_capabilities", params)
+
+        first_url, second_url = (page.goto_calls[0][0] for page in pages)
+        self.assertNotEqual(first_url, second_url)
+        self.assertIn("cache_bust=navigation+1%2F2", first_url)
+        self.assertEqual(params, {})
+        logical_queries = []
+        for url in (first_url, second_url):
+            query = parse_qs(urlparse(url).query)
+            self.assertEqual(len(query.pop("cache_bust")), 1)
+            logical_queries.append(query)
+        self.assertEqual(
+            logical_queries,
+            [
+                {"action": ["capabilities"]},
+                {"action": ["capabilities"]},
+            ],
+        )
+        self.assertEqual(
+            adapter._build_method_url("bridge_capabilities", params),
+            adapter._build_method_url("bridge_capabilities", params),
+        )
+        await adapter.close()
+
+    async def test_rejects_invalid_generated_cache_buster_before_navigation(self):
+        context = FakeContext(FakePage())
+        adapter, _starter, _playwright = self.make_adapter(
+            context,
+            nonce_factory=lambda: "   ",
+        )
+        await adapter.start()
+
+        with self.assertRaises(BrowserApplicationError) as raised:
+            await adapter.execute("gmail_search", {"query": "case"})
+
+        self.assertNotIn("cache_bust", str(raised.exception))
+        self.assertEqual(context.created_pages, [])
         await adapter.close()
 
     def test_bridge_capabilities_maps_to_parameter_free_cloud_action(self):
@@ -324,12 +383,16 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
             {"thread_id": "thread-1", "snapshot_before": "snapshot", "cursor": ""},
         )
 
+        first_query = parse_qs(urlparse(pages[0].goto_calls[0][0]).query)
+        self.assertEqual(len(first_query.pop("cache_bust")), 1)
         self.assertEqual(
-            parse_qs(urlparse(pages[0].goto_calls[0][0]).query),
+            first_query,
             {"action": ["list_threads"], "q": ["case"], "max_results": ["1"]},
         )
+        second_query = parse_qs(urlparse(pages[1].goto_calls[0][0]).query)
+        self.assertEqual(len(second_query.pop("cache_bust")), 1)
         self.assertEqual(
-            parse_qs(urlparse(pages[1].goto_calls[0][0]).query),
+            second_query,
             {
                 "action": ["read_thread_page"],
                 "thread_id": ["thread-1"],
@@ -347,16 +410,28 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         await adapter.execute("gmail_read", {"message_id": ""})
         await adapter.execute("gmail_send", {"to": "", "subject": "", "body": ""})
 
+        first_query = parse_qs(
+            urlparse(pages[0].goto_calls[0][0]).query, keep_blank_values=True
+        )
+        self.assertEqual(len(first_query.pop("cache_bust")), 1)
         self.assertEqual(
-            parse_qs(urlparse(pages[0].goto_calls[0][0]).query, keep_blank_values=True),
+            first_query,
             {"action": ["search"], "q": [""]},
         )
+        second_query = parse_qs(
+            urlparse(pages[1].goto_calls[0][0]).query, keep_blank_values=True
+        )
+        self.assertEqual(len(second_query.pop("cache_bust")), 1)
         self.assertEqual(
-            parse_qs(urlparse(pages[1].goto_calls[0][0]).query, keep_blank_values=True),
+            second_query,
             {"action": ["read"], "id": [""]},
         )
+        third_query = parse_qs(
+            urlparse(pages[2].goto_calls[0][0]).query, keep_blank_values=True
+        )
+        self.assertEqual(len(third_query.pop("cache_bust")), 1)
         self.assertEqual(
-            parse_qs(urlparse(pages[2].goto_calls[0][0]).query, keep_blank_values=True),
+            third_query,
             {"action": ["send"], "to": [""], "subject": [""], "body": [""]},
         )
         await adapter.close()
@@ -383,14 +458,14 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_returns_body_without_logging_it(self):
         sentinel = "PRIVATE_APPS_SCRIPT_RESPONSE_BODY"
-        page = FakePage(body=sentinel)
+        page = FakePage(body='{"payload":"' + sentinel + '"}')
         adapter, _starter, _playwright = self.make_adapter(FakeContext(page))
         await adapter.start()
 
         with patch.object(logging.Logger, "_log") as log_call:
             result = await adapter.execute("gmail_search", {"query": "case"})
 
-        self.assertEqual(result, sentinel)
+        self.assertEqual(result, '{"payload":"' + sentinel + '"}')
         self.assertNotIn(sentinel, repr(log_call.call_args_list))
         await adapter.close()
 
@@ -479,7 +554,7 @@ class ManagedEdgeAdapterLoginTests(unittest.IsolatedAsyncioTestCase):
         self.root = Path(self.temporary_directory.name)
         self.profile = self.root / "edge_broker_profile"
 
-    def make_adapter(self, *contexts, timeout=5.0, clock=None):
+    def make_adapter(self, *contexts, timeout=5.0, clock=None, **overrides):
         playwright = FakePlaywright(*contexts)
         starter = FakePlaywrightStarter(playwright)
         adapter = ManagedEdgeAdapter(
@@ -490,6 +565,7 @@ class ManagedEdgeAdapterLoginTests(unittest.IsolatedAsyncioTestCase):
             login_timeout_seconds=timeout,
             login_poll_interval_ms=100,
             clock=clock or FakeClock(),
+            **overrides,
         )
         return adapter, playwright
 
@@ -529,6 +605,32 @@ class ManagedEdgeAdapterLoginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(headful.close_calls, 1)
         await adapter.close()
         self.assertEqual(headless_after.close_calls, 1)
+
+    async def test_login_verification_navigation_uses_url_encoded_cache_buster(self):
+        login_page = FakePage(body='{"status":"success"}')
+        adapter, _playwright = self.make_adapter(
+            FakeContext(),
+            FakeContext(login_page),
+            FakeContext(),
+            nonce_factory=lambda: "login verification/1",
+        )
+        await adapter.start()
+
+        state = await adapter.interactive_login()
+
+        self.assertIs(state, AuthState.AUTHENTICATED)
+        url = login_page.goto_calls[0][0]
+        self.assertIn("cache_bust=login+verification%2F1", url)
+        query = parse_qs(urlparse(url).query)
+        self.assertEqual(query.pop("cache_bust"), ["login verification/1"])
+        self.assertEqual(
+            query,
+            {
+                "action": ["search"],
+                "q": ["subject:__avaya_gmail_edge_broker_verify__"],
+            },
+        )
+        await adapter.close()
 
     async def test_login_timeout_raises_auth_required_and_restores_headless(self):
         clock = FakeClock()
@@ -789,6 +891,23 @@ class BrokerLoginRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_headful_browser_error_keeps_restored_headless_owned(self):
         page = FakePage(goto_error=RuntimeError("headful browser crashed"))
         await self.assert_restored_headless_survives_login_error(page)
+
+    async def test_broker_never_returns_html_bridge_error_as_success(self):
+        error_page = FakePage(body="<html>Page Not Found</html>")
+        broker, adapter, _starter, _playwright = self.make_broker(
+            FakeContext(error_page),
+        )
+        try:
+            response = await broker._dispatch(
+                self.request("gmail_search", "html-error-id")
+            )
+
+            self.assertFalse(response.ok)
+            self.assertIs(response.error.code, BrokerErrorCode.APP_ERROR)
+            self.assertIsNone(response.result)
+        finally:
+            await broker._discard_browser()
+            await adapter.close()
 
     async def test_failed_headless_restore_is_discarded_and_next_read_restarts(self):
         restored_page = FakePage(body='{"status":"success","messages":[]}')

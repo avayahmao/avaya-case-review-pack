@@ -15,6 +15,7 @@ import sys
 import time
 import uuid
 from typing import Any, Callable, Protocol
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .bridge_identity import BROKER_BUILD_ID
 from .gmail_broker_protocol import (
@@ -61,6 +62,7 @@ APP_RESPONSE_TIMEOUT_MS = 30_000
 INTERACTIVE_LOGIN_TIMEOUT_SECONDS = 300
 LOGIN_POLL_INTERVAL_MS = 1_000
 LOGIN_VERIFY_QUERY = "subject:__avaya_gmail_edge_broker_verify__"
+_CACHE_BUSTER_PARAM = "cache_bust"
 
 _SAFE_READ_METHODS = frozenset(
     {
@@ -119,6 +121,12 @@ class BrowserAuthRequired(RuntimeError):
         super().__init__(message)
 
 
+def _default_nonce() -> str:
+    """Return a non-secret value which makes an Apps Script navigation fresh."""
+
+    return uuid.uuid4().hex
+
+
 class ManagedEdgeAdapter:
     """Own one persistent Managed Edge context for broker browser operations."""
 
@@ -134,6 +142,7 @@ class ManagedEdgeAdapter:
         login_timeout_seconds: float = INTERACTIVE_LOGIN_TIMEOUT_SECONDS,
         login_poll_interval_ms: int = LOGIN_POLL_INTERVAL_MS,
         clock: Callable[[], float] = time.monotonic,
+        nonce_factory: Callable[[], str] = _default_nonce,
     ) -> None:
         home = Path(
             user_home
@@ -158,6 +167,8 @@ class ManagedEdgeAdapter:
             raise ValueError("login_poll_interval_ms must be a positive integer")
         if not callable(clock):
             raise TypeError("clock must be callable")
+        if not callable(nonce_factory):
+            raise TypeError("nonce_factory must be callable")
 
         self._playwright_factory = playwright_factory
         self._app_script_url = app_script_url
@@ -168,6 +179,7 @@ class ManagedEdgeAdapter:
         )
         self._login_poll_interval_ms = login_poll_interval_ms
         self._clock = clock
+        self._nonce_factory = nonce_factory
         self._playwright: Any | None = None
         self._context: Any | None = None
 
@@ -192,7 +204,7 @@ class ManagedEdgeAdapter:
         context = self._context
         if context is None:
             raise BrowserAdapterError("Managed Edge is not started")
-        url = self._build_method_url(method, params)
+        url = self._navigation_url(self._build_method_url(method, params))
         page = None
         try:
             page = await context.new_page()
@@ -203,7 +215,10 @@ class ManagedEdgeAdapter:
             )
             http_status = response.status if response is not None else None
             early_state = classify_response(page.url, http_status, "")
-            self._raise_for_state(early_state)
+            if early_state in _AUTH_REQUIRED_STATES or (
+                http_status is not None and http_status >= 400
+            ):
+                self._raise_for_state(early_state)
             try:
                 await page.wait_for_load_state(
                     "networkidle",
@@ -248,7 +263,7 @@ class ManagedEdgeAdapter:
             headful_context = await self._launch_context(headless=False)
             page = await headful_context.new_page()
             response = await page.goto(
-                self._verification_url(),
+                self._navigation_url(self._verification_url()),
                 wait_until="domcontentloaded",
                 timeout=self._navigation_timeout_ms,
             )
@@ -354,6 +369,33 @@ class ManagedEdgeAdapter:
             "search",
             {"q": LOGIN_VERIFY_QUERY},
             base_url=self._app_script_url,
+        )
+
+    def _navigation_url(self, logical_url: str) -> str:
+        try:
+            nonce = self._nonce_factory()
+        except Exception as exc:
+            raise BrowserApplicationError(
+                "Unable to create a fresh Apps Script request"
+            ) from exc
+        if (
+            not isinstance(nonce, str)
+            or not nonce.strip()
+            or len(nonce) > 128
+        ):
+            raise BrowserApplicationError("Unable to create a fresh Apps Script request")
+
+        parsed = urlsplit(logical_url)
+        query = parse_qsl(parsed.query, keep_blank_values=True)
+        query.append((_CACHE_BUSTER_PARAM, nonce))
+        return urlunsplit(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                urlencode(query),
+                parsed.fragment,
+            )
         )
 
     def _build_method_url(self, method: str, params: dict[str, Any]) -> str:
