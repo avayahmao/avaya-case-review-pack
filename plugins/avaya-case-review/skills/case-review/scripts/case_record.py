@@ -214,11 +214,20 @@ def verify_final_output(
     root = resolve_data_dir(data_dir)
     paths = case_paths(root, normalize_case_id(case_id))
     try:
+        candidate = Path(candidate_path).read_text(encoding="utf-8-sig")
+    except FileNotFoundError as exc:
+        raise RecordError(f"final output artifact not found: {exc.filename}") from exc
+    return verify_chat_output_artifact(paths, candidate)
+
+
+def verify_chat_output_artifact(
+    paths: dict[str, Path], candidate: str
+) -> dict[str, Any]:
+    try:
         artifact = paths["chat_output"].read_text(encoding="utf-8")
         digest_line = paths["chat_output_sha256"].read_text(
             encoding="ascii"
         ).strip()
-        candidate = Path(candidate_path).read_text(encoding="utf-8-sig")
     except FileNotFoundError as exc:
         raise RecordError(f"final output artifact not found: {exc.filename}") from exc
     normalized_artifact = normalize_chat_output(artifact)
@@ -238,7 +247,7 @@ def verify_final_output(
         raise RecordError("final output integrity mismatch")
     return {
         "verified": True,
-        "case_id": normalize_case_id(case_id),
+        "case_id": paths["directory"].name,
         "artifact": str(paths["chat_output"]),
         "artifact_sha256": artifact_sha256,
         "candidate_sha256": candidate_sha256,
@@ -641,123 +650,142 @@ def migrate_record(record: dict[str, Any]) -> bool:
     return True
 
 
+def prepare_record_update(
+    normalized: dict[str, Any], existing: dict[str, Any] | None
+) -> tuple[dict[str, Any], dict[str, Any], bool, bool]:
+    migrated = migrate_record(existing) if existing else False
+    if existing and existing.get("case_id") != normalized["case_id"]:
+        raise RecordError("existing record case ID does not match the update")
+    review_key = canonical_hash(
+        {
+            "case_id": normalized["case_id"],
+            "snapshot_before": normalized["snapshot_before"],
+            "current": normalized["current"],
+            "coverage": normalized["coverage"],
+            "evidence_digest": normalized["evidence_digest"],
+            "presentation": normalized["presentation"],
+        }
+    )
+    if existing and any(
+        item.get("review_key") == review_key for item in existing["reviews"]
+    ):
+        result = {
+            "updated": False,
+            "reason": "duplicate review snapshot",
+            "delta": existing["reviews"][-1]["delta"],
+            "review_count": len(existing["reviews"]),
+            "is_first_review": len(existing["reviews"]) == 1,
+        }
+        return existing, result, migrated, False
+
+    if existing:
+        if parse_timestamp(normalized["reviewed_at"]) < parse_timestamp(
+            existing["updated_at"]
+        ):
+            raise RecordError("reviewed_at cannot move the case record backwards")
+        latest_snapshot = existing["reviews"][-1]["snapshot_before"]
+        if parse_timestamp(normalized["snapshot_before"]) <= parse_timestamp(
+            latest_snapshot
+        ):
+            raise RecordError("a follow-up requires a newer fresh snapshot_before")
+
+    previous = existing.get("current") if existing else None
+    prior_state = previous.get("administrative_state") if previous else None
+    current = dict(normalized["current"])
+    current["administrative_state"] = derive_administrative_state(
+        current["official_status"], prior_state
+    )
+    current["evidence_digest"] = normalized["evidence_digest"]
+    review_snapshot = None
+    if normalized["presentation"] is not None:
+        review_snapshot = {
+            "case_id": normalized["case_id"],
+            "current": current,
+            **normalized["presentation"],
+        }
+        try:
+            validate_snapshot(review_snapshot)
+        except PresentationError as exc:
+            raise RecordError(str(exc)) from exc
+    delta = compute_delta(previous, current, normalized["evidence_digest"])
+    review = {
+        "review_key": review_key,
+        "reviewed_at": normalized["reviewed_at"],
+        "snapshot_before": normalized["snapshot_before"],
+        "coverage": normalized["coverage"],
+        "current": current,
+        "delta": delta,
+    }
+    now = utc_now()
+    if existing:
+        record = existing
+        record["updated_at"] = normalized["reviewed_at"]
+        record["current"] = current
+        if review_snapshot is not None:
+            record["schema_version"] = SCHEMA_VERSION
+            record["review_snapshot"] = review_snapshot
+            record.pop("current_report_markdown", None)
+        elif normalized["full_review_markdown"] is not None:
+            record["current_report_markdown"] = normalized["full_review_markdown"]
+        record["reviews"].append(review)
+    else:
+        record = {
+            "schema_version": SCHEMA_VERSION,
+            "case_id": normalized["case_id"],
+            "created_at": normalized["reviewed_at"],
+            "updated_at": normalized["reviewed_at"],
+            "written_at": now,
+            "current": current,
+            "reviews": [review],
+            "learning": {
+                "option": "not_available",
+                "status": "not_started",
+                "target": "not selected",
+            },
+        }
+        if review_snapshot is not None:
+            record["review_snapshot"] = review_snapshot
+        elif normalized["full_review_markdown"] is not None:
+            record["current_report_markdown"] = normalized["full_review_markdown"]
+    record["written_at"] = now
+    record["learning"]["option"] = (
+        "available" if current["administrative_state"] == "closed" else "not_available"
+    )
+    suspend_learning = False
+    if current["administrative_state"] == "reopened":
+        if record["learning"]["status"] == "drafted":
+            record["learning"]["status"] = "paused_reopened"
+        elif record["learning"]["status"] == "applied":
+            suspend_learning = True
+            record["learning"]["status"] = "review_required_reopened"
+    result = {
+        "updated": True,
+        "administrative_state": current["administrative_state"],
+        "learning_option": record["learning"]["option"],
+        "delta": delta,
+        "review_count": len(record["reviews"]),
+        "is_first_review": len(record["reviews"]) == 1,
+    }
+    return record, result, True, suspend_learning
+
+
 def update_case_record(payload: Any, data_dir: str | Path | None = None) -> dict[str, Any]:
     normalized = validate_update_payload(payload)
     root = resolve_data_dir(data_dir)
     paths = case_paths(root, normalized["case_id"])
     with record_lock(paths["directory"]):
         existing = read_json(paths["json"]) if paths["json"].exists() else None
-        migrated = migrate_record(existing) if existing else False
-        if existing and existing.get("case_id") != normalized["case_id"]:
-            raise RecordError("existing record case ID does not match the update")
-        review_key = canonical_hash(
-            {
-                "case_id": normalized["case_id"],
-                "snapshot_before": normalized["snapshot_before"],
-                "current": normalized["current"],
-                "coverage": normalized["coverage"],
-                "evidence_digest": normalized["evidence_digest"],
-                "presentation": normalized["presentation"],
-            }
+        record, result, should_save, suspend_learning = prepare_record_update(
+            normalized, existing
         )
-        if existing and any(item.get("review_key") == review_key for item in existing["reviews"]):
-            if migrated:
-                save_record(paths, existing)
-            return {
-                "updated": False,
-                "reason": "duplicate review snapshot",
-                "record_json": str(paths["json"]),
-                "record_markdown": str(paths["markdown"]),
-                "delta": existing["reviews"][-1]["delta"],
-                "review_count": len(existing["reviews"]),
-                "is_first_review": len(existing["reviews"]) == 1,
-            }
-
-        if existing:
-            if parse_timestamp(normalized["reviewed_at"]) < parse_timestamp(existing["updated_at"]):
-                raise RecordError("reviewed_at cannot move the case record backwards")
-            latest_snapshot = existing["reviews"][-1]["snapshot_before"]
-            if parse_timestamp(normalized["snapshot_before"]) <= parse_timestamp(latest_snapshot):
-                raise RecordError("a follow-up requires a newer fresh snapshot_before")
-
-        previous = existing.get("current") if existing else None
-        prior_state = previous.get("administrative_state") if previous else None
-        current = dict(normalized["current"])
-        current["administrative_state"] = derive_administrative_state(
-            current["official_status"], prior_state
-        )
-        current["evidence_digest"] = normalized["evidence_digest"]
-        review_snapshot = None
-        if normalized["presentation"] is not None:
-            review_snapshot = {
-                "case_id": normalized["case_id"],
-                "current": current,
-                **normalized["presentation"],
-            }
-            try:
-                validate_snapshot(review_snapshot)
-            except PresentationError as exc:
-                raise RecordError(str(exc)) from exc
-        delta = compute_delta(previous, current, normalized["evidence_digest"])
-        review = {
-            "review_key": review_key,
-            "reviewed_at": normalized["reviewed_at"],
-            "snapshot_before": normalized["snapshot_before"],
-            "coverage": normalized["coverage"],
-            "current": current,
-            "delta": delta,
-        }
-        now = utc_now()
-        if existing:
-            record = existing
-            record["updated_at"] = normalized["reviewed_at"]
-            record["current"] = current
-            if review_snapshot is not None:
-                record["schema_version"] = SCHEMA_VERSION
-                record["review_snapshot"] = review_snapshot
-                record.pop("current_report_markdown", None)
-            elif normalized["full_review_markdown"] is not None:
-                record["current_report_markdown"] = normalized["full_review_markdown"]
-            record["reviews"].append(review)
-        else:
-            record = {
-                "schema_version": SCHEMA_VERSION,
-                "case_id": normalized["case_id"],
-                "created_at": normalized["reviewed_at"],
-                "updated_at": normalized["reviewed_at"],
-                "written_at": now,
-                "current": current,
-                "reviews": [review],
-                "learning": {
-                    "option": "not_available",
-                    "status": "not_started",
-                    "target": "not selected",
-                },
-            }
-            if review_snapshot is not None:
-                record["review_snapshot"] = review_snapshot
-            elif normalized["full_review_markdown"] is not None:
-                record["current_report_markdown"] = normalized["full_review_markdown"]
-        record["written_at"] = now
-        record["learning"]["option"] = (
-            "available" if current["administrative_state"] == "closed" else "not_available"
-        )
-        if current["administrative_state"] == "reopened":
-            if record["learning"]["status"] == "drafted":
-                record["learning"]["status"] = "paused_reopened"
-            elif record["learning"]["status"] == "applied":
+        if should_save:
+            if suspend_learning:
                 suspend_applied_learning(record)
-                record["learning"]["status"] = "review_required_reopened"
-        save_record(paths, record)
+            save_record(paths, record)
     return {
-        "updated": True,
+        **result,
         "record_json": str(paths["json"]),
         "record_markdown": str(paths["markdown"]),
-        "administrative_state": current["administrative_state"],
-        "learning_option": record["learning"]["option"],
-        "delta": delta,
-        "review_count": len(record["reviews"]),
-        "is_first_review": len(record["reviews"]) == 1,
     }
 
 
@@ -792,6 +820,58 @@ def present_case_record(
     return {
         **result,
         **artifact,
+        "record_json": str(paths["json"]),
+        "record_markdown": str(paths["markdown"]),
+        "review_count": len(record["reviews"]),
+    }
+
+
+def finalize_case_record(
+    payload: Any,
+    case_id: str,
+    request_text: str,
+    data_dir: str | Path | None = None,
+) -> dict[str, Any]:
+    requested_case_id = normalize_case_id(case_id)
+    if not isinstance(request_text, str) or not request_text.strip():
+        raise RecordError("request must be non-empty")
+    root = resolve_data_dir(data_dir)
+    paths = case_paths(root, requested_case_id)
+    with record_lock(paths["directory"]):
+        normalized = validate_update_payload(payload)
+        if normalized["case_id"] != requested_case_id:
+            raise RecordError("case ID argument does not match the update payload")
+        existing = read_json(paths["json"]) if paths["json"].exists() else None
+        record, update_result, should_save, suspend_learning = prepare_record_update(
+            normalized, existing
+        )
+        if record.get("schema_version") != SCHEMA_VERSION or not isinstance(
+            record.get("review_snapshot"), dict
+        ):
+            raise RecordError(
+                "record must be refreshed with a structured v2 review before presentation"
+            )
+        presentation = render_review(
+            request_text=request_text,
+            snapshot=record["review_snapshot"],
+            review_count=len(record["reviews"]),
+            delta=record["reviews"][-1]["delta"],
+            record_path=str(paths["markdown"]),
+        )
+        canonical_markdown = normalize_chat_output(presentation["markdown"])
+
+        if should_save:
+            if suspend_learning:
+                suspend_applied_learning(record)
+            save_record(paths, record)
+        artifact = write_chat_output_artifact(paths, canonical_markdown)
+        verification = verify_chat_output_artifact(paths, canonical_markdown)
+
+    return {
+        **update_result,
+        **presentation,
+        **artifact,
+        "verification": verification,
         "record_json": str(paths["json"]),
         "record_markdown": str(paths["markdown"]),
         "review_count": len(record["reviews"]),
@@ -1058,6 +1138,13 @@ def build_parser() -> argparse.ArgumentParser:
     update = subparsers.add_parser("update", help="Create or update a case record")
     update.add_argument("--input", required=True, help="Complete-review JSON payload")
 
+    finalize = subparsers.add_parser(
+        "finalize", help="Validate, persist, render, and verify a complete review"
+    )
+    finalize.add_argument("--input", required=True, help="Complete-review JSON payload")
+    finalize.add_argument("--case-id", required=True)
+    finalize.add_argument("--request", required=True, help="Original user request text")
+
     show = subparsers.add_parser("show", help="Print an existing Markdown record")
     show.add_argument("--case-id", required=True)
 
@@ -1103,6 +1190,14 @@ def main() -> int:
         if args.command == "update":
             result = update_case_record(load_payload(args.input), root)
             print(json.dumps(result, ensure_ascii=False, indent=2))
+        elif args.command == "finalize":
+            result = finalize_case_record(
+                load_payload(args.input),
+                args.case_id,
+                args.request,
+                root,
+            )
+            sys.stdout.buffer.write(result["markdown"].encode("utf-8"))
         elif args.command == "show":
             paths = case_paths(root, args.case_id)
             print(paths["markdown"].read_text(encoding="utf-8"), end="")

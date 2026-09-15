@@ -105,12 +105,10 @@ The durable-record payload keeps the existing `current`, `coverage`, and `eviden
 After building the UTF-8 payload:
 
 ```text
-python <skill-directory>/scripts/case_record.py update --input <payload.json>
-python <skill-directory>/scripts/case_record.py present --case-id <Case ID> --request "<original user request>" --markdown-only
-python <skill-directory>/scripts/case_record.py verify-final --case-id <Case ID> --input <candidate-final.md>
+python <skill-directory>/scripts/case_record.py finalize --input <payload.json> --case-id <Case ID> --request "<original user request>"
 ```
 
-`present --markdown-only` emits only the canonical Markdown, writes `chat-output.md`, and writes its SHA-256 to `chat-output.sha256`. Put that exact proposed final response in a UTF-8 candidate file and run `verify-final` before completion. Return the verified candidate unchanged; do not manually shorten, expand, rewrite, or append a second report. A missing artifact, invalid artifact hash, or normalized mismatch must block completion. Normalization permits line-ending and final-newline transport differences only. JSON-mode `present` retains the auditable `mode` and `visual` fields.
+`finalize` performs validation, the idempotent update, deterministic rendering, artifact/hash writes, and internal verification under one per-case lock. It emits only the verified canonical Markdown. Return stdout unchanged; do not manually shorten, expand, rewrite, or append a second report. A validation, rendering, write, hash, or verification failure must block completion without a partial record mutation. The backward-compatible `update`, `present --markdown-only`, and `verify-final` commands remain supported. JSON-mode `present` retains the auditable `mode` and `visual` fields.
 
 ## Non-Negotiable Acceptance
 
