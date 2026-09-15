@@ -1,6 +1,7 @@
 import importlib.util
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -176,6 +177,80 @@ def durable_bytes(directory):
 
 
 class CaseRecordTests(unittest.TestCase):
+    def test_finalize_write_failures_restore_every_existing_file(self):
+        for target_name in (
+            "record.json",
+            "record.md",
+            "chat-output.md",
+            "chat-output.sha256",
+        ):
+            with self.subTest(target=target_name), TemporaryDirectory() as temporary:
+                case_record.finalize_case_record(
+                    structured_payload(),
+                    "1-23700000001",
+                    "Review 1-23700000001",
+                    temporary,
+                )
+                before = durable_bytes(temporary)
+                follow_up = structured_payload(
+                    reviewed_at="2026-08-21T01:00:00Z",
+                    snapshot="2026-08-21T00:59:00Z",
+                    assignee="Engineer B",
+                )
+                original_replace = case_record.os.replace
+                injected = False
+
+                def fail_one_target(source, destination):
+                    nonlocal injected
+                    if not injected and Path(destination).name == target_name:
+                        injected = True
+                        raise OSError(f"injected {target_name} write failure")
+                    return original_replace(source, destination)
+
+                with patch.object(case_record.os, "replace", side_effect=fail_one_target):
+                    with self.assertRaisesRegex(OSError, f"injected {re.escape(target_name)}"):
+                        case_record.finalize_case_record(
+                            follow_up,
+                            "1-23700000001",
+                            "Review 1-23700000001",
+                            temporary,
+                        )
+
+                self.assertTrue(injected)
+                self.assertEqual(before, durable_bytes(temporary))
+
+    def test_finalize_verification_failure_restores_every_existing_file(self):
+        with TemporaryDirectory() as temporary:
+            case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+            follow_up = structured_payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+                assignee="Engineer B",
+            )
+
+            with patch.object(
+                case_record,
+                "verify_chat_output_artifact",
+                side_effect=case_record.RecordError("injected verification failure"),
+            ):
+                with self.assertRaisesRegex(
+                    case_record.RecordError, "injected verification failure"
+                ):
+                    case_record.finalize_case_record(
+                        follow_up,
+                        "1-23700000001",
+                        "Review 1-23700000001",
+                        temporary,
+                    )
+
+            self.assertEqual(before, durable_bytes(temporary))
+
     def test_finalize_first_review_emits_one_verified_canonical_markdown(self):
         with TemporaryDirectory() as temporary:
             input_path = write_payload(temporary, structured_payload())

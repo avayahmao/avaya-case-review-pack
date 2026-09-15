@@ -52,3 +52,29 @@ Updated canonical Step 8, the output-mode command contract, and the durable reco
 ## Concerns
 
 A repository-wide `unittest discover` run was started but did not complete within the bounded observation window because the broader integration suite remained active; it was stopped. No failure appeared in the output observed before stopping. Task-focused lifecycle, presenter, and contract suites are green.
+
+## Fix round 1
+
+Review identified that the first implementation used atomic replacement per file but did not provide transaction-level rollback across `record.json`, `record.md`, `chat-output.md`, and `chat-output.sha256`. A failure after an earlier replacement could therefore leave a mixed durable state.
+
+The finalizer now stages every changed output before replacement, retains per-target backups through internal verification, and restores the exact prior files on any replacement or verification exception. Reopened-case learning-overlay suspension is included in the same staged transaction when applicable. Legacy single-file command behavior remains unchanged.
+
+RED was observed with injected failures at `record.md`, `chat-output.md`, `chat-output.sha256`, and final verification: the previous implementation left changed durable bytes in all four failing scenarios. The `record.json` boundary was also exercised and already failed before mutation.
+
+GREEN focused command:
+
+```text
+python -m unittest tests.test_case_record
+```
+
+Result: `Ran 24 tests ... OK`.
+
+Regression command:
+
+```text
+python -m unittest tests.test_case_record tests.test_case_review_presentation tests.test_case_review_contract
+```
+
+Result: `Ran 103 tests ... OK`.
+
+The obsolete lifecycle sentence instructing callers to return a separate verified candidate was removed; `finalize` stdout remains the sole canonical response.

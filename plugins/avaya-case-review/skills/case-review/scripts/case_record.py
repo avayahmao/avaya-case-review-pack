@@ -15,7 +15,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -279,6 +279,68 @@ def atomic_write(path: Path, content: str) -> None:
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def transactional_write(
+    outputs: list[tuple[Path, str]], verify: Callable[[], Any]
+) -> Any:
+    targets = [path for path, _ in outputs]
+    if len(set(targets)) != len(targets):
+        raise RecordError("transaction contains duplicate output paths")
+    staged: dict[Path, Path] = {}
+    backups: dict[Path, Path] = {}
+    installed: set[Path] = set()
+    try:
+        for path, content in outputs:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temporary_name = tempfile.mkstemp(
+                dir=path.parent, prefix=f".{path.name}.", suffix=".stage"
+            )
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(
+                    descriptor, "w", encoding="utf-8", newline="\n"
+                ) as handle:
+                    handle.write(content)
+            except Exception:
+                temporary.unlink(missing_ok=True)
+                raise
+            staged[path] = temporary
+
+        try:
+            for path in targets:
+                temporary = staged[path]
+                if path.exists():
+                    backup = Path(f"{temporary}.backup")
+                    os.replace(path, backup)
+                    backups[path] = backup
+                os.replace(temporary, path)
+                installed.add(path)
+            result = verify()
+        except Exception as exc:
+            rollback_errors: list[str] = []
+            for path in reversed(targets):
+                backup = backups.get(path)
+                try:
+                    if backup is not None and backup.exists():
+                        os.replace(backup, path)
+                    elif path in installed:
+                        path.unlink(missing_ok=True)
+                except OSError as rollback_exc:
+                    rollback_errors.append(f"{path}: {rollback_exc}")
+            if rollback_errors:
+                raise RecordError(
+                    "finalization rollback failed; recovery files were retained: "
+                    + "; ".join(rollback_errors)
+                ) from exc
+            raise
+        else:
+            for backup in backups.values():
+                backup.unlink(missing_ok=True)
+            return result
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
@@ -859,13 +921,41 @@ def finalize_case_record(
             record_path=str(paths["markdown"]),
         )
         canonical_markdown = normalize_chat_output(presentation["markdown"])
-
+        digest = hashlib.sha256(canonical_markdown.encode("utf-8")).hexdigest()
+        outputs: list[tuple[Path, str]] = []
         if should_save:
-            if suspend_learning:
-                suspend_applied_learning(record)
-            save_record(paths, record)
-        artifact = write_chat_output_artifact(paths, canonical_markdown)
-        verification = verify_chat_output_artifact(paths, canonical_markdown)
+            outputs.extend(
+                [
+                    (
+                        paths["json"],
+                        json.dumps(record, ensure_ascii=False, indent=2) + "\n",
+                    ),
+                    (paths["markdown"], render_record(record)),
+                ]
+            )
+        outputs.extend(
+            [
+                (paths["chat_output"], canonical_markdown),
+                (
+                    paths["chat_output_sha256"],
+                    f"{digest}  {paths['chat_output'].name}\n",
+                ),
+            ]
+        )
+        if suspend_learning:
+            learning_output = suspended_learning_output(record)
+            if learning_output is not None:
+                outputs.append(learning_output)
+        verification = transactional_write(
+            outputs,
+            lambda: verify_chat_output_artifact(paths, canonical_markdown),
+        )
+        artifact = {
+            "markdown": canonical_markdown,
+            "chat_output": str(paths["chat_output"]),
+            "chat_output_sha256": digest,
+            "chat_output_sha256_file": str(paths["chat_output_sha256"]),
+        }
 
     return {
         **update_result,
@@ -1053,18 +1143,25 @@ def set_overlay_entry_state(content: str, fingerprint: str, state: str) -> tuple
 
 
 def suspend_applied_learning(record: dict[str, Any]) -> None:
+    output = suspended_learning_output(record)
+    if output is not None:
+        atomic_write(*output)
+
+
+def suspended_learning_output(record: dict[str, Any]) -> tuple[Path, str] | None:
     learning = record.get("learning", {})
     overlay_value = learning.get("overlay")
     fingerprint = learning.get("fingerprint")
     if not isinstance(overlay_value, str) or not isinstance(fingerprint, str):
-        return
+        return None
     overlay = Path(overlay_value)
     if not overlay.is_file():
-        return
+        return None
     content = overlay.read_text(encoding="utf-8")
     updated, changed = set_overlay_entry_state(content, fingerprint, "suspended")
     if changed:
-        atomic_write(overlay, updated)
+        return overlay, updated
+    return None
 
 
 def apply_learning(
