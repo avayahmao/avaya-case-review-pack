@@ -13,6 +13,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Callable
 
+from .bridge_identity import BROKER_BUILD_ID
 from .gmail_broker_protocol import (
     MAX_FRAME_BYTES,
     PROTOCOL_VERSION,
@@ -59,6 +60,14 @@ class BrokerUnavailable(BrokerClientError):
 class BrokerProtocolMismatch(BrokerClientError):
     def __init__(self, message: str = "Gmail Edge broker protocol mismatch") -> None:
         super().__init__("BROKER_PROTOCOL_MISMATCH", message)
+
+
+class BrokerBuildMismatch(BrokerClientError):
+    def __init__(
+        self,
+        message: str = "Gmail Edge broker build does not match this runtime",
+    ) -> None:
+        super().__init__("BROKER_BUILD_MISMATCH", message)
 
 
 class BrokerClient:
@@ -124,6 +133,8 @@ class BrokerClient:
             raise BrokerProtocolMismatch()
         if is_stale_state(state, process_exists=self._process_exists):
             return None
+        if state.build_id != BROKER_BUILD_ID:
+            raise BrokerBuildMismatch()
         return state
 
     def _discover_healthy_state(self, deadline: float) -> BrokerState | None:
@@ -370,6 +381,7 @@ __all__ = [
     "CLIENT_TIMEOUT_SECONDS",
     "POLL_INTERVAL_SECONDS",
     "STARTUP_TIMEOUT_SECONDS",
+    "BrokerBuildMismatch",
     "BrokerClient",
     "BrokerClientError",
     "BrokerProtocolMismatch",

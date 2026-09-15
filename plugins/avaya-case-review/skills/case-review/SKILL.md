@@ -271,7 +271,7 @@ Do not draft a report while analyzing. Build one structured, evidence-backed cas
 3. Set RCA, mitigation maturity, production outcome, ownership, and checkpoint fields.
 4. Build the fixed Technical Specification fields and assign an allowed proof state to each.
 5. Build milestones, timeline, evidence register, and visual context from evidence only.
-6. Route and render the presentation only after persistence succeeds.
+6. Route and render the presentation only during finalization, after the complete payload validates and before its durable files are replaced.
 
 Read [output-modes.md](references/output-modes.md) before building the presentation payload. It defines `standard`, `compact`, `follow-up`, `technical`, `flow`, and `full` modes, proof states, adaptive visual rules, and length limits.
 
@@ -333,12 +333,10 @@ Use `UNKNOWN`, `NOT OBSERVED`, `NOT COLLECTED`, and `NOT APPLICABLE` precisely. 
 Read [case-record-lifecycle.md](references/case-record-lifecycle.md), write the UTF-8 payload, and run:
 
 ```text
-python <skill-directory>/scripts/case_record.py update --input <payload.json>
-python <skill-directory>/scripts/case_record.py present --case-id <Case ID> --request "<original user request>" --markdown-only
-python <skill-directory>/scripts/case_record.py verify-final --case-id <Case ID> --input <candidate-final.md>
+python <skill-directory>/scripts/case_record.py finalize --input <payload.json> --case-id <Case ID> --request "<original user request>"
 ```
 
-`present --markdown-only` writes `chat-output.md` plus `chat-output.sha256` and emits the canonical Markdown directly. Put the exact proposed final Markdown in a UTF-8 candidate file, run `verify-final`, and return the verified candidate unchanged. Do not manually shorten, expand, rewrite, or append a second report. A missing artifact, invalid artifact hash, or mismatch blocks completion. JSON-mode `present` retains `mode` and `visual` as the auditable presentation decision.
+`finalize` validates the complete payload, performs the idempotent record update, renders the deterministic response, writes `chat-output.md` plus `chat-output.sha256`, and verifies the stored artifact under one per-case lock. It emits the exact verified canonical Markdown once; return that stdout unchanged. Do not manually shorten, expand, rewrite, or append a second report. Any validation, rendering, write, hash, or verification mismatch blocks completion. The backward-compatible `case_record.py update`, `case_record.py present --markdown-only`, and `case_record.py verify-final` commands remain available for existing integrations and diagnostics, but the normal new/follow-up workflow uses `finalize`. JSON-mode `present` retains `mode` and `visual` as the auditable presentation decision.
 For follow-ups, use the helper-computed delta returned from the stored record; never reconstruct changes from conversational memory.
 
 Do not persist when context collection is incomplete, the evidence gate fails, or the result is exactly `unknown`. If persistence fails, state `Case record update failed` with the sanitized error and do not claim continuity succeeded.

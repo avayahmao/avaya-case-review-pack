@@ -1,11 +1,13 @@
 import importlib.util
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,7 +154,259 @@ def presentation_payload():
     }
 
 
+def structured_payload(**kwargs):
+    value = payload(**kwargs)
+    value.pop("full_review_markdown")
+    value["presentation"] = presentation_payload()
+    return value
+
+
+def write_payload(directory, value, name="payload.json"):
+    path = Path(directory) / name
+    path.write_text(json.dumps(value), encoding="utf-8")
+    return path
+
+
+def durable_bytes(directory):
+    case_dir = Path(directory) / "case-records" / "1-23700000001"
+    return {
+        path.name: path.read_bytes()
+        for path in case_dir.iterdir()
+        if path.is_file()
+    }
+
+
 class CaseRecordTests(unittest.TestCase):
+    def test_finalize_write_failures_restore_every_existing_file(self):
+        for target_name in (
+            "record.json",
+            "record.md",
+            "chat-output.md",
+            "chat-output.sha256",
+        ):
+            with self.subTest(target=target_name), TemporaryDirectory() as temporary:
+                case_record.finalize_case_record(
+                    structured_payload(),
+                    "1-23700000001",
+                    "Review 1-23700000001",
+                    temporary,
+                )
+                before = durable_bytes(temporary)
+                follow_up = structured_payload(
+                    reviewed_at="2026-08-21T01:00:00Z",
+                    snapshot="2026-08-21T00:59:00Z",
+                    assignee="Engineer B",
+                )
+                original_replace = case_record.os.replace
+                injected = False
+
+                def fail_one_target(source, destination):
+                    nonlocal injected
+                    if not injected and Path(destination).name == target_name:
+                        injected = True
+                        raise OSError(f"injected {target_name} write failure")
+                    return original_replace(source, destination)
+
+                with patch.object(case_record.os, "replace", side_effect=fail_one_target):
+                    with self.assertRaisesRegex(OSError, f"injected {re.escape(target_name)}"):
+                        case_record.finalize_case_record(
+                            follow_up,
+                            "1-23700000001",
+                            "Review 1-23700000001",
+                            temporary,
+                        )
+
+                self.assertTrue(injected)
+                self.assertEqual(before, durable_bytes(temporary))
+
+    def test_finalize_verification_failure_restores_every_existing_file(self):
+        with TemporaryDirectory() as temporary:
+            case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+            follow_up = structured_payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+                assignee="Engineer B",
+            )
+
+            with patch.object(
+                case_record,
+                "verify_chat_output_artifact",
+                side_effect=case_record.RecordError("injected verification failure"),
+            ):
+                with self.assertRaisesRegex(
+                    case_record.RecordError, "injected verification failure"
+                ):
+                    case_record.finalize_case_record(
+                        follow_up,
+                        "1-23700000001",
+                        "Review 1-23700000001",
+                        temporary,
+                    )
+
+            self.assertEqual(before, durable_bytes(temporary))
+
+    def test_finalize_first_review_emits_one_verified_canonical_markdown(self):
+        with TemporaryDirectory() as temporary:
+            input_path = write_payload(temporary, structured_payload())
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--data-dir",
+                    temporary,
+                    "finalize",
+                    "--input",
+                    str(input_path),
+                    "--case-id",
+                    "1-23700000001",
+                    "--request",
+                    "Review 1-23700000001",
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+            case_dir = Path(temporary) / "case-records" / "1-23700000001"
+            artifact = case_dir / "chat-output.md"
+            digest_file = case_dir / "chat-output.sha256"
+            self.assertEqual(completed.stdout, artifact.read_bytes())
+            self.assertEqual(1, completed.stdout.count(b"# Case Card - 1-23700000001"))
+            self.assertEqual(
+                f"{hashlib.sha256(completed.stdout).hexdigest()}  chat-output.md\n",
+                digest_file.read_text(encoding="ascii"),
+            )
+            record = json.loads((case_dir / "record.json").read_text(encoding="utf-8"))
+            self.assertEqual(1, len(record["reviews"]))
+
+    def test_finalize_exact_retry_is_idempotent(self):
+        with TemporaryDirectory() as temporary:
+            value = structured_payload()
+            first = case_record.finalize_case_record(
+                value,
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+
+            second = case_record.finalize_case_record(
+                value,
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+
+            self.assertTrue(first["updated"])
+            self.assertTrue(first["verification"]["verified"])
+            self.assertFalse(second["updated"])
+            self.assertEqual("duplicate review snapshot", second["reason"])
+            self.assertEqual(first["markdown"], second["markdown"])
+            self.assertEqual(before, durable_bytes(temporary))
+
+    def test_finalize_rejects_divergent_same_snapshot_without_mutation(self):
+        with TemporaryDirectory() as temporary:
+            case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+            changed = structured_payload(assignee="Engineer B")
+
+            with self.assertRaisesRegex(case_record.RecordError, "newer fresh snapshot"):
+                case_record.finalize_case_record(
+                    changed,
+                    "1-23700000001",
+                    "Review 1-23700000001",
+                    temporary,
+                )
+
+            self.assertEqual(before, durable_bytes(temporary))
+
+    def test_finalize_rejects_incomplete_payload_without_mutation(self):
+        with TemporaryDirectory() as temporary:
+            case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+            incomplete = structured_payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+            )
+            incomplete["collection_status"] = "incomplete"
+
+            with self.assertRaisesRegex(case_record.RecordError, "only after complete"):
+                case_record.finalize_case_record(
+                    incomplete,
+                    "1-23700000001",
+                    "Review 1-23700000001",
+                    temporary,
+                )
+
+            self.assertEqual(before, durable_bytes(temporary))
+
+    def test_finalize_matches_update_then_present_byte_for_byte(self):
+        with TemporaryDirectory() as temporary:
+            value = structured_payload()
+            case_record.update_case_record(value, temporary)
+            legacy = case_record.present_case_record(
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+                write_chat_output=True,
+            )
+            expected = Path(legacy["chat_output"]).read_bytes()
+
+            finalized = case_record.finalize_case_record(
+                value,
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+
+            self.assertEqual(expected, finalized["markdown"].encode("utf-8"))
+            self.assertEqual(expected, Path(finalized["chat_output"]).read_bytes())
+
+    def test_finalize_render_failure_leaves_existing_files_unchanged(self):
+        with TemporaryDirectory() as temporary:
+            case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+            follow_up = structured_payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+            )
+
+            with patch.object(
+                case_record,
+                "render_review",
+                side_effect=case_record.PresentationError("render failed"),
+            ):
+                with self.assertRaisesRegex(case_record.PresentationError, "render failed"):
+                    case_record.finalize_case_record(
+                        follow_up,
+                        "1-23700000001",
+                        "Review 1-23700000001",
+                        temporary,
+                    )
+
+            self.assertEqual(before, durable_bytes(temporary))
+
     def test_skill_and_release_include_the_lifecycle_resources(self):
         skill = SKILL.read_text(encoding="utf-8-sig")
         lifecycle = LIFECYCLE.read_text(encoding="utf-8-sig")

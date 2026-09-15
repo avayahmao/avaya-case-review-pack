@@ -598,6 +598,30 @@ LIFECYCLE_COUNTER_FIELDS = frozenset(
         "uptime_seconds",
     }
 )
+TELEMETRY_COUNTER_FIELDS = frozenset(
+    {
+        "session_sequence",
+        "run_sequence",
+        "retry_count",
+        "requested_count",
+        "result_count",
+        "response_bytes",
+        "service_ms",
+        "thread_count",
+        "segment_count",
+        "message_count",
+        "messages_completed",
+        "chunk_count",
+    }
+)
+TELEMETRY_ENUM_FIELDS = frozenset(
+    {
+        "session_state",
+        "page_phase",
+        "retry_reason",
+        "timeout_reason",
+    }
+)
 ALLOWED_LOG_FIELDS = frozenset(
     {
         "timestamp",
@@ -610,18 +634,34 @@ ALLOWED_LOG_FIELDS = frozenset(
         "queue_wait_ms",
         "queue_depth",
     }
-) | LIFECYCLE_COUNTER_FIELDS
+) | LIFECYCLE_COUNTER_FIELDS | TELEMETRY_COUNTER_FIELDS | TELEMETRY_ENUM_FIELDS
 _CALLER_LOG_FIELDS = ALLOWED_LOG_FIELDS - {"timestamp", "level", "event"}
 _NUMERIC_LOG_FIELDS = frozenset(
     {"elapsed_ms", "queue_wait_ms", "queue_depth"}
-) | LIFECYCLE_COUNTER_FIELDS
+) | LIFECYCLE_COUNTER_FIELDS | TELEMETRY_COUNTER_FIELDS
 _LOG_FIELD_ORDER = (
+    "session_sequence",
+    "run_sequence",
     "request_id",
     "method",
     "result_code",
+    "session_state",
+    "page_phase",
+    "retry_count",
+    "retry_reason",
+    "timeout_reason",
     "elapsed_ms",
     "queue_wait_ms",
+    "service_ms",
     "queue_depth",
+    "requested_count",
+    "result_count",
+    "response_bytes",
+    "thread_count",
+    "segment_count",
+    "message_count",
+    "messages_completed",
+    "chunk_count",
     "request_count",
     "browser_start_count",
     "browser_crash_count",
@@ -637,9 +677,26 @@ _LEVELS = {
     "CRITICAL": logging.CRITICAL,
 }
 _EVENT_PATTERN = re.compile(r"[a-z][a-z0-9_.-]{0,63}\Z")
-_REQUEST_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+_REQUEST_ID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-"
+    r"[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\Z"
+)
 _METHOD_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _RESULT_CODE_PATTERN = re.compile(r"[A-Z][A-Z0-9_]{0,63}\Z")
+_TELEMETRY_ENUM_VALUES = {
+    "session_state": frozenset({"COLD", "WARM"}),
+    "page_phase": frozenset({"FIRST_PAGE", "CONTINUATION"}),
+    "retry_reason": frozenset(
+        {
+            "NONE",
+            "BROWSER_ERROR",
+            "NAVIGATION_TIMEOUT",
+            "CONTENT_DELIVERY",
+            "MULTIPLE",
+        }
+    ),
+    "timeout_reason": frozenset({"NONE", "QUEUE_WAIT", "EXECUTION", "ADAPTER"}),
+}
 
 
 class UnsafeLogFieldError(ValueError):
@@ -772,6 +829,10 @@ class SanitizedRotatingLogger:
         if field in _NUMERIC_LOG_FIELDS:
             if type(value) is not int or value < 0:
                 raise ValueError(f"{field} must be a non-negative integer")
+            return
+        if field in TELEMETRY_ENUM_FIELDS:
+            if value not in _TELEMETRY_ENUM_VALUES[field]:
+                raise ValueError(f"{field} is not a safe telemetry value")
             return
         pattern = {
             "request_id": _REQUEST_ID_PATTERN,

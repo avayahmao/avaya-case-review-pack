@@ -33,9 +33,7 @@ Reading prior conclusions before completing the fresh analysis creates anchoring
 Create a temporary UTF-8 JSON payload only after the current structured analysis is complete. Follow [output-modes.md](output-modes.md) and run:
 
 ```text
-python <skill-directory>/scripts/case_record.py update --input <payload.json>
-python <skill-directory>/scripts/case_record.py present --case-id <Case ID> --request "<original user request>" --markdown-only
-python <skill-directory>/scripts/case_record.py verify-final --case-id <Case ID> --input <candidate-final.md>
+python <skill-directory>/scripts/case_record.py finalize --input <payload.json> --case-id <Case ID> --request "<original user request>"
 ```
 
 The v2 payload retains the verified coverage, current state, and decisive evidence digest, then adds a structured `presentation` object:
@@ -127,15 +125,15 @@ The helper validates coverage and schema, migrates a v1 record without losing it
 
 ## Deterministic Chat Response
 
-Use `case_record.py present --markdown-only` after every successful update. It reads the stored snapshot, writes canonical `chat-output.md` and `chat-output.sha256` files beside the durable record, and emits only the Markdown intended for chat. The default first-review artifact begins with:
+Use `case_record.py finalize` after every successful evidence-gated analysis. It validates and prepares the record update, renders from the resulting snapshot, writes the record plus canonical `chat-output.md` and `chat-output.sha256` files, internally verifies the artifact, and emits only the Markdown intended for chat. Validation and rendering occur before durable files are replaced, and the full operation runs under one per-case lock. The default first-review artifact begins with:
 
 ```markdown
 # Case Card - ...
 ```
 
-Before sending the answer, place the exact proposed final Markdown in a UTF-8 candidate file and run `case_record.py verify-final --case-id <Case ID> --input <candidate-final.md>`. It validates the stored artifact hash and compares normalized candidate bytes. Line-ending and final-newline differences are tolerated; any content or structure mismatch exits with an error and blocks completion.
+Return the exact `finalize` stdout without alteration. The command verifies the stored artifact hash and canonical bytes internally before it succeeds. The backward-compatible `case_record.py update`, `case_record.py present --markdown-only`, and `case_record.py verify-final` commands remain supported for existing integrations and diagnostics; `verify-final` continues to tolerate line-ending and final-newline transport differences while rejecting content or structure drift.
 
-Return the verified candidate exactly. Do not manually recreate, shorten, expand, or append to the Case Card, delta, Investigation Progress flow, Causal Assessment, Technical Specification, Timeline, Evidence Register, or full report. The renderer selects investigation-complete `standard` for a first or unchanged plain review, investigation-complete `follow-up` for a materially changed later review, and `compact` only for an explicit compact request. It applies the secondary diagnostic-visual thresholds from `output-modes.md`.
+Do not manually recreate, shorten, expand, or append to the Case Card, delta, Investigation Progress flow, Causal Assessment, Technical Specification, Timeline, Evidence Register, or full report. The renderer selects investigation-complete `standard` for a first or unchanged plain review, investigation-complete `follow-up` for a materially changed later review, and `compact` only for an explicit compact request. It applies the secondary diagnostic-visual thresholds from `output-modes.md`.
 
 If persistence fails after a valid review, say `Case record update failed` with the sanitized failure and do not claim the record was saved. The evidence-grounded review remains valid, but continuity is not complete until the write succeeds.
 

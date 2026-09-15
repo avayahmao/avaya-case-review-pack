@@ -12,6 +12,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from avaya_case_review_runtime.bridge_identity import BROKER_BUILD_ID
 from tools.gmail.gmail_broker_client import (
     CLIENT_TIMEOUT_SECONDS,
     STARTUP_TIMEOUT_SECONDS,
@@ -48,7 +49,7 @@ def make_health_result(**overrides):
         "browser_crash_count": 0,
         "current_browser_concurrency": 0,
         "max_browser_concurrency": 1,
-        "build_id": "test-build",
+        "build_id": BROKER_BUILD_ID,
         "instance_id": "test-instance",
         "uptime_seconds": 1,
     }
@@ -168,7 +169,7 @@ class ScriptedSocketFactory:
 def write_state(store, broker, **overrides):
     values = {
         "protocol_version": PROTOCOL_VERSION,
-        "build_id": "test-build",
+        "build_id": BROKER_BUILD_ID,
         "instance_id": "test-instance",
         "pid": os.getpid(),
         "host": broker.host,
@@ -271,6 +272,129 @@ class ExistingBrokerRequestTests(unittest.TestCase):
             ["health", "shutdown"],
         )
         self.assertEqual(launched, [])
+
+
+class BuildCoherenceTests(unittest.TestCase):
+    def test_matching_live_build_allows_health_and_data_without_launching(self):
+        launched = []
+
+        def respond(request):
+            if request.method == "health":
+                return BrokerResponse.success(request.id, make_health_result())
+            return BrokerResponse.success(request.id, "matching-build")
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            store = BrokerStateStore(Path(tmp), acl_applier=None)
+            write_state(store, broker)
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda _pid: True,
+                launcher=lambda *args, **kwargs: launched.append((args, kwargs)),
+            )
+
+            result = client.request("gmail_search", {"query": "case"})
+
+        self.assertEqual(result, "matching-build")
+        self.assertEqual(
+            [request.method for request in broker.requests],
+            ["health", "gmail_search"],
+        )
+        self.assertEqual(launched, [])
+
+    def test_mismatched_live_build_fails_before_health_data_or_launch(self):
+        launched = []
+        old_build = "OLD_BUILD_SENTINEL"
+
+        def respond(request):
+            if request.method == "health":
+                return BrokerResponse.success(request.id, make_health_result())
+            return BrokerResponse.success(request.id, "wrong-runtime-used")
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            store = BrokerStateStore(Path(tmp), acl_applier=None)
+            write_state(store, broker, build_id=old_build)
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda _pid: True,
+                launcher=lambda *args, **kwargs: launched.append((args, kwargs)),
+            )
+
+            with self.assertRaises(BrokerClientError) as raised:
+                client.request("gmail_search", {"query": "case"})
+
+        self.assertEqual(raised.exception.code, "BROKER_BUILD_MISMATCH")
+        self.assertEqual(
+            str(raised.exception),
+            "Gmail Edge broker build does not match this runtime",
+        )
+        self.assertNotIn(old_build, repr(raised.exception))
+        self.assertEqual(broker.requests, [])
+        self.assertEqual(launched, [])
+
+    def test_stale_mismatched_build_is_replaced_by_lazy_start(self):
+        launches = []
+
+        def respond(request):
+            if request.method == "health":
+                return BrokerResponse.success(request.id, make_health_result())
+            return BrokerResponse.success(request.id, "replacement-build")
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            directory = Path(tmp)
+            store = BrokerStateStore(directory, acl_applier=None)
+            write_state(store, broker, build_id="OLD_BUILD_SENTINEL", pid=999_999)
+
+            def launcher(_command, **_kwargs):
+                launches.append(True)
+                write_state(store, broker)
+                return FakeProcess()
+
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda pid: pid == os.getpid(),
+                launcher=launcher,
+                startup_lock_factory=lambda: StartupFileLock(
+                    directory,
+                    acl_applier=None,
+                ),
+            )
+
+            result = client.request("gmail_search", {"query": "case"})
+
+        self.assertEqual(result, "replacement-build")
+        self.assertEqual(launches, [True])
+
+    def test_absent_state_uses_lazy_start(self):
+        launches = []
+
+        def respond(request):
+            if request.method == "health":
+                return BrokerResponse.success(request.id, make_health_result())
+            return BrokerResponse.success(request.id, "new-build")
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            directory = Path(tmp)
+            store = BrokerStateStore(directory, acl_applier=None)
+
+            def launcher(_command, **_kwargs):
+                launches.append(True)
+                write_state(store, broker)
+                return FakeProcess()
+
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda _pid: True,
+                launcher=launcher,
+                startup_lock_factory=lambda: StartupFileLock(
+                    directory,
+                    acl_applier=None,
+                ),
+            )
+
+            result = client.request("gmail_search", {"query": "case"})
+
+        self.assertEqual(result, "new-build")
+        self.assertEqual(launches, [True])
 
 
 class ClientErrorContractTests(unittest.TestCase):
