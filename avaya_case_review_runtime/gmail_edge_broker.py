@@ -1146,6 +1146,10 @@ class GmailEdgeBroker:
                 self._queue_depth -= 1
 
             queue_wait_ms = self._elapsed_ms(queue_started)
+            if request.method in _GMAIL_METHODS:
+                telemetry["session_state"] = (
+                    "WARM" if self._browser_started else "COLD"
+                )
             service_started = float(self._clock())
             try:
                 operation_timeout = (
@@ -1247,8 +1251,11 @@ class GmailEdgeBroker:
                 self._edge_state = AuthState.BROWSER_ERROR.value
                 await self._discard_browser()
                 if attempt + 1 < attempts:
-                    telemetry["retry_count"] = int(telemetry["retry_count"]) + 1
-                    telemetry["retry_reason"] = "BROWSER_ERROR"
+                    self._add_retry_telemetry(
+                        telemetry,
+                        count=1,
+                        reason="BROWSER_ERROR",
+                    )
                     continue
                 raise _RequestFailure(
                     BrokerErrorCode.BROWSER_ERROR,
@@ -1472,9 +1479,8 @@ class GmailEdgeBroker:
             "retry_count": 0,
             "retry_reason": "NONE",
             "timeout_reason": "NONE",
+            "service_ms": 0,
         }
-        if request.method in _GMAIL_METHODS:
-            fields["session_state"] = "WARM" if self._browser_started else "COLD"
         if request.method == "gmail_list_threads":
             page_token = request.params.get("page_token", "")
             if isinstance(page_token, str):
@@ -1544,12 +1550,30 @@ class GmailEdgeBroker:
                 "CONTENT_DELIVERY",
             }:
                 return
-            telemetry["retry_count"] = int(telemetry["retry_count"]) + retry_count
             if retry_count:
-                telemetry["retry_reason"] = retry_reason
+                self._add_retry_telemetry(
+                    telemetry,
+                    count=retry_count,
+                    reason=retry_reason,
+                )
         except Exception:
             # Adapter telemetry is optional and must never affect delivery.
             return
+
+    @staticmethod
+    def _add_retry_telemetry(
+        telemetry: dict[str, object],
+        *,
+        count: int,
+        reason: str,
+    ) -> None:
+        previous_count = int(telemetry["retry_count"])
+        previous_reason = str(telemetry["retry_reason"])
+        telemetry["retry_count"] = previous_count + count
+        if previous_count and previous_reason != reason:
+            telemetry["retry_reason"] = "MULTIPLE"
+        else:
+            telemetry["retry_reason"] = reason
 
     def _safe_log(
         self,

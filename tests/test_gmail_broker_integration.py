@@ -130,6 +130,10 @@ class FakeBrowserAdapter:
                 raise timeout_type("adapter deadline exhausted")
             if mode == "retry_once" and attempt == 1:
                 raise BrowserAdapterError("browser crashed once")
+            if mode == "mixed_retry" and attempt == 1:
+                self.last_retry_count = 1
+                self.last_retry_reason = "NAVIGATION_TIMEOUT"
+                raise BrowserAdapterError("browser crashed after navigation retry")
             if mode == "timeout":
                 await asyncio.Event().wait()
             if mode == "adapter_retry":
@@ -760,6 +764,104 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
             [record["session_state"] for record in records],
             ["COLD", "WARM"],
         )
+
+    async def test_request_queued_during_browser_start_records_warm_service(self):
+        class StartupBlockingAdapter(FakeBrowserAdapter):
+            def __init__(self):
+                super().__init__()
+                self.start_entered = asyncio.Event()
+                self.start_release = asyncio.Event()
+
+            async def start(self):
+                self.start_count += 1
+                self.start_entered.set()
+                await self.start_release.wait()
+
+        fake = StartupBlockingAdapter()
+        broker, store = await self.make_broker(
+            fake,
+            session_sequence=11223,
+            execution_timeout=2.0,
+        )
+        first = asyncio.create_task(
+            self.request(broker, "first-during-start", client_timeout=5.0)
+        )
+        await fake.start_entered.wait()
+        second = asyncio.create_task(
+            self.request(broker, "second-during-start", client_timeout=5.0)
+        )
+        await self.wait_for(lambda: broker.queue_depth == 1)
+
+        fake.start_release.set()
+        await asyncio.gather(first, second)
+
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        self.assertEqual(
+            [record["session_state"] for record in records],
+            ["COLD", "WARM"],
+        )
+
+    async def test_distinct_adapter_and_broker_retry_reasons_log_multiple(self):
+        broker, store = await self.make_broker(
+            FakeBrowserAdapter(),
+            session_sequence=44556,
+        )
+
+        response = await self.request(
+            broker,
+            "mixed-retry-secret",
+            method="gmail_read_thread_page",
+            params={"mode": "mixed_retry", "result": "{}"},
+        )
+
+        self.assertTrue(response["ok"])
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        self.assertEqual(records[0]["retry_count"], 2)
+        self.assertEqual(records[0]["retry_reason"], "MULTIPLE")
+
+    async def test_immediate_dispatch_paths_log_zero_service_time(self):
+        broker, store = await self.make_broker(
+            FakeBrowserAdapter(),
+            session_sequence=77889,
+        )
+
+        health = await self.request(broker, "health-secret", method="health")
+        broker._login_in_progress = True
+        login_busy = await self.request(
+            broker,
+            "login-busy-secret",
+            method="gmail_search",
+        )
+        broker._login_in_progress = False
+        broker._stopping = True
+        stopping = await self.request(
+            broker,
+            "stopping-secret",
+            method="gmail_read",
+        )
+        broker._stopping = False
+        shutdown = await self.request(broker, "shutdown-secret", method="shutdown")
+        await broker.wait_stopped()
+
+        self.assertTrue(health["ok"])
+        self.assertEqual(login_busy["error"]["code"], "LOGIN_IN_PROGRESS")
+        self.assertEqual(stopping["error"]["code"], "APP_ERROR")
+        self.assertTrue(shutdown["ok"])
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        self.assertEqual(len(records), 4)
+        self.assertEqual([record["service_ms"] for record in records], [0, 0, 0, 0])
 
     async def test_auth_and_application_errors_are_mapped_without_retry(self):
         fake = FakeBrowserAdapter()

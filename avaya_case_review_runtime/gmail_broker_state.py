@@ -687,7 +687,13 @@ _TELEMETRY_ENUM_VALUES = {
     "session_state": frozenset({"COLD", "WARM"}),
     "page_phase": frozenset({"FIRST_PAGE", "CONTINUATION"}),
     "retry_reason": frozenset(
-        {"NONE", "BROWSER_ERROR", "NAVIGATION_TIMEOUT", "CONTENT_DELIVERY"}
+        {
+            "NONE",
+            "BROWSER_ERROR",
+            "NAVIGATION_TIMEOUT",
+            "CONTENT_DELIVERY",
+            "MULTIPLE",
+        }
     ),
     "timeout_reason": frozenset({"NONE", "QUEUE_WAIT", "EXECUTION", "ADAPTER"}),
 }

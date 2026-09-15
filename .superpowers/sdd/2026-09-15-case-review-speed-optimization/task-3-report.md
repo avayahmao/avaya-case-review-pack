@@ -40,3 +40,17 @@ deadlines that are intermittent under Python 3.14's event loop. A full-file run
 had unrelated concurrency/latency timeouts; all 12 telemetry, privacy, retry,
 timeout, and fail-open broker tests pass together. No production behavior was
 relaxed to hide those timing failures.
+
+## Review round 1 fixes
+
+- Moved `COLD`/`WARM` sampling to the actual serialized operation start after
+  lock acquisition. A startup-race regression now proves a request queued while
+  the first request starts Edge is recorded as warm when its service begins.
+- Added the allowlisted `MULTIPLE` retry reason so combined adapter and broker
+  retry counts do not discard either source's meaning.
+- Initialized `service_ms` to zero for immediate health, shutdown, stopping, and
+  login-in-progress paths; serialized work still replaces it with measured
+  service duration.
+- The three review regressions failed before the fixes and pass afterward.
+- Focused telemetry/privacy/retry coverage: 24 passed. Broker
+  protocol/client/state coverage: 91 passed. Changed modules compile cleanly.
