@@ -13,6 +13,8 @@ from unittest.mock import patch
 from tools.gmail.gmail_broker_state import (
     ALLOWED_LOG_FIELDS,
     LIFECYCLE_COUNTER_FIELDS,
+    TELEMETRY_COUNTER_FIELDS,
+    TELEMETRY_ENUM_FIELDS,
     AlreadyRunning,
     BrokerState,
     BrokerStateError,
@@ -708,7 +710,7 @@ class WindowsAclTests(unittest.TestCase):
                 for index in range(10):
                     logger.info(
                         "request_finished",
-                        request_id=f"req-{index}",
+                        request_id="12345678-1234-4234-9234-123456789abc",
                         method="gmail_search",
                         result_code="OK",
                         elapsed_ms=index,
@@ -745,6 +747,36 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
             ),
         )
         self.assertEqual(
+            TELEMETRY_COUNTER_FIELDS,
+            frozenset(
+                {
+                    "session_sequence",
+                    "run_sequence",
+                    "retry_count",
+                    "requested_count",
+                    "result_count",
+                    "response_bytes",
+                    "service_ms",
+                    "thread_count",
+                    "segment_count",
+                    "message_count",
+                    "messages_completed",
+                    "chunk_count",
+                }
+            ),
+        )
+        self.assertEqual(
+            TELEMETRY_ENUM_FIELDS,
+            frozenset(
+                {
+                    "session_state",
+                    "page_phase",
+                    "retry_reason",
+                    "timeout_reason",
+                }
+            ),
+        )
+        self.assertEqual(
             ALLOWED_LOG_FIELDS,
             frozenset(
                 {
@@ -759,7 +791,9 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
                     "queue_depth",
                 }
             )
-            | LIFECYCLE_COUNTER_FIELDS,
+            | LIFECYCLE_COUNTER_FIELDS
+            | TELEMETRY_COUNTER_FIELDS
+            | TELEMETRY_ENUM_FIELDS,
         )
 
     def test_writes_one_json_line_containing_only_approved_fields(self):
@@ -769,12 +803,28 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
             try:
                 logger.info(
                     "request_finished",
-                    request_id="req-1",
+                    request_id="12345678-1234-4234-9234-123456789abc",
                     method="gmail_search",
                     result_code="OK",
                     elapsed_ms=15,
                     queue_wait_ms=2,
                     queue_depth=0,
+                    session_sequence=918273,
+                    run_sequence=7,
+                    retry_count=1,
+                    requested_count=100,
+                    result_count=2,
+                    response_bytes=2048,
+                    service_ms=13,
+                    thread_count=2,
+                    segment_count=3,
+                    message_count=2,
+                    messages_completed=2,
+                    chunk_count=3,
+                    session_state="WARM",
+                    page_phase="CONTINUATION",
+                    retry_reason="BROWSER_ERROR",
+                    timeout_reason="NONE",
                     request_count=1,
                     browser_start_count=1,
                     browser_crash_count=0,
@@ -790,6 +840,42 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
         self.assertEqual(len(lines), 1)
         payload = json.loads(lines[0])
         self.assertEqual(set(payload), ALLOWED_LOG_FIELDS)
+        self.assertEqual(
+            list(payload),
+            [
+                "timestamp",
+                "level",
+                "event",
+                "session_sequence",
+                "run_sequence",
+                "request_id",
+                "method",
+                "result_code",
+                "session_state",
+                "page_phase",
+                "retry_count",
+                "retry_reason",
+                "timeout_reason",
+                "elapsed_ms",
+                "queue_wait_ms",
+                "service_ms",
+                "queue_depth",
+                "requested_count",
+                "result_count",
+                "response_bytes",
+                "thread_count",
+                "segment_count",
+                "message_count",
+                "messages_completed",
+                "chunk_count",
+                "request_count",
+                "browser_start_count",
+                "browser_crash_count",
+                "current_browser_concurrency",
+                "max_browser_concurrency",
+                "uptime_seconds",
+            ],
+        )
         self.assertEqual(payload["level"], "INFO")
         self.assertEqual(payload["event"], "request_finished")
         self.assertTrue(payload["timestamp"].endswith("Z"))
@@ -813,6 +899,8 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
             "message_id",
             "result_body",
             "cookie",
+            "sha256",
+            "hash",
         )
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "broker.log"
@@ -843,8 +931,14 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
             {"elapsed_ms": -1},
             {"queue_depth": True},
             {"request_count": 1.5},
+            {"response_bytes": True},
             {"method": "gmail search with query"},
             {"result_code": "failure: secret"},
+            {"request_id": "INC7445969"},
+            {"session_state": "case INC7445969"},
+            {"page_phase": "LAST_PAGE"},
+            {"retry_reason": "secret"},
+            {"timeout_reason": "network details"},
         )
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "broker.log"
@@ -872,7 +966,7 @@ class SanitizedRotatingLoggerTests(unittest.TestCase):
                 for index in range(10):
                     logger.info(
                         "request_finished",
-                        request_id=f"req-{index}",
+                        request_id="12345678-1234-4234-9234-123456789abc",
                         method="gmail_search",
                         result_code="OK",
                         elapsed_ms=index,

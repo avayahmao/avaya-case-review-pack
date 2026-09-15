@@ -605,6 +605,8 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(str(raised.exception), "Apps Script content delivery failed")
         self.assertEqual(len(context.created_pages), 3)
+        self.assertEqual(adapter.last_retry_count, 2)
+        self.assertEqual(adapter.last_retry_reason, "CONTENT_DELIVERY")
         self.assertEqual(pages[3].goto_calls, [])
         await adapter.close()
 
@@ -778,6 +780,8 @@ class ManagedEdgeAdapterExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(first.goto_calls[0][0], second.goto_calls[0][0])
         self.assertEqual(first.close_calls, 1)
         self.assertEqual(second.close_calls, 1)
+        self.assertEqual(adapter.last_retry_count, 1)
+        self.assertEqual(adapter.last_retry_reason, "NAVIGATION_TIMEOUT")
         await adapter.close()
 
     async def test_three_navigation_timeouts_exhaust_without_fourth_attempt(self):

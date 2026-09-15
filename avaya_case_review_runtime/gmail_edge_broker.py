@@ -7,6 +7,7 @@ import asyncio
 import contextlib
 from datetime import datetime, timezone
 import ipaddress
+import json
 import os
 from pathlib import Path
 import re
@@ -87,7 +88,10 @@ _AUTH_REQUIRED_STATES = frozenset(
         AuthState.AUTH_REQUIRED_GOOGLE,
     }
 )
-_SAFE_REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+_SAFE_REQUEST_ID = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-"
+    r"[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\Z"
+)
 
 
 class BrowserAdapter(Protocol):
@@ -197,6 +201,8 @@ class ManagedEdgeAdapter:
         self._nonce_factory = nonce_factory
         self._playwright: Any | None = None
         self._context: Any | None = None
+        self.last_retry_count = 0
+        self.last_retry_reason = "NONE"
 
     async def start(self) -> None:
         if self._context is not None:
@@ -219,6 +225,8 @@ class ManagedEdgeAdapter:
         context = self._context
         if context is None:
             raise BrowserAdapterError("Managed Edge is not started")
+        self.last_retry_count = 0
+        self.last_retry_reason = "NONE"
         logical_url = self._build_method_url(method, params)
         try:
             return await asyncio.wait_for(
@@ -267,6 +275,8 @@ class ManagedEdgeAdapter:
                 )
             except _NavigationAttemptTimeout as exc:
                 if attempt + 1 < attempts:
+                    self.last_retry_count += 1
+                    self.last_retry_reason = "NAVIGATION_TIMEOUT"
                     continue
                 raise BrowserOperationTimeout(
                     "Managed Edge request timed out"
@@ -275,6 +285,8 @@ class ManagedEdgeAdapter:
                 return result
             if attempt + 1 == attempts:
                 raise BrowserApplicationError("Apps Script content delivery failed")
+            self.last_retry_count += 1
+            self.last_retry_reason = "CONTENT_DELIVERY"
         raise AssertionError("content delivery retry loop exhausted")
 
     async def _execute_navigation_attempt(
@@ -679,6 +691,7 @@ class GmailEdgeBroker:
         idle_timeout: float = IDLE_TIMEOUT_SECONDS,
         idle_check_interval: float = 1.0,
         clock: Callable[[], float] = time.monotonic,
+        session_sequence: int | None = None,
     ) -> None:
         if not isinstance(build_id, str) or not build_id:
             raise ValueError("build_id must be a non-empty string")
@@ -694,6 +707,10 @@ class GmailEdgeBroker:
             raise ValueError("port must be between 0 and 65535")
         if not callable(clock):
             raise TypeError("clock must be callable")
+        if session_sequence is not None and (
+            type(session_sequence) is not int or session_sequence <= 0
+        ):
+            raise ValueError("session_sequence must be a positive integer")
 
         self.adapter = adapter
         self.state_store = state_store or BrokerStateStore()
@@ -727,6 +744,12 @@ class GmailEdgeBroker:
             "idle_check_interval", idle_check_interval
         )
         self._clock = clock
+        self._session_sequence = (
+            secrets.randbits(63) + 1
+            if session_sequence is None
+            else session_sequence
+        )
+        self._run_sequence = 0
 
         self._server: asyncio.AbstractServer | None = None
         self._operation_lock = asyncio.Lock()
@@ -815,6 +838,7 @@ class GmailEdgeBroker:
                 "info",
                 "broker_started",
                 result_code="OK",
+                session_sequence=self._session_sequence,
                 **self._counter_fields(),
             )
             return host, port
@@ -918,6 +942,7 @@ class GmailEdgeBroker:
                     "info",
                     "broker_stopped",
                     result_code="OK" if first_error is None else "APP_ERROR",
+                    session_sequence=self._session_sequence,
                     **self._counter_fields(),
                 )
             finally:
@@ -1029,6 +1054,8 @@ class GmailEdgeBroker:
     async def _dispatch(self, request: BrokerRequest) -> BrokerResponse:
         started = float(self._clock())
         queue_wait_ms = 0
+        self._run_sequence += 1
+        telemetry = self._request_telemetry(request, self._run_sequence)
         self._active_requests += 1
         if request.method != "health":
             self._request_count += 1
@@ -1050,7 +1077,10 @@ class GmailEdgeBroker:
                     "Interactive Gmail login is in progress",
                 )
             else:
-                response, queue_wait_ms = await self._dispatch_serialized(request)
+                response, queue_wait_ms = await self._dispatch_serialized(
+                    request,
+                    telemetry,
+                )
             return response
         finally:
             self._active_requests -= 1
@@ -1067,11 +1097,13 @@ class GmailEdgeBroker:
                 result_code=result_code,
                 elapsed_ms=elapsed_ms,
                 queue_wait_ms=queue_wait_ms,
+                telemetry=telemetry,
             )
 
     async def _dispatch_serialized(
         self,
         request: BrokerRequest,
+        telemetry: dict[str, object],
     ) -> tuple[BrokerResponse, int]:
         previous_state: str | None = None
         if request.method == "auth_login":
@@ -1100,6 +1132,8 @@ class GmailEdgeBroker:
                 acquired = True
             except asyncio.TimeoutError:
                 queue_wait_ms = self._elapsed_ms(queue_started)
+                telemetry["timeout_reason"] = "QUEUE_WAIT"
+                telemetry["service_ms"] = 0
                 return (
                     BrokerResponse.failure(
                         request.id,
@@ -1112,6 +1146,7 @@ class GmailEdgeBroker:
                 self._queue_depth -= 1
 
             queue_wait_ms = self._elapsed_ms(queue_started)
+            service_started = float(self._clock())
             try:
                 operation_timeout = (
                     self.login_timeout
@@ -1119,11 +1154,17 @@ class GmailEdgeBroker:
                     else self.execution_timeout
                 )
                 result = await asyncio.wait_for(
-                    self._perform(request),
+                    self._perform(request, telemetry),
                     timeout=operation_timeout,
                 )
+                try:
+                    telemetry.update(self._safe_result_metrics(request.method, result))
+                except Exception:
+                    # Telemetry is strictly best-effort and never gates delivery.
+                    pass
                 return BrokerResponse.success(request.id, result), queue_wait_ms
             except asyncio.TimeoutError:
+                telemetry["timeout_reason"] = "EXECUTION"
                 return (
                     BrokerResponse.failure(
                         request.id,
@@ -1137,6 +1178,8 @@ class GmailEdgeBroker:
                     BrokerResponse.failure(request.id, exc.code, str(exc)),
                     queue_wait_ms,
                 )
+            finally:
+                telemetry["service_ms"] = self._elapsed_ms(service_started)
         finally:
             if acquired:
                 self._operation_lock.release()
@@ -1145,7 +1188,11 @@ class GmailEdgeBroker:
                 if getattr(self, "_edge_state", None) == "LOGIN_IN_PROGRESS":
                     self._edge_state = previous_state or "STARTING"
 
-    async def _perform(self, request: BrokerRequest) -> Any:
+    async def _perform(
+        self,
+        request: BrokerRequest,
+        telemetry: dict[str, object],
+    ) -> Any:
         self._current_browser_concurrency += 1
         self._max_browser_concurrency = max(
             self._max_browser_concurrency,
@@ -1154,16 +1201,28 @@ class GmailEdgeBroker:
         try:
             if request.method == "auth_login":
                 return await self._perform_login()
-            return await self._perform_gmail(request.method, request.params)
+            return await self._perform_gmail(
+                request.method,
+                request.params,
+                telemetry,
+            )
         finally:
             self._current_browser_concurrency -= 1
 
-    async def _perform_gmail(self, method: str, params: dict[str, Any]) -> str:
+    async def _perform_gmail(
+        self,
+        method: str,
+        params: dict[str, Any],
+        telemetry: dict[str, object],
+    ) -> str:
         attempts = 2 if method in _SAFE_READ_METHODS else 1
         for attempt in range(attempts):
             try:
                 await self._ensure_browser_started()
-                result = await self.adapter.execute(method, params)
+                try:
+                    result = await self.adapter.execute(method, params)
+                finally:
+                    self._merge_adapter_retry_telemetry(telemetry)
             except BrowserAuthRequired as exc:
                 self._edge_state = exc.state.value
                 raise _RequestFailure(
@@ -1178,6 +1237,7 @@ class GmailEdgeBroker:
                 ) from exc
             except BrowserOperationTimeout as exc:
                 self._edge_state = AuthState.BROWSER_ERROR.value
+                telemetry["timeout_reason"] = "ADAPTER"
                 raise _RequestFailure(
                     BrokerErrorCode.REQUEST_TIMEOUT,
                     "Managed Edge request timed out",
@@ -1187,6 +1247,8 @@ class GmailEdgeBroker:
                 self._edge_state = AuthState.BROWSER_ERROR.value
                 await self._discard_browser()
                 if attempt + 1 < attempts:
+                    telemetry["retry_count"] = int(telemetry["retry_count"]) + 1
+                    telemetry["retry_reason"] = "BROWSER_ERROR"
                     continue
                 raise _RequestFailure(
                     BrokerErrorCode.BROWSER_ERROR,
@@ -1366,6 +1428,7 @@ class GmailEdgeBroker:
         result_code: str,
         elapsed_ms: int,
         queue_wait_ms: int,
+        telemetry: dict[str, object],
     ) -> None:
         fields: dict[str, object] = {
             "method": request.method,
@@ -1373,6 +1436,7 @@ class GmailEdgeBroker:
             "elapsed_ms": elapsed_ms,
             "queue_wait_ms": queue_wait_ms,
             "queue_depth": self._queue_depth,
+            **telemetry,
             **self._counter_fields(),
         }
         if _SAFE_REQUEST_ID.fullmatch(request.id) is not None:
@@ -1387,6 +1451,7 @@ class GmailEdgeBroker:
     ) -> None:
         fields: dict[str, object] = {
             "result_code": code.value,
+            "session_sequence": self._session_sequence,
             **self._counter_fields(),
         }
         if request is not None:
@@ -1395,6 +1460,96 @@ class GmailEdgeBroker:
                 fields["request_id"] = request.id
         if self.logger is not None:
             self._safe_log("warning", "request_rejected", **fields)
+
+    def _request_telemetry(
+        self,
+        request: BrokerRequest,
+        run_sequence: int,
+    ) -> dict[str, object]:
+        fields: dict[str, object] = {
+            "session_sequence": self._session_sequence,
+            "run_sequence": run_sequence,
+            "retry_count": 0,
+            "retry_reason": "NONE",
+            "timeout_reason": "NONE",
+        }
+        if request.method in _GMAIL_METHODS:
+            fields["session_state"] = "WARM" if self._browser_started else "COLD"
+        if request.method == "gmail_list_threads":
+            page_token = request.params.get("page_token", "")
+            if isinstance(page_token, str):
+                fields["page_phase"] = (
+                    "CONTINUATION" if page_token else "FIRST_PAGE"
+                )
+            requested_count = request.params.get("max_results")
+            if type(requested_count) is int and requested_count >= 0:
+                fields["requested_count"] = requested_count
+        elif request.method == "gmail_read_thread_page":
+            cursor = request.params.get("cursor", "")
+            if isinstance(cursor, str):
+                fields["page_phase"] = "CONTINUATION" if cursor else "FIRST_PAGE"
+        return fields
+
+    @staticmethod
+    def _safe_result_metrics(method: str, result: object) -> dict[str, int]:
+        """Return only bounded-shape numeric aggregates; malformed data is ignored."""
+
+        if not isinstance(result, str):
+            return {}
+        metrics: dict[str, int] = {"response_bytes": len(result.encode("utf-8"))}
+        if method not in {"gmail_list_threads", "gmail_read_thread_page"}:
+            return metrics
+        try:
+            payload = json.loads(result)
+            if not isinstance(payload, dict):
+                return metrics
+            if method == "gmail_list_threads":
+                thread_ids = payload.get("thread_ids")
+                if isinstance(thread_ids, list):
+                    count = len(thread_ids)
+                    metrics.update({"result_count": count, "thread_count": count})
+                return metrics
+
+            segments = payload.get("segments")
+            if isinstance(segments, list):
+                count = len(segments)
+                metrics.update(
+                    {
+                        "result_count": count,
+                        "segment_count": count,
+                        "chunk_count": count,
+                    }
+                )
+            for field in ("message_count", "messages_completed"):
+                value = payload.get(field)
+                if type(value) is int and value >= 0:
+                    metrics[field] = value
+            return metrics
+        except Exception:
+            # Telemetry extraction must never affect broker delivery.
+            return metrics
+
+    def _merge_adapter_retry_telemetry(
+        self,
+        telemetry: dict[str, object],
+    ) -> None:
+        try:
+            retry_count = getattr(self.adapter, "last_retry_count", 0)
+            retry_reason = getattr(self.adapter, "last_retry_reason", "NONE")
+            if type(retry_count) is not int or retry_count < 0:
+                return
+            if retry_reason not in {
+                "NONE",
+                "NAVIGATION_TIMEOUT",
+                "CONTENT_DELIVERY",
+            }:
+                return
+            telemetry["retry_count"] = int(telemetry["retry_count"]) + retry_count
+            if retry_count:
+                telemetry["retry_reason"] = retry_reason
+        except Exception:
+            # Adapter telemetry is optional and must never affect delivery.
+            return
 
     def _safe_log(
         self,

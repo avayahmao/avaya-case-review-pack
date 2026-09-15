@@ -75,6 +75,8 @@ class FakeBrowserAdapter:
         self.login_state = AuthState.AUTHENTICATED
         self.login_delay = 0.0
         self.slow_first_close = False
+        self.last_retry_count = 0
+        self.last_retry_reason = "NONE"
 
     async def start(self):
         self.start_count += 1
@@ -87,6 +89,8 @@ class FakeBrowserAdapter:
             self.events.append(("browser_close", None))
 
     async def execute(self, method, params):
+        self.last_retry_count = 0
+        self.last_retry_reason = "NONE"
         mode = params.get("mode", "success")
         self.calls.append((method, dict(params)))
         self.execute_count += 1
@@ -128,6 +132,9 @@ class FakeBrowserAdapter:
                 raise BrowserAdapterError("browser crashed once")
             if mode == "timeout":
                 await asyncio.Event().wait()
+            if mode == "adapter_retry":
+                self.last_retry_count = 2
+                self.last_retry_reason = "NAVIGATION_TIMEOUT"
             return self.results.get(
                 method,
                 params.get("result", f"{method}:{params.get('value', '')}"),
@@ -437,6 +444,322 @@ class GmailBrokerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         for name, sentinel in sentinels.items():
             with self.subTest(sentinel=name):
                 self.assertNotIn(sentinel, logged)
+
+    async def test_context_logs_aggregate_only_safe_page_metrics(self):
+        fake = FakeBrowserAdapter()
+        fake.results = {
+            "gmail_list_threads": json.dumps(
+                {
+                    "thread_ids": ["thread-secret-a", "thread-secret-b"],
+                    "next_page_token": "page-token-secret",
+                    "complete": False,
+                }
+            ),
+            "gmail_read_thread_page": json.dumps(
+                {
+                    "message_count": 5,
+                    "messages_completed": 2,
+                    "segments": [
+                        {
+                            "message_id": "message-secret-a",
+                            "body_chunk": "body-secret-a",
+                            "chunk_index": 0,
+                            "chunk_count": 1,
+                        },
+                        {
+                            "message_id": "message-secret-b",
+                            "body_chunk": "body-secret-b",
+                            "chunk_index": 0,
+                            "chunk_count": 1,
+                        },
+                    ],
+                    "next_cursor": "cursor-secret",
+                    "manifest_sha256": "hash-secret",
+                    "complete": False,
+                }
+            ),
+        }
+        broker, store = await self.make_broker(fake, session_sequence=918273)
+
+        await self.request(
+            broker,
+            "INC7445969",
+            method="gmail_list_threads",
+            params={
+                "query": "INC7445969",
+                "snapshot_before": "snapshot-secret",
+                "max_results": 100,
+            },
+        )
+        await self.request(
+            broker,
+            "second-secret-request-id",
+            method="gmail_read_thread_page",
+            params={
+                "thread_id": "thread-secret-a",
+                "snapshot_before": "snapshot-secret",
+                "cursor": "cursor-secret",
+            },
+        )
+
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        list_record, page_record = records
+        self.assertEqual(
+            {
+                key: list_record[key]
+                for key in (
+                    "session_sequence",
+                    "run_sequence",
+                    "session_state",
+                    "page_phase",
+                    "requested_count",
+                    "result_count",
+                    "response_bytes",
+                    "thread_count",
+                    "retry_count",
+                    "retry_reason",
+                    "timeout_reason",
+                )
+            },
+            {
+                "session_sequence": 918273,
+                "run_sequence": 1,
+                "session_state": "COLD",
+                "page_phase": "FIRST_PAGE",
+                "requested_count": 100,
+                "result_count": 2,
+                "response_bytes": len(fake.results["gmail_list_threads"].encode("utf-8")),
+                "thread_count": 2,
+                "retry_count": 0,
+                "retry_reason": "NONE",
+                "timeout_reason": "NONE",
+            },
+        )
+        self.assertEqual(
+            {
+                key: page_record[key]
+                for key in (
+                    "session_sequence",
+                    "run_sequence",
+                    "session_state",
+                    "page_phase",
+                    "result_count",
+                    "response_bytes",
+                    "segment_count",
+                    "message_count",
+                    "messages_completed",
+                    "chunk_count",
+                    "retry_count",
+                    "retry_reason",
+                    "timeout_reason",
+                )
+            },
+            {
+                "session_sequence": 918273,
+                "run_sequence": 2,
+                "session_state": "WARM",
+                "page_phase": "CONTINUATION",
+                "result_count": 2,
+                "response_bytes": len(
+                    fake.results["gmail_read_thread_page"].encode("utf-8")
+                ),
+                "segment_count": 2,
+                "message_count": 5,
+                "messages_completed": 2,
+                "chunk_count": 2,
+                "retry_count": 0,
+                "retry_reason": "NONE",
+                "timeout_reason": "NONE",
+            },
+        )
+        self.assertGreaterEqual(list_record["service_ms"], 0)
+        self.assertGreaterEqual(page_record["service_ms"], 0)
+        logged = store.paths.log_file.read_text(encoding="utf-8")
+        for secret in (
+            "INC7445969",
+            "second-secret-request-id",
+            "thread-secret",
+            "message-secret",
+            "body-secret",
+            "page-token-secret",
+            "cursor-secret",
+            "snapshot-secret",
+            "hash-secret",
+        ):
+            self.assertNotIn(secret, logged)
+
+    async def test_retry_and_timeout_reasons_are_safe_aggregates(self):
+        fake = FakeBrowserAdapter()
+        broker, store = await self.make_broker(
+            fake,
+            session_sequence=777,
+            execution_timeout=0.02,
+        )
+
+        recovered = await self.request(
+            broker,
+            "retry-secret-id",
+            method="gmail_read_thread_page",
+            params={"mode": "retry_once", "result": "{}", "cursor": ""},
+        )
+        timed_out = await self.request(
+            broker,
+            "timeout-secret-id",
+            method="gmail_read_thread_page",
+            params={"mode": "timeout", "cursor": "continued-secret"},
+        )
+
+        self.assertTrue(recovered["ok"])
+        self.assertEqual(timed_out["error"]["code"], "REQUEST_TIMEOUT")
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        recovered_record, timeout_record = records
+        self.assertEqual(recovered_record["retry_count"], 1)
+        self.assertEqual(recovered_record["retry_reason"], "BROWSER_ERROR")
+        self.assertEqual(recovered_record["timeout_reason"], "NONE")
+        self.assertEqual(timeout_record["retry_count"], 0)
+        self.assertEqual(timeout_record["retry_reason"], "NONE")
+        self.assertEqual(timeout_record["timeout_reason"], "EXECUTION")
+        self.assertNotIn("continued-secret", json.dumps(records))
+
+    async def test_telemetry_extraction_failure_never_changes_delivery(self):
+        broker, _store = await self.make_broker(FakeBrowserAdapter())
+
+        with patch.object(
+            broker,
+            "_safe_result_metrics",
+            side_effect=RuntimeError("telemetry failed"),
+        ):
+            response = await self.request(
+                broker,
+                "delivery-survives-telemetry-failure",
+                params={"result": "delivered"},
+            )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["result"], "delivered")
+
+    async def test_adapter_retry_metrics_are_included_in_request_aggregate(self):
+        broker, store = await self.make_broker(
+            FakeBrowserAdapter(),
+            session_sequence=86420,
+        )
+
+        response = await self.request(
+            broker,
+            "adapter-retry-secret",
+            method="gmail_list_threads",
+            params={"mode": "adapter_retry", "result": "{}", "page_token": ""},
+        )
+
+        self.assertTrue(response["ok"])
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        self.assertEqual(records[0]["retry_count"], 2)
+        self.assertEqual(records[0]["retry_reason"], "NAVIGATION_TIMEOUT")
+
+    async def test_session_sequence_correlates_lifecycle_and_request_records(self):
+        broker, store = await self.make_broker(
+            FakeBrowserAdapter(),
+            session_sequence=24680,
+        )
+
+        response = await self.request(broker, "opaque-request")
+        await broker.stop()
+
+        self.assertTrue(response["ok"])
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+        ]
+        self.assertEqual(
+            [record["event"] for record in records],
+            ["broker_started", "request_finished", "broker_stopped"],
+        )
+        self.assertEqual(
+            [record["session_sequence"] for record in records],
+            [24680, 24680, 24680],
+        )
+
+    async def test_queue_and_adapter_timeout_reasons_are_distinct(self):
+        fake = FakeBrowserAdapter()
+        fake.release.clear()
+        broker, store = await self.make_broker(
+            fake,
+            session_sequence=13579,
+            queue_wait_timeout=0.02,
+            execution_timeout=2.0,
+        )
+        active = asyncio.create_task(
+            self.request(broker, "active-secret", client_timeout=5.0)
+        )
+        await fake.entered.wait()
+
+        queue_timeout = await self.request(
+            broker,
+            "queue-secret",
+            client_timeout=5.0,
+        )
+        fake.release.set()
+        await active
+        adapter_timeout = await self.request(
+            broker,
+            "adapter-secret",
+            params={"mode": "adapter_timeout"},
+            client_timeout=5.0,
+        )
+
+        self.assertEqual(queue_timeout["error"]["code"], "REQUEST_TIMEOUT")
+        self.assertEqual(adapter_timeout["error"]["code"], "REQUEST_TIMEOUT")
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        self.assertEqual(
+            [record["timeout_reason"] for record in records],
+            ["QUEUE_WAIT", "NONE", "ADAPTER"],
+        )
+
+    async def test_queued_request_records_warm_state_at_service_start(self):
+        fake = FakeBrowserAdapter()
+        fake.release.clear()
+        broker, store = await self.make_broker(
+            fake,
+            session_sequence=97531,
+            execution_timeout=2.0,
+        )
+        first = asyncio.create_task(
+            self.request(broker, "first-secret", client_timeout=5.0)
+        )
+        await fake.entered.wait()
+        second = asyncio.create_task(
+            self.request(broker, "second-secret", client_timeout=5.0)
+        )
+        await self.wait_for(lambda: broker.queue_depth == 1)
+
+        fake.release.set()
+        await asyncio.gather(first, second)
+
+        records = [
+            json.loads(line)
+            for line in store.paths.log_file.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event"] == "request_finished"
+        ]
+        self.assertEqual(
+            [record["session_state"] for record in records],
+            ["COLD", "WARM"],
+        )
 
     async def test_auth_and_application_errors_are_mapped_without_retry(self):
         fake = FakeBrowserAdapter()
