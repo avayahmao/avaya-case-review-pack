@@ -6,9 +6,9 @@ Use this contract only after Complete Context Before Analysis and the evidence g
 
 Apply explicit user intent before automatic defaults:
 
-1. `full` — requests containing `full review`, `full report`, `完整报告`, or `Evidence Register`.
-2. `technical` — requests containing `dry technical`, `technical spec`, `technical specification`, `技术规格`, or `技术评审`.
-3. `flow` — requests containing `flow chart`, `flowchart`, `investigation progress`, `流程图`, or `调查进展图`.
+1. `full` — requests containing `full review`, `full report`, or `Evidence Register`.
+2. `technical` — requests containing `dry technical`, `technical spec`, or `technical specification`.
+3. `flow` — requests containing `flow chart`, `flowchart`, or `investigation progress`.
 4. `standard` — an explicit standard request, a first successful plain review, or a later plain review with no material delta.
 5. `compact` — an explicit compact or brief request only.
 6. `follow-up` — no explicit mode, prior successful history, and a material state, ownership, or evidence change.
