@@ -1087,6 +1087,40 @@ try {
         -TimeoutSeconds $TimeoutBridgeSeconds `
         -Environment $BrokerEnvironment `
         -AllowFailure
+    if ($DeployedBridgeVerify.ExitCode -eq 10) {
+        Write-Host "  Gmail authentication is required for the deployed broker. Waiting for Managed Edge SSO/MFA..." -ForegroundColor Cyan
+        $null = Invoke-BoundedCommand `
+            -Stage "deployed Gmail broker login" `
+            -Command $PythonCommand `
+            -Arguments @("-B", $BrokerCtlPath, "login") `
+            -TimeoutSeconds $LoginTimeoutSeconds `
+            -Environment $BrokerEnvironment
+        $DeployedBridgeVerify = Invoke-BoundedCommand `
+            -Stage "deployed Gmail bridge verification retry" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-B", $BrokerCtlPath, "verify-bridge",
+                "--source", $BridgeSourcePath,
+                "--attestation", $BridgeAttestationPath,
+                "--plugin-version", $PluginVersion
+            ) `
+            -TimeoutSeconds $TimeoutBridgeSeconds `
+            -Environment $BrokerEnvironment `
+            -AllowFailure
+    } elseif ($DeployedBridgeVerify.ExitCode -eq 20) {
+        $DeployedBridgeVerify = Invoke-BoundedCommand `
+            -Stage "deployed Gmail bridge verification retry" `
+            -Command $PythonCommand `
+            -Arguments @(
+                "-B", $BrokerCtlPath, "verify-bridge",
+                "--source", $BridgeSourcePath,
+                "--attestation", $BridgeAttestationPath,
+                "--plugin-version", $PluginVersion
+            ) `
+            -TimeoutSeconds $TimeoutBridgeSeconds `
+            -Environment $BrokerEnvironment `
+            -AllowFailure
+    }
     if ($DeployedBridgeVerify.ExitCode -ne 0) {
         throw "Deployed Gmail bridge verification failed with exit code $($DeployedBridgeVerify.ExitCode)."
     }

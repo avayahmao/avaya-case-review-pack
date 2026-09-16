@@ -1180,6 +1180,18 @@ class InstallerContractTests(unittest.TestCase):
             records["deployed-shim-import"]["cwd"],
         )
 
+    def test_deployed_bridge_unavailable_is_retried_once_before_rollback(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+
+        completed = fixture.run("0,20,0")
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertEqual(
+            fixture.broker_event_lines(),
+            ["verify-bridge", "stop", "verify-bridge", "verify-bridge", "status"],
+        )
+
     def test_deployed_allowlist_supports_real_brokerctl_help_and_status(self):
         cloud_match = re.search(
             r"\$GmailCloudDeploymentFiles\s*=\s*@\((.*?)\n\)",
