@@ -13,7 +13,7 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
@@ -26,6 +26,7 @@ from review_presenter import PresentationError, render_review, validate_snapshot
 
 
 SCHEMA_VERSION = 2
+MAX_REVIEWED_AT_FUTURE_SKEW = timedelta(minutes=5)
 CASE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{1,63}$")
 
 RCA_STATES = {"Under Investigation", "Suspected", "Identified", "Validated", "unknown"}
@@ -455,6 +456,8 @@ def validate_update_payload(payload: Any) -> dict[str, Any]:
     case_id = normalize_case_id(payload.get("case_id"))
     reviewed_at = validate_timestamp(payload.get("reviewed_at"), "reviewed_at")
     snapshot_before = validate_timestamp(payload.get("snapshot_before"), "snapshot_before")
+    if parse_timestamp(reviewed_at) > datetime.now(timezone.utc) + MAX_REVIEWED_AT_FUTURE_SKEW:
+        raise RecordError("reviewed_at cannot be in the future")
     current = require_string_map(payload.get("current"), "current", CURRENT_FIELDS)
     if current["rca_state"] not in RCA_STATES:
         raise RecordError(f"unsupported RCA state: {current['rca_state']}")

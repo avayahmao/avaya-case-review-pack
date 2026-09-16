@@ -98,6 +98,14 @@ Build one `presentation` object with:
 - `evidence_register` — dynamic `E1..EN` rows with date, source, verbatim evidence, and reverse mapping.
 - `visual_context` — only evidenced transitions, recurrences, hypotheses, components/handoffs, or ownership checkpoints. Populate `transitions` whenever at least two substantive investigation states are evidenced; migrated snapshots may use the renderer's milestones/lineage fallback.
 
+Use these exact payload field names when constructing the structured object:
+
+- `timeline` rows use `date`, `by`, `source`, and `change`.
+- `evidence_register` rows use `ref`, `date`, `source`, `evidence`, and `supports`.
+- `technical_spec` keys are `scope`, `environment`, `symptom`, `trigger_conditions`, `observed_signals`,
+  `confirmed_mechanism`, `suspected_or_unproven`, `ruled_out`, `change_or_mitigation`, `verification`,
+  `production_outcome`, and `evidence_gaps`.
+
 The durable-record payload keeps the existing `current`, `coverage`, and `evidence_digest` fields and adds this `presentation` object. A structured v2 payload does not require `full_review_markdown`.
 
 ## Deterministic Commands

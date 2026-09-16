@@ -117,10 +117,13 @@ function Update-McpConfiguration {
     $GmailServer = Get-OrAddObjectProperty -Object $McpServers -Name "gmail"
     $GmailEnvironment = Get-OrAddObjectProperty -Object $GmailServer -Name "env"
     Set-ObjectProperty -Object $GmailEnvironment -Name "GMAIL_BACKEND" -Value "edge_broker"
+    Set-ObjectProperty -Object $GmailEnvironment -Name "PYTHONIOENCODING" -Value "utf-8"
     Set-ObjectProperty -Object $GmailServer -Name "command" -Value "python"
     Set-ObjectProperty -Object $GmailServer -Name "args" -Value @($GmailScriptPath)
 
     $CaseToMdServer = Get-OrAddObjectProperty -Object $McpServers -Name "CaseToMD"
+    $CaseToMdEnvironment = Get-OrAddObjectProperty -Object $CaseToMdServer -Name "env"
+    Set-ObjectProperty -Object $CaseToMdEnvironment -Name "PYTHONIOENCODING" -Value "utf-8"
     Set-ObjectProperty -Object $CaseToMdServer -Name "command" -Value "python"
     Set-ObjectProperty -Object $CaseToMdServer -Name "args" -Value @($CaseToMdScriptPath)
 
@@ -129,7 +132,11 @@ function Update-McpConfiguration {
         New-Item -ItemType Directory -Path $ConfigDirectory -Force | Out-Null
     }
     $McpJson = $ExistingConfig | ConvertTo-Json -Depth 20
-    Set-Content -LiteralPath $ConfigPath -Value $McpJson -Encoding UTF8
+    [IO.File]::WriteAllText(
+        $ConfigPath,
+        $McpJson + [Environment]::NewLine,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
 }
 
 function Get-FileSha256 {

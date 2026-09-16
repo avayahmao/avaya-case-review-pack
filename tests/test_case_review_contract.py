@@ -1166,6 +1166,16 @@ class CaseReviewContractTests(unittest.TestCase):
                     self.assertIn(marker.lower(), contract)
                 self.assertNotIn("6-8 sentence executive summary", contract)
 
+    def test_case_review_fast_path_documents_response_shapes_and_one_shot_finalize(self):
+        self.assertIn("gmail_read_thread_page", self.skill)
+        self.assertIn("segments", self.skill)
+        self.assertIn("body_sha256", self.skill)
+        self.assertIn("do not inspect bundled MCP schema files", self.skill)
+        self.assertIn("Do not open `chat-output.md`", self.skill)
+        output_modes = normalize_contract_item(read(OUTPUT_MODES))
+        self.assertIn("timeline rows use date, by, source, and change", output_modes)
+        self.assertIn("evidence_register rows use ref, date, source, evidence, and supports", output_modes)
+
     def test_contract_docs_describe_whole_case_storyline(self):
         for name, content in self.contract_docs.items():
             with self.subTest(document=name):

@@ -72,6 +72,16 @@ try {
     if ($Updated.mcpServers.gmail.env.GMAIL_BACKEND -ne "edge_broker") {
         throw "Gmail backend was not migrated."
     }
+    if ($Updated.mcpServers.gmail.env.PYTHONIOENCODING -ne "utf-8") {
+        throw "Gmail UTF-8 environment was not configured."
+    }
+    if ($Updated.mcpServers.CaseToMD.env.PYTHONIOENCODING -ne "utf-8") {
+        throw "CaseToMD UTF-8 environment was not configured."
+    }
+    $ConfigBytes = [IO.File]::ReadAllBytes($ConfigPath)
+    if ($ConfigBytes.Length -ge 3 -and $ConfigBytes[0] -eq 0xEF -and $ConfigBytes[1] -eq 0xBB -and $ConfigBytes[2] -eq 0xBF) {
+        throw "MCP configuration must be UTF-8 without a BOM."
+    }
     if ($Updated.mcpServers.gmail.command -ne "python") {
         throw "Gmail command was not updated."
     }

@@ -177,6 +177,15 @@ def durable_bytes(directory):
 
 
 class CaseRecordTests(unittest.TestCase):
+    def test_future_reviewed_at_is_rejected(self):
+        with self.assertRaisesRegex(
+            case_record.RecordError,
+            "reviewed_at cannot be in the future",
+        ):
+            case_record.validate_update_payload(
+                structured_payload(reviewed_at="2099-01-01T00:00:00Z")
+            )
+
     def test_finalize_write_failures_restore_every_existing_file(self):
         for target_name in (
             "record.json",

@@ -86,6 +86,28 @@ Before generating any review content, process **every discrete Case note** retur
 
 #### Gmail
 
+Use the response shapes below directly; do not inspect bundled MCP schema files or reverse-engineer the Python runtime
+during a review. Save large MCP responses as UTF-8 artifacts and summarize them with one deterministic command.
+
+- `gmail_list_threads` returns `success`, `snapshot_before`, `thread_ids`, `next_page_token`, and `complete`.
+- `gmail_read_thread_page` returns `success`, `snapshot_before`, `thread_id`, `message_count`, `manifest_sha256`,
+  `segments`, `next_cursor`, and `complete`.
+- Each `segments` item contains `message_id`, `thread_id`, `internal_date`, `from`, `to`, `cc`, `subject`,
+  `body_chunk`, `chunk_index`, `chunk_count`, `body_bytes`, `body_sha256`, and `attachment_names`.
+
+Run Python with UTF-8 output (`PYTHONIOENCODING=utf-8` or `python -X utf8`). On Windows, use `rg` in the terminal
+for source searches; do not send absolute drive-letter paths to the Antigravity `grep_search` tool.
+
+After saving the CaseToMD, list-page, and thread-page JSON responses, run the bundled verifier once and copy its
+sanitized ledger into the payload:
+
+```text
+python <case-review-skill-directory>/scripts/context_verify.py --case-markdown <case.json> --list-page <list-1.json> --thread-page <thread-1.json>
+```
+
+Repeat `--list-page` and `--thread-page` for additional pages. Do not probe the same response with ad-hoc commands;
+`context_verify.py` validates completion flags, snapshot reuse, manifests, segments, UTF-8 byte counts, and body hashes.
+
 1. The bootstrap input for the primary Case ID query may be empty: call `gmail_list_threads(query: "<primary raw Case ID>", snapshot_before: "", page_token: "", max_results: 100)`. The first successful response **must return a non-empty `snapshot_before`**; if it is absent or empty, block collection. Save that returned value exactly.
 2. For the primary Case ID only, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Every later list/read call must pass that **exact same non-empty `snapshot_before`**; never send an empty value or create a new snapshot after bootstrap. Record each successful page in `query_pages_completed`, and set `record_id_queries_completed` to `1` only after the primary ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
 3. Track tokens within each query chain. A missing completion field or a malformed, **repeated or regressing** page token or cursor is a **protocol failure**; never infer completion and never impose an arbitrary thread limit.
@@ -337,6 +359,9 @@ python <skill-directory>/scripts/case_record.py finalize --input <payload.json> 
 ```
 
 `finalize` validates the complete payload, performs the idempotent record update, renders the deterministic response, writes `chat-output.md` plus `chat-output.sha256`, and verifies the stored artifact under one per-case lock. It emits the exact verified canonical Markdown once; return that stdout unchanged. Do not manually shorten, expand, rewrite, or append a second report. Any validation, rendering, write, hash, or verification mismatch blocks completion. The backward-compatible `case_record.py update`, `case_record.py present --markdown-only`, and `case_record.py verify-final` commands remain available for existing integrations and diagnostics, but the normal new/follow-up workflow uses `finalize`. JSON-mode `present` retains `mode` and `visual` as the auditable presentation decision.
+Do not open `chat-output.md` or run `verify-final` after a successful `finalize`; finalization already performs those checks.
+Never construct a large JSON payload with inline `python -c` or a shell-escaped multiline command. Write the UTF-8
+JSON payload to a file, then invoke `finalize` once.
 For follow-ups, use the helper-computed delta returned from the stored record; never reconstruct changes from conversational memory.
 
 Do not persist when context collection is incomplete, the evidence gate fails, or the result is exactly `unknown`. If persistence fails, state `Case record update failed` with the sanitized error and do not claim continuity succeeded.
