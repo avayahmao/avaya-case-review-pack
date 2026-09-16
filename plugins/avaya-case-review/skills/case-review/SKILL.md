@@ -350,6 +350,10 @@ The payload must retain the complete coverage counters, current Case Card fields
 
 Use `UNKNOWN`, `NOT OBSERVED`, `NOT COLLECTED`, and `NOT APPLICABLE` precisely. Never add a visual-context item that was not established by the case corpus.
 
+Set `reviewed_at` to the current UTC time with a `Z` suffix; do not append `Z` to a local wall-clock timestamp. Keep
+unverified mechanisms, pending investigations, and suspected causes explicitly marked as `SUSPECTED` or `NOT TESTED`;
+do not promote them to confirmed blockers or confirmed findings.
+
 ### Step 8 - Persist and Present Deterministically
 
 Read [case-record-lifecycle.md](references/case-record-lifecycle.md), write the UTF-8 payload, and run:

@@ -1172,6 +1172,8 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("body_sha256", self.skill)
         self.assertIn("do not inspect bundled MCP schema files", self.skill)
         self.assertIn("Do not open `chat-output.md`", self.skill)
+        self.assertIn("current UTC time with a `Z` suffix", self.skill)
+        self.assertIn("do not promote them to confirmed blockers", self.skill)
         output_modes = normalize_contract_item(read(OUTPUT_MODES))
         self.assertIn("timeline rows use date, by, source, and change", output_modes)
         self.assertIn("evidence_register rows use ref, date, source, evidence, and supports", output_modes)
