@@ -1,6 +1,6 @@
 ---
 name: "case-review"
-description: "Generate and continue an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records using CaseToMD, exhaustive Gmail context, deterministic standard/compact/follow-up/technical/flow/full presentation, final-output integrity verification, durable per-case follow-up records, and optional user-approved closed-case learning."
+description: "Generate and continue an evidence-grounded Operation Manager case review for Avaya Siebel and ServiceNow records. Accept raw IDs such as INC7386572, 1-23659220672, Activity IDs, CTASK..., CHG..., or PRJTASK...; use CaseToMD plus Gmail; route deterministic standard, compact, follow-up, technical, flow, or full output; enforce final-output integrity; maintain one durable follow-up record per Case ID through closure; and, only on explicit request and approval, draft or apply sanitized closed-case learning to local domain knowledge."
 ---
 
 # Avaya Case Review

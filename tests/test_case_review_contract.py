@@ -1606,7 +1606,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 self.assertNotRegex(read(path), r"[^\x00-\x7F]")
 
-    def test_release_metadata_identifies_v1_10_1_as_stable_release(self):
+    def test_release_metadata_targets_v1_11_0(self):
         release_md = read(RELEASE_MD)
         release_html = read(RELEASE_HTML)
         self.assertIn("[v1.8.0]", release_md)
@@ -1664,16 +1664,24 @@ class CaseReviewContractTests(unittest.TestCase):
             "GitHub URL Plugin Bootstrap and Complete-Response Repair",
             release_html,
         )
+        self.assertIn("[v1.10.0]", release_md)
+        self.assertIn("v1.10.0", release_html)
+        self.assertIn("Investigation-Complete Reviews and Quality Audits", release_md)
+        self.assertIn("Investigation-Complete Reviews and Quality Audits", release_html)
+        self.assertIn("[v1.11.0]", release_md)
+        self.assertIn("v1.11.0", release_html)
+        self.assertIn("Deterministic Exhaustive Collection and Payload Assembly", release_md)
+        self.assertIn("Deterministic Exhaustive Collection and Payload Assembly", release_html)
         plugin = json.loads(read(PLUGIN_JSON))
-        self.assertEqual("1.10.1", plugin["version"])
+        self.assertEqual("1.11.0", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("stable v1.10.1 installation contract", content)
-                self.assertIn("v1.10.1 release contract and upgrade guidance", content)
+                self.assertIn("stable v1.11.0 installation contract", content)
+                self.assertIn("v1.11.0 - latest release", content)
                 self.assertNotIn("v1.10.0 - latest published release", content)
-                self.assertNotIn("v1.10.1 release candidate", content)
+                self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
 
         agents = read(AGENTS_MD)
@@ -1686,7 +1694,9 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.9.2", agents)
         self.assertIn("v1.9.3", agents)
         self.assertIn("v1.9.4", agents)
+        self.assertIn("v1.10.0", agents)
         self.assertIn("v1.10.1", agents)
+        self.assertIn("v1.11.0", agents)
         self.assertNotIn("Target release (not yet published)", agents)
 
     def test_distributable_docs_have_no_machine_specific_file_urls(self):
@@ -1787,6 +1797,68 @@ class CaseReviewContractTests(unittest.TestCase):
             for marker in markers:
                 with self.subTest(scenario=scenario["id"], marker=marker):
                     self.assertIn(marker, self.skill)
+
+
+
+class SkillIntegrityGuardTests(unittest.TestCase):
+    """Guards against silent dual-target drift between repo and deployed copies."""
+
+    def test_skill_referenced_scripts_exist(self):
+        skill = read(SKILL)
+        referenced = set(
+            __import__("re").findall(r"scripts/([A-Za-z0-9_\-]+\.py)", skill)
+        )
+        self.assertTrue(referenced, "no script references found in SKILL.md")
+        for name in sorted(referenced):
+            target = SKILL.parent / "scripts" / name
+            self.assertTrue(
+                target.is_file(), f"SKILL.md references missing script: {name}"
+            )
+
+    def test_codex_thin_entries_match_canonical_files(self):
+        for entry in ("case-review", "gmail-capability", "qa", "alarm-audit"):
+            thin = ROOT / f"skills/{entry}/SKILL.md"
+            canonical = ROOT / f"plugins/avaya-case-review/skills/{entry}/SKILL.md"
+            self.assertTrue(thin.is_file(), f"missing thin entry: {thin}")
+            self.assertTrue(canonical.is_file(), f"missing canonical: {canonical}")
+            thin_description = self._frontmatter_description(read(thin))
+            canonical_description = self._frontmatter_description(read(canonical))
+            self.assertEqual(
+                thin_description,
+                canonical_description,
+                f"thin entry skills/{entry}/SKILL.md description drifted from canonical",
+            )
+
+    @staticmethod
+    def _frontmatter_description(content: str):
+        match = re.search(r'^description:\s*(.+)$', content, re.MULTILINE)
+        if not match:
+            return None
+        return match.group(1).strip().strip('"')
+
+    def test_large_references_have_accurate_line_tocs(self):
+        for name in ("contact-center.md", "aes-cti-jtapi.md"):
+            content = read(SKILL.parent / "references" / name)
+            lines = content.split("\n")
+            self.assertIn(
+                "## Table of Contents (line ranges)",
+                content,
+                f"{name} lost its line-range TOC",
+            )
+            entries = re.findall(
+                r"^- \*\*(.+?)\*\* — lines (\d+)-(\d+)$",
+                content,
+                re.MULTILINE,
+            )
+            self.assertTrue(entries, f"{name} TOC has no line-range entries")
+            for title, start, end in entries:
+                start = int(start)
+                self.assertLessEqual(start, len(lines))
+                self.assertIn(
+                    title,
+                    lines[start - 1],
+                    f"{name} TOC entry {title!r} does not start at line {start}",
+                )
 
 
 if __name__ == "__main__":

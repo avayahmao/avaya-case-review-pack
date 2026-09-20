@@ -1,24 +1,29 @@
 # Contact Center (AACC / Oceana / AEP / POM / AXP / CMS / WFM) Troubleshooting Reference
 
-## Table of Contents
-- [Contact Center Products](#contact-center-products)
-- [AXP / Experience Portal Infrastructure Notes](#axp--experience-portal-infrastructure-notes)
-- [AACC Deployment / Upgrade Failure Patterns](#aacc-deployment--upgrade-failure-patterns)
-- [AIC (Avaya Interaction Center) Notes](#aic-avaya-interaction-center-notes)
-- [ACCS (Avaya Contact Center Select) / IPO Notes](#accs-avaya-contact-center-select--ipo-notes)
-- [Live Transcription / AI Services](#live-transcription--ai-services)
-- [Contact Center Routing (Workflow 4)](#contact-center-routing)
-- [AEP / IVR / VoiceXML (Workflow 9)](#aep--ivr--voicexml)
-- [POM Campaign / Nail-up / Outbound (Workflow 18)](#pom-campaign--outbound)
-- [CMS Historical Report Discrepancies (Workflow 24)](#cms-historical-report-discrepancies)
-- [AXP Workflow / API (Workflow 25)](#axp-workflow--api)
-- [AACC Agent Not Receiving Calls (Workflow 26)](#aacc-agent-not-receiving-calls)
-- [Contact Center Fault Patterns](#contact-center-fault-patterns)
-- [Historical Fault Patterns (FY21 / FY22 / FY23)](#historical-fault-patterns)
-- [Contact Center Logs](#contact-center-logs)
-- [CMS Log Collection](#cms-log-collection)
-- [POM Log Capture](#pom-log-capture)
-- [Cross-Product Integration](#cross-product-integration)
+## Table of Contents (line ranges)
+
+Read the matching range only (1-based, inclusive):
+`Get-Content <this file> | Select-Object -Skip <start-1> -First <count>`
+
+- **Contact Center Products** — lines 30-46
+- **AXP / Experience Portal Infrastructure Notes** — lines 47-56
+- **AACC Deployment / Upgrade Failure Patterns** — lines 57-66
+- **AIC (Avaya Interaction Center) Notes** — lines 67-78
+- **ACCS (Avaya Contact Center Select) / IPO Notes** — lines 79-86
+- **Live Transcription / AI Services** — lines 87-96
+- **Contact Center Routing** — lines 97-134
+- **AEP / IVR / VoiceXML** — lines 135-166
+- **POM Campaign / Outbound** — lines 167-248
+- **CMS Historical Report Discrepancies** — lines 249-283
+- **AXP Workflow / API** — lines 284-321
+- **AACC Agent Not Receiving Calls** — lines 322-361
+- **AACC Stuck Agent Release** — lines 362-419
+- **Contact Center Fault Patterns** — lines 420-436
+- **Historical Fault Patterns** — lines 437-511
+- **Contact Center Logs** — lines 512-570
+- **CMS Log Collection** — lines 571-627
+- **POM Log Capture** — lines 628-678
+- **Cross-Product Integration** — lines 679-752
 
 ---
 

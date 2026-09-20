@@ -765,5 +765,168 @@ class CaseRecordTests(unittest.TestCase):
                 case_record.draft_learning_candidate(candidate, temporary)
 
 
+
+def passing_manifest(case_id="1-23700000001", snapshot="2026-08-20T00:59:00Z"):
+    return {
+        "case_id": case_id,
+        "collected_at": "2026-08-20T00:59:30Z",
+        "snapshot_before": snapshot,
+        "status": "pass",
+        "failures": [],
+        "digest_degraded": False,
+        "ledger": {
+            "record_ids_planned": 1,
+            "record_id_queries_completed": 1,
+            "query_pages_completed": 1,
+            "unique_threads_discovered": 1,
+            "threads_read_complete": 1,
+            "messages_expected": 2,
+            "messages_completed": 2,
+            "message_chunks_expected": 2,
+            "message_chunks_completed": 2,
+            "body_hashes_verified": 2,
+            "manifest_hashes_stable": 1,
+            "gmail_threads_discovered": 1,
+            "gmail_threads_enumerated": 1,
+            "gmail_threads_read_complete": 1,
+            "gmail_messages_expected": 2,
+            "gmail_messages_read": 2,
+            "body_chunks_expected": 2,
+            "body_chunks_read": 2,
+            "snapshot_before": snapshot,
+            "query_complete": True,
+        },
+    }
+
+
+class SchemaCommandTests(unittest.TestCase):
+    def test_schema_describes_validated_contract(self):
+        schema = case_record.describe_schema()
+        self.assertEqual(schema["schema_version"], case_record.SCHEMA_VERSION)
+        update = schema["update_input"]
+        self.assertEqual(
+            sorted(update["current"]["required_non_empty_strings"]),
+            sorted(case_record.CURRENT_FIELDS),
+        )
+        self.assertIn("rca_state", update["current"]["enums"])
+        self.assertEqual(
+            update["evidence_digest"]["states"], sorted(case_record.EVIDENCE_STATES)
+        )
+        self.assertEqual(
+            update["coverage"]["equalities"],
+            [f"{l} == {r}" for l, r in case_record.COVERAGE_EQUALITIES],
+        )
+        self.assertEqual(
+            update["coverage"]["required_non_negative_integers"],
+            sorted(case_record.coverage_required_numbers()),
+        )
+
+    def test_schema_cli_prints_json(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "schema"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        parsed = json.loads(result.stdout)
+        self.assertIn("build_payload", parsed)
+        self.assertIn("update_input", parsed)
+
+
+class BuildPayloadTests(unittest.TestCase):
+    def overlay(self):
+        base = payload()
+        return {
+            "case_notes_discovered": 4,
+            "case_notes_processed": 4,
+            "reviewed_at": base["reviewed_at"],
+            "current": base["current"],
+            "evidence_digest": base["evidence_digest"],
+            "full_review_markdown": base["full_review_markdown"],
+        }
+
+    def test_build_payload_round_trip_passes_update(self):
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            out_path = Path(tmp) / "payload.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_path.write_text(json.dumps(self.overlay()), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    f"--data-dir={tmp}",
+                    "build-payload",
+                    "--manifest",
+                    str(manifest_path),
+                    "--overlay",
+                    str(overlay_path),
+                    "--out",
+                    str(out_path),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            built = json.loads(out_path.read_text(encoding="utf-8"))
+            self.assertEqual(built["collection_status"], "complete")
+            self.assertEqual(
+                built["coverage"]["gmail_messages_read"], 2
+            )
+            record = case_record.update_case_record(built, Path(tmp))
+            self.assertTrue(record["updated"])
+            self.assertEqual(record["review_count"], 1)
+
+    def test_build_payload_rejects_non_passing_manifest(self):
+        manifest = passing_manifest()
+        manifest["status"] = "fail"
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            overlay_path.write_text(json.dumps(self.overlay()), encoding="utf-8")
+            with self.assertRaises(case_record.RecordError):
+                case_record.build_update_payload(
+                    manifest_path, overlay_path, Path(tmp) / "out.json"
+                )
+
+    def test_build_payload_rejects_missing_note_counters(self):
+        overlay = self.overlay()
+        del overlay["case_notes_discovered"]
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_path.write_text(json.dumps(overlay), encoding="utf-8")
+            with self.assertRaises(case_record.RecordError):
+                case_record.build_update_payload(
+                    manifest_path, overlay_path, Path(tmp) / "out.json"
+                )
+
+    def test_build_payload_rejects_unequal_note_counters(self):
+        overlay = self.overlay()
+        overlay["case_notes_processed"] = 3
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_path.write_text(json.dumps(overlay), encoding="utf-8")
+            with self.assertRaises(case_record.RecordError):
+                case_record.build_update_payload(
+                    manifest_path, overlay_path, Path(tmp) / "out.json"
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

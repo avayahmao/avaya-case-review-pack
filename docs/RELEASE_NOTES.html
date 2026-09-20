@@ -111,6 +111,29 @@
 
 <div class="main-container">
 
+    <!-- VERSION 1.11.0 -->
+    <div>
+        <span class="version-tag">v1.11.0</span>
+        <span class="version-date">2026-09-20 - Deterministic Exhaustive Collection and Payload Assembly</span>
+        <h3>Deterministic Exhaustive Collection and Payload Assembly</h3>
+        <h3>Script-Driven Exhaustive Gmail Collection</h3>
+        <ul>
+            <li>Adds <code>gmail_collect_case.py collect/query/status</code>: one command enumerates the primary-ID thread chain, exhausts every page and cursor under a single reused snapshot, deduplicates by <code>thread_id</code>/<code>message_id</code>, reassembles and SHA-256-verifies every message body, and enforces per-thread manifest/count stability.</li>
+            <li>Writes a persistent per-case corpus (<code>corpus.json</code>, never loaded into context), a byte-budgeted routing <code>digest.json</code>, and a machine-verified Coverage-Ledger <code>manifest.json</code>; interrupted collections resume under their original snapshot with <code>--resume</code>.</li>
+            <li>Adds targeted <code>query</code> pulls with chronological ordering and a character budget, replacing whole-corpus dumps; oversized cases degrade the digest to thread-level rollup.</li>
+            <li>The per-page <code>gmail_list_threads</code>/<code>gmail_read_thread_page</code> MCP loop remains the explicit manual rollback.</li>
+        </ul>
+        <h3>Contract-Driven Payload Assembly</h3>
+        <ul>
+            <li>Adds <code>case_record.py schema</code>, which prints the current update-payload contract from the validating code itself, and <code>case_record.py build-payload</code>, which merges a passing collection manifest with a small judgment overlay, refuses non-passing manifests, and validates before writing.</li>
+        </ul>
+        <h3>Context Budget and Dual-Target Delivery Guards</h3>
+        <ul>
+            <li>Adds line-range tables of contents to the two largest domain references and hash-compare guidance in place of whole-file double reads.</li>
+            <li>Adds drift guards: release manifest covers every case-review script; the installer Gmail allowlist must match <code>tools/gmail/*.py</code>; SKILL script references must exist; Codex thin entries must match canonical descriptions (four pre-existing description drifts fixed).</li>
+        </ul>
+    </div>
+
     <!-- VERSION 1.10.1 -->
     <div>
         <span class="version-tag">v1.10.1</span>

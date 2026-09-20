@@ -206,6 +206,19 @@ class ReleaseManifestTests(unittest.TestCase):
             f"missing case-review references: {sorted(required_references - entries)}",
         )
 
+        scripts_root = (
+            ROOT / "plugins/avaya-case-review/skills/case-review/scripts"
+        )
+        required_scripts = {
+            path.relative_to(ROOT).as_posix() for path in scripts_root.glob("*.py")
+        }
+        self.assertTrue(required_scripts, "case-review scripts are missing")
+        self.assertFalse(
+            required_scripts - entries,
+            f"case-review scripts missing from the release manifest: "
+            f"{sorted(required_scripts - entries)}",
+        )
+
     def test_cloud_bridge_is_distributed_but_not_deployed_as_a_local_script(self):
         entries = set(manifest_entries())
         installer_files = set(installer_gmail_deployment_files())

@@ -53,6 +53,7 @@ plugins/avaya-case-review/skills/case-review/references/recording-wfo.md
 plugins/avaya-case-review/skills/case-review/references/security-vulnerability.md
 plugins/avaya-case-review/skills/case-review/references/sip-voice-quality.md
 plugins/avaya-case-review/skills/case-review/scripts/case_record.py
+plugins/avaya-case-review/skills/case-review/scripts/gmail_collect_case.py
 plugins/avaya-case-review/skills/case-review/scripts/review_presenter.py
 plugins/avaya-case-review/skills/case-review/scripts/context_verify.py
 plugins/avaya-case-review/skills/case-review/scripts/alarm_audit.py

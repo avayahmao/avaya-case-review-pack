@@ -4,6 +4,26 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
+## [v1.11.0] - 2026-09-20: Deterministic Exhaustive Collection and Payload Assembly
+
+### Script-Driven Exhaustive Gmail Collection
+
+* Adds `gmail_collect_case.py collect/query/status`: one command enumerates the primary-ID thread chain, exhausts every page and cursor under a single reused snapshot, deduplicates by `thread_id`/`message_id`, reassembles and SHA-256-verifies every message body, and enforces per-thread manifest/count stability.
+* Writes a persistent per-case corpus (`corpus.json`, never loaded into context), a byte-budgeted routing `digest.json`, and a machine-verified Coverage-Ledger `manifest.json`; interrupted collections resume under their original snapshot with `--resume`.
+* Adds targeted `query` pulls with chronological ordering and a character budget, replacing whole-corpus dumps; oversized cases degrade the digest to thread-level rollup.
+* The per-page `gmail_list_threads`/`gmail_read_thread_page` MCP loop remains the explicit manual rollback.
+
+### Contract-Driven Payload Assembly
+
+* Adds `case_record.py schema`, which prints the current update-payload contract from the validating code itself, and `case_record.py build-payload`, which merges a passing collection manifest with a small judgment overlay, refuses non-passing manifests, and validates before writing.
+
+### Context Budget and Dual-Target Delivery Guards
+
+* Adds line-range tables of contents to the two largest domain references and hash-compare guidance in place of whole-file double reads.
+* Adds drift guards: release manifest covers every case-review script; the installer Gmail allowlist must match `tools/gmail/*.py`; SKILL script references must exist; Codex thin entries must match canonical descriptions (four pre-existing description drifts fixed).
+
+---
+
 ## [v1.10.1] - 2026-09-14: GitHub URL Plugin Bootstrap and Complete-Response Repair
 
 ### Deterministic AI Agent Installation
@@ -22,6 +42,7 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 ### Upgrade from v1.10.0
 
 Clone and verify the v1.10.1 tag as above, inspect `INSTALL.md`, then run no-flag `install-codex.ps1` for Codex or `install.bat` for Antigravity. Only SSO/MFA may pause the installer; start a new Codex task or restart Antigravity afterward. End users do not deploy Apps Script or provide a production Case ID.
+
 
 ---
 

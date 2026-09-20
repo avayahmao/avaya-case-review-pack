@@ -34,7 +34,7 @@ install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 Follow [`INSTALL.md`](INSTALL.md). Do not execute a remote script directly: clone the repository into a unique temporary directory, inspect the checked-out installer, and select the current host's supported entry point.
 
 - **Do not use a skill installer.** This is a Codex plugin marketplace, not a standalone skill; the repository root is the plugin selected by its marketplace manifest.
-- **Stable checkout:** run `git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>`, then require `git describe --exact-match --tags HEAD` to return exactly `v1.10.1`. These are the release instructions published by this commit; they do not assert that the tag, GitHub release, release asset, or URL-only acceptance already succeeded.
+- **Stable checkout:** run `git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>`, then require `git describe --exact-match --tags HEAD` to return exactly `v1.11.0`. These are the release instructions published by this commit; they do not assert that the tag, GitHub release, release asset, or URL-only acceptance already succeeded.
 - **Codex:** run the checked-out no-flag `install-codex.ps1`. It installs the runtime package, validates local attestation and live cloud compatibility, registers the Git-backed marketplace, installs `avaya-case-review@avaya-case-review-pack`, and completes Managed Edge login when required.
 - **Antigravity:** run the checked-out no-flag `install.bat`; it validates the same release and retains the existing `setup_env.ps1` deployment into `%USERPROFILE%\.gemini\`.
 - **Claude Code:** out of scope. Do not create or install a `.claude-plugin` package.
@@ -64,13 +64,14 @@ Required MCP tools (the skill will call these; fail loudly if missing rather tha
 | Tool | Server | Purpose |
 |---|---|---|
 | `get_case_markdown(report_id)` | CaseToMD | Fetch the case as structured Markdown |
-| `gmail_list_threads(query, snapshot_before, page_token, max_results)` | Gmail | Exhaustively enumerate case-bounded threads under one snapshot |
-| `gmail_read_thread_page(thread_id, snapshot_before, cursor)` | Gmail | Exhaustively read every eligible message/body chunk |
+| `gmail_collect_case.py collect/query` (plugin script) | Gmail broker (same backend as the MCP tools) | Primary exhaustive collection: corpus + digest + machine-verified Coverage Ledger manifest in one command |
+| `gmail_list_threads(query, snapshot_before, page_token, max_results)` | Gmail | Underlying wire contract; explicit manual rollback when the collector is unavailable |
+| `gmail_read_thread_page(thread_id, snapshot_before, cursor)` | Gmail | Underlying wire contract; explicit manual rollback when the collector is unavailable |
 | `gmail_search(query)` / `gmail_read(message_id)` | Gmail | Backward-compatible APIs; not the completeness workflow |
 
 If a required MCP server is not configured, tell the user which one and stop — do not invent case content.
 
-For every case review, **Complete Context Before Analysis** is mandatory: process every Case note, retain note-derived related IDs as Case context, query Gmail using the primary raw Case ID only, exhaust every resulting `gmail_list_threads` page, and exhaust every `gmail_read_thread_page` cursor so every message in every matched Gmail thread is covered under one snapshot. Maintain the **Context Coverage Ledger** with exactly one planned/completed record-ID query and generate no review until its equalities pass. If collection fails, return `Context collection incomplete` with only sanitized counts and the blocker. `gmail_search` and `gmail_read` remain backward-compatible APIs and explicit legacy rollback surfaces, never an alternate way to collect a complete review.
+For every case review, **Complete Context Before Analysis** is mandatory: process every Case note, retain note-derived related IDs as Case context, then run `plugins/avaya-case-review/skills/case-review/scripts/gmail_collect_case.py collect` for the primary raw Case ID only. The collector exhausts every `gmail_list_threads` page and every `gmail_read_thread_page` cursor under one snapshot, verifies reassembled body hashes and per-thread manifest stability, deduplicates by `thread_id`/`message_id`, and writes `corpus.json` (never loaded into context), `digest.json` (the routing index the agent reads), and `manifest.json` (the Gmail-side **Context Coverage Ledger**). Generate no review until the manifest reports `status: pass` and the case-note counters are equal; use `gmail_collect_case.py query` for budgeted targeted body pulls instead of dumping the corpus. If collection fails, return `Context collection incomplete` with only sanitized counts and the blocker; `--resume` continues an interrupted collection under its original snapshot. The `gmail_list_threads`/`gmail_read_thread_page` MCP tools remain the explicit manual rollback, and `gmail_search`/`gmail_read` remain backward-compatible APIs — never an alternate way to collect a complete review.
 
 The exhaustive cloud endpoint is the existing Gmail MCP Apps Script Web App with the **Advanced Gmail Service** named Gmail, API version v1. Its tracked source is `tools/gmail/cloud/GmailMcpBridge.gs`; it is operational MCP code, not the optional governance example at `examples/optional-appsscript/Code.gs`. Deploy and verify the cloud version first using `docs/GMAIL_CLOUD_BRIDGE.md`, then deploy the local MCP modules and Agent SKILL. `setup_env.ps1` intentionally does not deploy the cloud source. Keep the Agent gate inactive if cloud authorization, stable snapshot/page coverage, cursor exhaustion, or hash/count verification fails.
 
@@ -122,7 +123,7 @@ avaya-case-review-pack/
 │       ├── case-review/
 │       │   ├── SKILL.md                  ← the workflow
 │       │   ├── references/               ← 10 domain guides + output/record contracts
-│       │   └── scripts/                  ← durable record + deterministic presenter
+│       │   └── scripts/                  ← durable record + exhaustive Gmail collector + deterministic presenter
 │       └── gmail-capability/SKILL.md     ← tells the agent Gmail MCP is available
 ├── skills/                          ← thin Codex entry points to canonical plugin skills
 ├── tools/
@@ -158,6 +159,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 |---|---|
 | Change Codex packaging or URL installation | `.codex-plugin/plugin.json`, `.mcp.json`, `.agents/plugins/marketplace.json`, `install-codex.ps1`, and `INSTALL.md` |
 | Change the case-review workflow or output modes | `plugins/avaya-case-review/skills/case-review/SKILL.md`, `references/output-modes.md`, `scripts/review_presenter.py`, and `scripts/case_record.py` |
+| Change exhaustive Gmail collection | `plugins/avaya-case-review/skills/case-review/scripts/gmail_collect_case.py` (imports `tools/gmail/gmail_broker_client.py`; tests in `tests/test_gmail_collect_case.py`) |
 | Add a new Avaya-domain reference | new `.md` in `plugins/avaya-case-review/skills/case-review/references/`, plus a row in the SKILL.md routing table |
 | Change the installer | `setup_env.ps1` (invoked by `install.bat`) — verify with `powershell -NoProfile -Command "[PSParser]::Tokenize((Get-Content -Raw './setup_env.ps1'),[ref]$null)|Out-Null"` |
 | Change Gmail behavior | `tools/gmail/gmail_mcp_server.py`, `gmail_edge_broker.py`, `gmail_broker_client.py`, `gmail_brokerctl.py`, and `gmail_legacy_backend.py`; keep `edge_broker` as the default and the explicit `legacy_playwright` rollback path tested |
@@ -167,7 +169,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 
 ## 7. Release workflow
 
-The v1.10.1 publication gates are sequential. Do not skip or reorder them, and
+The v1.11.0 publication gates are sequential. Do not skip or reorder them, and
 never force a branch or tag update.
 
 ### 1. Push the candidate branch and verify its exact remote SHA
@@ -193,19 +195,19 @@ if ($RemoteMainSha -cne $CandidateSha) { throw "Remote main SHA mismatch" }
 $DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
 git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
 $DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
-$StableBootstrap = "git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
-if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.10.1 bootstrap" }
+$StableBootstrap = "git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.11.0 bootstrap" }
 ```
 
 Never force this update. Verify the default-branch README in a fresh checkout
-exposes the exact stable v1.10.1 bootstrap before creating the tag.
+exposes the exact stable v1.11.0 bootstrap before creating the tag.
 
 ### 4. Create and verify the immutable tag
 
 ```powershell
-git tag -a v1.10.1 $CandidateSha -m "v1.10.1"
-git push origin refs/tags/v1.10.1
-$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.10.1^{}") -split '\s+')[0]
+git tag -a v1.11.0 $CandidateSha -m "v1.11.0"
+git push origin refs/tags/v1.11.0
+$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.11.0^{}") -split '\s+')[0]
 if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
 ```
 
@@ -215,7 +217,7 @@ Run the canonical GitHub-URL-only install in a second clean Windows profile.
 
 ### 6. Build and verify the release ZIP
 
-Build outside Git only from a fresh, clean, detached checkout of `v1.10.1`.
+Build outside Git only from a fresh, clean, detached checkout of `v1.11.0`.
 Confirm the tag peels to `$CandidateSha`, use that checkout's
 `release-manifest.txt`, require `git status --porcelain` to be empty, require
 the ZIP entry list to equal the manifest exactly, and compare every ZIP member
@@ -224,21 +226,22 @@ the candidate worktree. The exact executable procedure is maintained in
 `docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md`.
 
 ```powershell
-$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.10.1.zip"
+$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.11.0.zip"
 git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
-git -C $ReleaseCheckout checkout --detach v1.10.1
+git -C $ReleaseCheckout checkout --detach v1.11.0
 git -C $ReleaseCheckout status --porcelain
 ```
 
 ### 7. Publish the GitHub Release
 
 ```powershell
-gh release create v1.10.1 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.10.1.md --latest
+gh release create v1.11.0 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.11.0.md --latest
 ```
 
 Release history (most recent first; entries are published on GitHub Releases only after their release gates complete):
 
 - **v1.10.1 (2026-09-14)** — GitHub URL plugin bootstrap, Version-17 complete-response repair, and runtime-packaged Codex MCP launch repair
+- **v1.11.0** — Deterministic exhaustive collection and payload assembly
 - **v1.10.0** — Investigation-complete reviews, QA scoring, and alarm audit
 - **v1.9.4** — Cloud bridge pagination speedup
 - **v1.9.3** — Whole-case storyline and problem lineage

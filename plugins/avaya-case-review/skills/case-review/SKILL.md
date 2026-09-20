@@ -30,6 +30,8 @@ After retrieving the case, identify the products and symptoms actually present a
 
 Reference guides support interpretation only. They are not proof that a condition exists in the reviewed case.
 
+The two largest references (`contact-center.md`, `aes-cti-jtapi.md`) embed a **line-range table of contents**: read their TOC block first and pull only the targeted line range (for example `Get-Content <file> | Select-Object -Skip <start-1> -First <count>`); read the other references whole. When checking that a deployed or cached copy of any skill file matches this repository, compare file hashes (`Get-FileHash <path>` on both copies) instead of reading both files into context.
+
 For a matching domain, also locate an approved local learning overlay with `python <case-review-skill-directory>/scripts/case_record.py knowledge-path --domain <reference-stem>`. Read it after the packaged reference when it exists. Local learning remains diagnostic guidance and never counts as case-specific proof.
 
 ---
@@ -38,7 +40,12 @@ For a matching domain, also locate an approved local learning overlay with `pyth
 
 ### Explicit QA Requests
 
-When the user explicitly asks for QA scoring, case-quality assessment, QA statistics, or supplies the QA rubric columns, route to the bundled `qa` skill and `scripts/qa.py`. QA is a separate management assessment layer: its scores must not be used as evidence for RCA, mitigation maturity, production outcome, customer impact, or risk classification. Do not perform CaseToMD/Gmail collection for a QA-only request unless the user also asks for a case review. Use the QA skill's validation and rendering contract for Markdown, CSV, and JSON inputs.
+When the user explicitly asks for QA scoring, case-quality assessment, QA statistics, or supplies the QA rubric columns, route to the bundled `qa` skill and `scripts/qa.py`. QA is a separate management assessment layer: its scores must not be used as evidence for RCA, mitigation maturity, production outcome, customer impact, or risk classification.
+
+- **Validation-only supplied scores:** validate the supplied schema, reviewability, arithmetic, signed comments, and summaries without CaseToMD/Gmail collection and without silently rescoring the management judgments.
+- **Assigning or rescoring cases:** follow the QA skill's reviewability and scoring contract and perform a fresh CaseToMD retrieval plus exhaustive primary-raw-ID Gmail collection under one fresh Gmail snapshot for every case before assigning a score. Use the complete-context retrieval gate in this skill, but produce only the requested QA table/workbook; do not render a case-review report, persist a durable case record, or apply closed-case learning unless the user separately asks for those case-review outputs.
+
+Use the QA skill's validation and rendering contract for Markdown, CSV, TSV/plain-text, and JSON inputs. If required evidence collection is incomplete, do not score from partial evidence.
 
 When the user explicitly asks for alarm QA, an alarm-ticket audit, or supplies the `Check / Cause / Chronic / PLUS` alarm columns, route to the separate `alarm-audit` skill and `scripts/alarm_audit.py`. Never mix alarm-audit scores with the ordinary non-alarm QA rubric.
 
@@ -87,44 +94,59 @@ Before generating any review content, process **every discrete Case note** retur
 #### Gmail
 
 Use the response shapes below directly; do not inspect bundled MCP schema files or reverse-engineer the Python runtime
-during a review. Save large MCP responses as UTF-8 artifacts and summarize them with one deterministic command.
+during a review. Run Python with UTF-8 output (`PYTHONIOENCODING=utf-8` or `python -X utf8`). On Windows, use `rg` in the terminal
+for source searches; do not send absolute drive-letter paths to the Antigravity `grep_search` tool.
 
 - `gmail_list_threads` returns `success`, `snapshot_before`, `thread_ids`, `next_page_token`, and `complete`.
 - `gmail_read_thread_page` returns `success`, `snapshot_before`, `thread_id`, `message_count`, `manifest_sha256`,
-  `segments`, `next_cursor`, and `complete`.
-- Each `segments` item contains `message_id`, `thread_id`, `internal_date`, `from`, `to`, `cc`, `subject`,
-  `body_chunk`, `chunk_index`, `chunk_count`, `body_bytes`, `body_sha256`, and `attachment_names`.
+  `segments`, `next_cursor`, and `complete`; each `segments` item carries `message_id`, `internal_date`, `from`, `to`, `cc`,
+  `subject`, `body_chunk`, `chunk_index`, `chunk_count`, `body_bytes`, `body_sha256`, and `attachment_names`.
 
-Run Python with UTF-8 output (`PYTHONIOENCODING=utf-8` or `python -X utf8`). On Windows, use `rg` in the terminal
-for source searches; do not send absolute drive-letter paths to the Antigravity `grep_search` tool.
+1. **Primary path — deterministic collector.** After every Case note is processed and the Gmail query scope is fixed to the primary raw Case ID, run one command that performs the entire exhaustive collection under a single fresh snapshot:
 
-After saving the CaseToMD, list-page, and thread-page JSON responses, run the bundled verifier once and copy its
-sanitized ledger into the payload:
+   ```text
+   python <skill-directory>/scripts/gmail_collect_case.py collect --case-id "<primary raw Case ID>"
+   ```
 
-```text
-python <case-review-skill-directory>/scripts/context_verify.py --case-markdown <case.json> --list-page <list-1.json> --thread-page <thread-1.json>
-```
+   The collector calls the same broker methods behind `gmail_list_threads` and `gmail_read_thread_page` and enforces this contract end to end:
 
-Repeat `--list-page` and `--thread-page` for additional pages. Do not probe the same response with ad-hoc commands;
-`context_verify.py` validates completion flags, snapshot reuse, manifests, segments, UTF-8 byte counts, and body hashes.
+   - The bootstrap input for the primary Case ID query may be empty: the collector sends `snapshot_before: ""` on the first list call. The first successful response **must return a non-empty `snapshot_before`**; if it is absent or empty, collection is blocked. Every later list/read call must pass that **exact same non-empty `snapshot_before`**; the collector never sends an empty value or creates a second snapshot after bootstrap.
+   - For the primary Case ID only, it walks the list chain passing each real `next_page_token` unchanged as the next `page_token` until `next_page_token` is absent and `complete=true`, then for every unique `thread_id` exhausts each `gmail_read_thread_page` cursor chain, passing each real `next_cursor` unchanged, the same way. Page size is a transport control, not a result limit.
+   - A missing completion field or a malformed, **repeated or regressing** page token or cursor is a **protocol failure**; the collector aborts, never infers completion, and never imposes an arbitrary thread limit. If a listed thread **disappears or becomes unreadable** before completion, the gate fails.
+   - It deduplicates list results by `thread_id` and page segments by `message_id`, records the deduplicated count as `unique_threads_discovered`, and sets `record_id_queries_completed` to `1` only after the primary chain ends with `complete=true`.
+   - It reassembles every message body from all ordered chunks and verifies the reassembled normalized UTF-8 body against the advertised `body_bytes` and SHA-256 `body_sha256`, and requires every thread's `message_count`, `messages_completed`, and `manifest_sha256` to be stable and complete across pages.
+   - Messages received after `snapshot_before` are intentionally excluded from the current run; messages received at or before the shared snapshot are all in scope.
+   - **Attachment metadata** such as filename and MIME type may be recorded, but attachment payloads are out of scope and are not fetched; unread attachment content does not block completeness.
+   - A **zero-result primary-ID query** is complete only when its successful response has no next page token and `complete=true` — that is, its pagination chain completed. The collector then reports a passing empty collection; continue with the fully processed CaseToMD evidence and state: `Gmail: no additional relevant evidence found`. This is the complete-context form of the existing branch where **Gmail search succeeds but returns no relevant messages**.
 
-1. The bootstrap input for the primary Case ID query may be empty: call `gmail_list_threads(query: "<primary raw Case ID>", snapshot_before: "", page_token: "", max_results: 100)`. The first successful response **must return a non-empty `snapshot_before`**; if it is absent or empty, block collection. Save that returned value exactly.
-2. For the primary Case ID only, call `gmail_list_threads` repeatedly, passing each real `next_page_token` unchanged as the next `page_token`, until `next_page_token` is absent and `complete=true`. Every later list/read call must pass that **exact same non-empty `snapshot_before`**; never send an empty value or create a new snapshot after bootstrap. Record each successful page in `query_pages_completed`, and set `record_id_queries_completed` to `1` only after the primary ID's full chain ends with `complete=true`; page size is a transport control, not a result limit.
-3. Track tokens within each query chain. A missing completion field or a malformed, **repeated or regressing** page token or cursor is a **protocol failure**; never infer completion and never impose an arbitrary thread limit.
-4. Deduplicate the primary-ID query results by `thread_id` and retain primary-query provenance. Record the canonical deduplicated count as `unique_threads_discovered`; `gmail_threads_discovered` and `gmail_threads_enumerated` are collection-detail aliases that must resolve to the same deduplicated set before reads begin.
-5. For every unique thread, call `gmail_read_thread_page(thread_id: "<thread ID>", snapshot_before: "<shared snapshot>", cursor: "")`, then pass each real `next_cursor` unchanged until `next_cursor` is absent and `complete=true`. Read every message in the thread at or before the shared snapshot, even when an individual message does not contain the searched ID.
-6. Track cursors per thread and reject missing, malformed, repeated, or regressing values. If a listed thread **disappears or becomes unreadable** before completion, the gate fails.
-7. Deduplicate by `message_id`, retain thread/query provenance, derive canonical `messages_expected` from each stable thread message count and `message_chunks_expected` from each message's stable chunk count, and reassemble every message body from all ordered chunks. Verify the reassembled normalized UTF-8 body against the advertised `body_bytes` and SHA-256 `body_sha256`; increment canonical `messages_completed` and `message_chunks_completed` only after successful completion. The `gmail_messages_expected`, `gmail_messages_read`, `body_chunks_expected`, and `body_chunks_read` collection-detail aliases must mirror those canonical counters exactly.
-8. Require the ordered message count and `manifest_sha256` to remain identical on every page for a thread. Any changed manifest, count mismatch, chunk gap, byte mismatch, or hash mismatch blocks the review.
-9. **Attachment metadata** such as filename and MIME type may be recorded, but attachment payloads are out of scope and are not fetched; unread attachment content does not block completeness.
-10. Messages received after `snapshot_before` are intentionally excluded from the current run. Messages received at or before the shared snapshot are all in scope.
-11. A **zero-result primary-ID query** is complete only when its successful response has no next page token and `complete=true`. If the primary-ID query has zero results and its pagination chain completed, continue with the fully processed CaseToMD evidence and state: `Gmail: no additional relevant evidence found`. This is the complete-context form of the existing branch where **Gmail search succeeds but returns no relevant messages**.
-12. If the **Gmail tool is missing or the search call fails**, including authentication, timeout, quota, application, pagination, cursor, or read failure, identify Gmail as the unavailable required server and block the review.
-13. User-supplied documents may supplement these sources after the complete-context gate passes. Label them by filename and date; do not present a parsed shell, extraction artifact, or unsupported inference as a live case record.
+   It writes to the case's persistent collection directory:
+
+   - `corpus.json` — the full normalized corpus. **Never load it into context.**
+   - `digest.json` — a byte-budgeted index (thread rollups plus a per-message routing index) that you read after a pass to plan targeted evidence pulls.
+   - `manifest.json` — the machine-verified Gmail-side Context Coverage Ledger: `status`, every canonical counter and alias, and corpus/digest hashes.
+
+2. The gate passes only when the collector prints a summary with `"status": "pass"` and `manifest.json` reports `status` `pass`. Read `digest.json` next; it is the routing surface for every Gmail-side fact.
+3. **Targeted corpus access.** Pull only the bodies the analysis needs:
+
+   ```text
+   python <skill-directory>/scripts/gmail_collect_case.py query --case-id "<Case ID>" [--thread-id ...] [--message-id ...] [--from ...] [--since ...] [--chars 12000]
+   ```
+
+   Output is chronologically ordered and bounded by the character budget. Do not dump whole threads or the corpus into context; select messages via the digest and pull them in budgeted batches.
+4. **Interruption and resume.** On failure the collector retains staging progress and prints the sanitized counts block. Re-run with `--resume` to continue under the **same snapshot**, skipping completed threads. A retry without `--resume` starts from the same raw Case ID with a new `snapshot_before` and discards the partial corpus without reusing it.
+5. **Explicit rollback — manual MCP collection.** Only when the collector itself is unavailable (script missing, import failure), perform the same exhaustive loop manually through the `gmail_list_threads` and `gmail_read_thread_page` MCP tools, honoring every rule in item 1. Save each UTF-8 response artifact without summarizing it inline, then verify the saved chain once and copy the sanitized ledger:
+
+   ```text
+   python <case-review-skill-directory>/scripts/context_verify.py --case-markdown <case.json> --list-page <list-1.json> --thread-page <thread-1.json>
+   ```
+
+   Repeat `--list-page`/`--thread-page` for additional pages; do not probe the same response with ad-hoc commands. The rollback must still satisfy every Context Coverage Ledger equality below; it is never a shortcut around completeness.
+6. If the **Gmail tool is missing or the search call fails**, including authentication, timeout, quota, application, pagination, cursor, or read failure, identify Gmail as the unavailable required server and block the review using the collector's sanitized counts (or the equivalent manual counts under rollback).
+7. User-supplied documents may supplement these sources after the complete-context gate passes. Label them by filename and date; do not present a parsed shell, extraction artifact, or unsupported inference as a live case record.
 
 #### Context Coverage Ledger
 
-Maintain this internal **Context Coverage Ledger** for the collection run:
+Maintain this internal **Context Coverage Ledger** for the collection run. Under the primary collector path, every Gmail-side field below is produced and verified mechanically: after a passing collection, `manifest.json` carries the fields with `status` and hashes, and the collector has already enforced each equality. The Case side (`case_notes_discovered`, `case_notes_processed`) comes from your CaseToMD note processing. Under the manual MCP rollback you must derive the same fields yourself from the call-by-call chain. Combine both sides into the working ledger:
 
 ```text
 case_notes_discovered
@@ -164,7 +186,7 @@ The complete-context gate passes only when all of these checks succeed:
 - Therefore `gmail_threads_discovered == gmail_threads_read_complete`, `gmail_messages_expected == gmail_messages_read`, `body_chunks_expected == body_chunks_read`, `body_hashes_verified == gmail_messages_read`, and `manifest_hashes_stable == gmail_threads_read_complete` must also hold.
 - The bootstrap request may pass an empty `snapshot_before`; the successful bootstrap response establishes a non-empty `snapshot_before`, and every subsequent Gmail list/read call reuses that exact value.
 
-Duplicate thread or message discovery is expected and must be deduplicated before these equalities; duplication never permits a source item to be skipped. No analysis or report drafting may begin until every equality and completion flag passes.
+Duplicate thread or message discovery is expected and must be deduplicated before these equalities; duplication never permits a source item to be skipped. No analysis or report drafting may begin until every equality and completion flag passes. With the collector this means: `manifest.json` `status` is `pass` and your case-note counters are equal; verify the printed snapshot matches `manifest.json` before proceeding.
 
 If any source, pagination chain, cursor chain, count, body verification, manifest, or completion flag is incomplete, respond with `Context collection incomplete — review not generated.` using exactly this block:
 
@@ -178,7 +200,7 @@ Gmail messages: <completed>/<expected>
 Blocker: <exact sanitized failure>
 ```
 
-This blocking output must not output Executive Summary, Technical & Incident Assessment, Progress Summary, Root cause, ownership conclusion, or Evidence Appendix content. **Partial results** from the failed run may be used only for the four sanitized counts; they must not support a partial RCA or any other conclusion. A retry starts from the same raw Case ID with a new `snapshot_before`, discards the partial corpus, and does not reuse it.
+The collector prints this block itself with `Case notes: <pending>`; substitute your processed/discovered note counts and keep every other line unchanged. This blocking output must not output Executive Summary, Technical & Incident Assessment, Progress Summary, Root cause, ownership conclusion, or Evidence Appendix content. **Partial results** from the failed run may be used only for the four sanitized counts; they must not support a partial RCA or any other conclusion. A retry starts from the same raw Case ID with a new `snapshot_before`, discards the partial corpus, and does not reuse it (use `--resume` only to continue an interrupted collection under its original snapshot).
 
 ### Step 3 - Build the Evidence Ledger
 
@@ -340,6 +362,8 @@ Before rendering:
 
 After both gates pass, build the v2 payload defined in [output-modes.md](references/output-modes.md). Do not write an Executive Summary or other rendered report first.
 
+Read the current payload contract from the validating code itself — `python <skill-directory>/scripts/case_record.py schema` prints the required fields, enums, coverage equalities, and overlay surface from the same module that enforces them; never reverse-engineer the validators by reading their source. Author only the judgment overlay (see Step 8); every mechanical coverage counter comes from the passing collection manifest.
+
 The payload must retain the complete coverage counters, current Case Card fields, dynamic evidence digest, and add:
 
 - `technical_spec` with all twelve fixed fields and proof states.
@@ -356,16 +380,22 @@ do not promote them to confirmed blockers or confirmed findings.
 
 ### Step 8 - Persist and Present Deterministically
 
-Read [case-record-lifecycle.md](references/case-record-lifecycle.md), write the UTF-8 payload, and run:
+Read [case-record-lifecycle.md](references/case-record-lifecycle.md). Write a small UTF-8 **judgment overlay** JSON containing `case_notes_discovered`/`case_notes_processed`, the `current` Case Card judgments, the `evidence_digest`, and `presentation` (or `full_review_markdown`), plus an optional `reviewed_at` override. The collector manifest supplies every mechanical field. Assemble and validate the payload, then run:
 
 ```text
+Read [case-record-lifecycle.md](references/case-record-lifecycle.md). Write a small UTF-8 **judgment overlay** JSON containing `case_notes_discovered`/`case_notes_processed`, the `current` Case Card judgments, the `evidence_digest`, and `presentation` (or `full_review_markdown`), plus an optional `reviewed_at` override. The collector manifest supplies every mechanical coverage counter. Assemble the validated payload, then finalize in one step:
+
+```text
+python <skill-directory>/scripts/case_record.py build-payload --manifest <case collection dir>/manifest.json --overlay <overlay.json> --out <payload.json>
 python <skill-directory>/scripts/case_record.py finalize --input <payload.json> --case-id <Case ID> --request "<original user request>"
 ```
 
-`finalize` validates the complete payload, performs the idempotent record update, renders the deterministic response, writes `chat-output.md` plus `chat-output.sha256`, and verifies the stored artifact under one per-case lock. It emits the exact verified canonical Markdown once; return that stdout unchanged. Do not manually shorten, expand, rewrite, or append a second report. Any validation, rendering, write, hash, or verification mismatch blocks completion. The backward-compatible `case_record.py update`, `case_record.py present --markdown-only`, and `case_record.py verify-final` commands remain available for existing integrations and diagnostics, but the normal new/follow-up workflow uses `finalize`. JSON-mode `present` retains `mode` and `visual` as the auditable presentation decision.
+`build-payload` refuses any manifest whose `status` is not `pass` and runs the full `update` validation before writing the payload, so a contract mistake surfaces before the record is touched.
+
+`finalize` validates the complete payload, performs the idempotent record update, renders the deterministic response, writes `chat-output.md` plus `chat-output.sha256`, and verifies the stored artifact under one per-case lock. It emits the exact verified canonical Markdown once; return that stdout unchanged. Do not manually shorten, expand, rewrite, or append a second report. Any validation, rendering, write, hash, or verification mismatch blocks completion. The backward-compatible `case_record.py update`, `case_record.py present --markdown-only`, and `case_record.py verify-final` commands remain available for existing integrations and diagnostics, but the normal new/follow-up workflow uses `build-payload` plus `finalize`. JSON-mode `present` retains `mode` and `visual` as the auditable presentation decision.
 Do not open `chat-output.md` or run `verify-final` after a successful `finalize`; finalization already performs those checks.
-Never construct a large JSON payload with inline `python -c` or a shell-escaped multiline command. Write the UTF-8
-JSON payload to a file, then invoke `finalize` once.
+Never construct a large JSON payload with inline `python -c` or a shell-escaped multiline command. Write the UTF-8 overlay and payload to files, then invoke the scripts once each.
+For follow-ups, use the helper-computed delta returned from the stored record; never reconstruct changes from conversational memory.
 For follow-ups, use the helper-computed delta returned from the stored record; never reconstruct changes from conversational memory.
 
 Do not persist when context collection is incomplete, the evidence gate fails, or the result is exactly `unknown`. If persistence fails, state `Case record update failed` with the sanitized error and do not claim continuity succeeded.

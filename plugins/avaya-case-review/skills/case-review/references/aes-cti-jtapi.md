@@ -1,17 +1,23 @@
 # AES / CTI / JTAPI Troubleshooting Reference
 
-## Table of Contents
-- [AES Product Knowledge](#aes-product-knowledge)
-- [CTI Developer Interfaces](#cti-developer-interfaces)
-- [AES Service and Link Troubleshooting (Workflow 5)](#aes-service-and-link-troubleshooting)
-- [JTAPI / CTI Integration Debugging (Workflow 2)](#jtapi--cti-integration-debugging)
-- [Park / Unpark / Transfer / Conference Debugging (Workflow 7)](#park--unpark--transfer--conference-debugging)
-- [AES Connector Race Condition (Workflow 8)](#aes-connector-race-condition)
-- [Cross-Product Integration: CM <-> AES](#cross-product-integration-cm--aes)
-- [AES Fault Patterns](#aes-fault-patterns)
-- [CTI / JTAPI Fault Patterns](#cti--jtapi-fault-patterns)
-- [AES Log Collection](#aes-log-collection)
-- [JTAPI Client-Side Trace](#jtapi-client-side-trace)
+## Table of Contents (line ranges)
+
+Read the matching range only (1-based, inclusive):
+`Get-Content <this file> | Select-Object -Skip <start-1> -First <count>`
+
+- **AES Product Knowledge** — lines 24-38
+- **CTI Developer Interfaces** — lines 39-51
+- **AES Service and Link Troubleshooting** — lines 52-84
+- **JTAPI / CTI Integration Debugging** — lines 85-196
+- **Park / Unpark / Transfer / Conference Debugging** — lines 197-420
+- **JTAPI SDK Bytecode Reverse Engineering** — lines 421-493
+- **AES Connector Race Condition** — lines 494-527
+- **Cross-Product Integration CM <-> AES** — lines 528-553
+- **AES Fault Patterns** — lines 554-570
+- **CTI / JTAPI Fault Patterns** — lines 571-590
+- **AES Log Collection Procedures** — lines 591-653
+- **AES Log Collection** — lines 654-676
+- **JTAPI Client-Side Trace** — lines 677-737
 
 ---
 

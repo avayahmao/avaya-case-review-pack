@@ -15,16 +15,16 @@ the agent should complete the applicable flow below. Do not execute a remote
 script directly. Clone the published stable tag, inspect this file and the
 selected installer, then run the local entry point.
 
-## Stable v1.10.1 bootstrap
+## Stable v1.11.0 bootstrap
 
 Create a unique temporary directory and use this exact stable clone command:
 
 ```text
-git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
 ```
 
 In that checkout, run `git describe --exact-match --tags HEAD` and require the
-exact output `v1.10.1`. Inspect this `INSTALL.md` and the selected installer
+exact output `v1.11.0`. Inspect this `INSTALL.md` and the selected installer
 before running any local script. If the exact tag cannot be resolved or
 verified, stop without installing. These instructions are the release contract
 published by this commit; they do not assert that the tag, GitHub release,

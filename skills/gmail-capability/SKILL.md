@@ -1,6 +1,6 @@
 ---
 name: "gmail-capability"
-description: "Describe the Gmail MCP capability bundled with the Avaya Case Review plugin, including exhaustive thread collection and shared Managed Edge authentication."
+description: Provide backward-compatible Gmail APIs plus the exhaustive case-review thread/message collection workflow.
 ---
 
 # Gmail Capability

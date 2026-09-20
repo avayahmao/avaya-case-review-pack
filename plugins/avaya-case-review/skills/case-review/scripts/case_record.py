@@ -1230,6 +1230,151 @@ def load_payload(path: str) -> dict[str, Any]:
     return read_json(Path(path))
 
 
+def coverage_required_numbers() -> set[str]:
+    """The exact coverage counters validate_coverage() requires."""
+
+    return {key for pair in COVERAGE_EQUALITIES for key in pair} | {
+        "record_ids_planned",
+        "record_id_queries_completed",
+    }
+
+
+def describe_schema() -> dict[str, Any]:
+    """Print the current update-payload contract from the validating code."""
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "update_input": {
+            "collection_status": 'must be the literal string "complete"',
+            "case_id": "record identifier, normalized to upper case",
+            "reviewed_at": "ISO-8601 with timezone; must not precede snapshot_before",
+            "snapshot_before": "ISO-8601 with timezone; the collection manifest value",
+            "current": {
+                "required_non_empty_strings": list(CURRENT_FIELDS),
+                "enums": {
+                    "rca_state": sorted(RCA_STATES),
+                    "mitigation_state": sorted(MITIGATION_STATES),
+                },
+                "note": "use the literal string 'unknown' when a field is not stated",
+            },
+            "coverage": {
+                "required_non_negative_integers": sorted(coverage_required_numbers()),
+                "equalities": [f"{left} == {right}" for left, right in COVERAGE_EQUALITIES],
+                "single_primary_query": (
+                    "record_ids_planned == record_id_queries_completed == 1"
+                ),
+                "query_complete": "must be true",
+                "snapshot_before": "must equal the top-level snapshot_before",
+            },
+            "evidence_digest": {
+                "min_items": 1,
+                "item_fields": ["state", "date", "source", "fact"],
+                "states": sorted(EVIDENCE_STATES),
+            },
+            "presentation": {
+                "required_when_full_review_markdown_absent": [
+                    "technical_spec",
+                    "problem_lineage",
+                    "milestones",
+                    "timeline",
+                    "evidence_register",
+                    "visual_context",
+                ],
+                "or": "a non-empty full_review_markdown string",
+            },
+        },
+        "build_payload": {
+            "purpose": "assemble the update payload from a passing collection manifest plus a small judgment overlay",
+            "mechanical_fields_from_manifest": [
+                "case_id",
+                "snapshot_before",
+                "coverage (all Gmail-side counters and aliases)",
+                "collection_status",
+            ],
+            "overlay_fields": {
+                "case_notes_discovered": "non-negative integer (required)",
+                "case_notes_processed": "non-negative integer (required, must equal discovered)",
+                "current": "object; the Case Card judgment fields listed in update_input.current",
+                "evidence_digest": "list; see update_input.evidence_digest",
+                "presentation": "optional object; see update_input.presentation",
+                "full_review_markdown": "optional string; alternative to presentation",
+                "reviewed_at": "optional ISO-8601 override; defaults to now",
+            },
+        },
+    }
+
+
+def build_update_payload(
+    manifest_path: str | Path, overlay_path: str | Path, out_path: str | Path
+) -> dict[str, Any]:
+    """Merge a passing collection manifest with a judgment overlay and validate."""
+
+    manifest = read_json(Path(manifest_path))
+    if not isinstance(manifest, dict) or manifest.get("status") != "pass":
+        raise RecordError("build-payload requires a collection manifest with status pass")
+    overlay = load_payload(str(overlay_path))
+    if not isinstance(overlay, dict):
+        raise RecordError("overlay must be a JSON object")
+
+    ledger = manifest.get("ledger")
+    if not isinstance(ledger, dict):
+        raise RecordError("manifest is missing its ledger")
+    snapshot_before = manifest.get("snapshot_before")
+    validate_timestamp(snapshot_before, "manifest.snapshot_before")
+
+    coverage: dict[str, Any] = {}
+    ledger_note_keys = {"case_notes_discovered", "case_notes_processed"}
+    for key in coverage_required_numbers() - ledger_note_keys:
+        value = ledger.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise RecordError(f"manifest ledger is missing counter: {key}")
+        coverage[key] = value
+    for notes_key in ("case_notes_discovered", "case_notes_processed"):
+        value = overlay.get(notes_key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise RecordError(f"overlay.{notes_key} must be a non-negative integer")
+        coverage[notes_key] = value
+    coverage["query_complete"] = True
+    coverage["snapshot_before"] = snapshot_before
+    for alias_key in (
+        "query_pages_completed",
+        "gmail_threads_discovered",
+        "gmail_threads_enumerated",
+        "gmail_threads_read_complete",
+        "gmail_messages_expected",
+        "gmail_messages_read",
+        "body_chunks_expected",
+        "body_chunks_read",
+    ):
+        if isinstance(ledger.get(alias_key), int):
+            coverage[alias_key] = ledger[alias_key]
+
+    payload: dict[str, Any] = {
+        "collection_status": "complete",
+        "case_id": manifest.get("case_id"),
+        "reviewed_at": overlay.get("reviewed_at") or utc_now(),
+        "snapshot_before": snapshot_before,
+        "current": overlay.get("current"),
+        "coverage": coverage,
+        "evidence_digest": overlay.get("evidence_digest"),
+    }
+    for optional_key in ("presentation", "full_review_markdown"):
+        if optional_key in overlay:
+            payload[optional_key] = overlay[optional_key]
+
+    validated = validate_update_payload(payload)
+    atomic_write(
+        Path(out_path),
+        json.dumps(payload, ensure_ascii=False, indent=2),
+    )
+    return {
+        "written": str(Path(out_path)),
+        "case_id": validated["case_id"],
+        "snapshot_before": validated["snapshot_before"],
+        "reviewed_at": validated["reviewed_at"],
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", help="Override the persistent data directory")
@@ -1244,6 +1389,19 @@ def build_parser() -> argparse.ArgumentParser:
     finalize.add_argument("--input", required=True, help="Complete-review JSON payload")
     finalize.add_argument("--case-id", required=True)
     finalize.add_argument("--request", required=True, help="Original user request text")
+    schema = subparsers.add_parser(
+        "schema", help="Print the current update-payload contract"
+    )
+
+    build = subparsers.add_parser(
+        "build-payload",
+        help="Assemble the update payload from a passing collection manifest plus a judgment overlay",
+    )
+    build.add_argument(
+        "--manifest", required=True, help="gmail_collect_case.py manifest.json"
+    )
+    build.add_argument("--overlay", required=True, help="Judgment overlay JSON")
+    build.add_argument("--out", required=True, help="Output payload JSON path")
 
     show = subparsers.add_parser("show", help="Print an existing Markdown record")
     show.add_argument("--case-id", required=True)
@@ -1298,6 +1456,11 @@ def main() -> int:
                 root,
             )
             sys.stdout.buffer.write(result["markdown"].encode("utf-8"))
+        elif args.command == "schema":
+            print(json.dumps(describe_schema(), ensure_ascii=False, indent=2))
+        elif args.command == "build-payload":
+            result = build_update_payload(args.manifest, args.overlay, args.out)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
         elif args.command == "show":
             paths = case_paths(root, args.case_id)
             print(paths["markdown"].read_text(encoding="utf-8"), end="")

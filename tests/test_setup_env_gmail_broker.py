@@ -1275,6 +1275,13 @@ raise SystemExit(gmail_brokerctl.main(["status"], client=Client()))
             self.assertTrue(line.endswith(","), f"missing array separator: {line}")
         deployed = set(re.findall(r'"([a-z0-9_]+\.py)"', match.group(1)))
         self.assertEqual(deployed, expected_modules)
+        actual_modules = {p.name for p in (ROOT / "tools" / "gmail").glob("*.py")}
+        self.assertEqual(
+            deployed,
+            actual_modules,
+            "GmailDeploymentFiles drifted from tools/gmail/*.py; a new runtime "
+            "module would be silently missing from Antigravity installs",
+        )
         self.assertNotRegex(
             self.script,
             r'Copy-Item\s+-Path\s+"\$SourceGmailDir\\\*"',
