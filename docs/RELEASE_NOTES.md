@@ -6,6 +6,15 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ## [v1.11.0] - 2026-09-20: Deterministic Exhaustive Collection and Payload Assembly
 
+The stable v1.11.0 installation contract uses a unique temporary checkout:
+
+```text
+git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git describe --exact-match --tags HEAD
+```
+
+The tag check must return `v1.11.0`.
+
 ### Script-Driven Exhaustive Gmail Collection
 
 * Adds `gmail_collect_case.py collect/query/status`: one command enumerates the primary-ID thread chain, exhausts every page and cursor under a single reused snapshot, deduplicates by `thread_id`/`message_id`, reassembles and SHA-256-verifies every message body, and enforces per-thread manifest/count stability.

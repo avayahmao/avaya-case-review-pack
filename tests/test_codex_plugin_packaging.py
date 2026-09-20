@@ -171,7 +171,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
             write_attestation(
                 fixture / "tools/gmail/cloud/GmailMcpBridge.gs",
                 fixture / "tools/gmail/cloud/bridge_release_attestation.json",
-                "1.10.1",
+                "1.11.0",
                 "2026-09-09T00:00:00Z",
             )
             dry_run = subprocess.run(
@@ -192,7 +192,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 check=False,
             )
         self.assertEqual(0, dry_run.returncode, dry_run.stderr)
-        self.assertIn("Ref:         v1.10.1", dry_run.stdout)
+        self.assertIn("Ref:         v1.11.0", dry_run.stdout)
         self.assertIn("mcp==1.28.1", dry_run.stdout)
         self.assertIn("Planned stage: new marketplace add", dry_run.stdout)
         self.assertIn("Planned stage: new plugin add", dry_run.stdout)
@@ -204,7 +204,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
         overview = readme.index("Overview")
         self.assertLess(bootstrap, overview)
         self.assertIn("Codex plugin marketplace, not a standalone skill", readme)
-        self.assertIn("git clone --depth 1 --branch v1.10.1", readme)
+        self.assertIn("git clone --depth 1 --branch v1.11.0", readme)
         self.assertIn("git describe --exact-match --tags HEAD", readme)
         self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", readme)
 
@@ -219,20 +219,20 @@ class CodexPluginPackagingTests(unittest.TestCase):
 
         self.assertFalse((ROOT / "SKILL.md").exists())
 
-    def test_docs_publish_the_v1_10_1_stable_url_install_contract(self):
+    def test_docs_publish_the_v1_11_0_stable_url_install_contract(self):
         for path in URL_INSTALL_DOCS:
             with self.subTest(document=path.name):
                 text = path.read_text(encoding="utf-8-sig")
-                self.assertIn("v1.10.1", text)
+                self.assertIn("v1.11.0", text)
                 self.assertIn("install-codex.ps1", text)
                 self.assertNotIn("Before either local installation, deploy", text)
-                self.assertIn("git clone --depth 1 --branch v1.10.1", text)
+                self.assertIn("git clone --depth 1 --branch v1.11.0", text)
                 self.assertIn("git describe --exact-match --tags HEAD", text)
                 self.assertNotRegex(
                     text,
                     re.compile(
-                        r"v1\.10\.1.{0,80}(?:unreleased|not published|do not (?:install|clone|run))"
-                        r"|(?:unreleased|not published|do not (?:install|clone|run)).{0,80}v1\.10\.1",
+                        r"v1\.11\.0.{0,80}(?:unreleased|not published|do not (?:install|clone|run))"
+                        r"|(?:unreleased|not published|do not (?:install|clone|run)).{0,80}v1\.11\.0",
                         re.IGNORECASE | re.DOTALL,
                     ),
                 )
@@ -253,10 +253,10 @@ class CodexPluginPackagingTests(unittest.TestCase):
             "git push origin HEAD:main",
             "$RemoteMainSha",
             "Verify the default-branch README",
-            "git tag -a v1.10.1 $CandidateSha",
+            "git tag -a v1.11.0 $CandidateSha",
             "Run URL-only acceptance",
             "Build and verify the release ZIP",
-            "gh release create v1.10.1",
+            "gh release create v1.11.0",
         )
         for path in publication_docs:
             with self.subTest(document=path.name):
@@ -271,7 +271,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 self.assertIn("git clone --depth 1 --branch main", content)
                 self.assertIn("$StableBootstrap", content)
                 self.assertIn("never force", content)
-                self.assertIn("refs/tags/v1.10.1^{}", content)
+                self.assertIn("refs/tags/v1.11.0^{}", content)
                 self.assertIn("fresh, clean, detached checkout", content)
                 self.assertIn("git clone --no-checkout", content)
                 self.assertIn("checkout --detach", content)
@@ -310,7 +310,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
                         build,
                     )
                 release_command = re.search(
-                    r"(?m)^\s*gh release create v1\.10\.1\s+(\S+)",
+                    r"(?m)^\s*gh release create v1\.11\.0\s+(\S+)",
                     publish,
                 )
                 self.assertIsNotNone(release_command)

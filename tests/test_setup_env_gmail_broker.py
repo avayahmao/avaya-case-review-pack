@@ -944,7 +944,7 @@ class InstallerContractTests(unittest.TestCase):
         for installed, succeeds in (
             (None, False),
             ("1.9.0", False),
-            ("1.10.1", True),
+            ("1.11.0", True),
         ):
             with self.subTest(installed=installed):
                 fixture = SetupInstallFixture()

@@ -128,7 +128,7 @@ class RuntimePackageTests(unittest.TestCase):
     def test_distribution_metadata_and_package_are_installable(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('name = "avaya-case-review-runtime"', pyproject)
-        self.assertIn('version = "1.10.1"', pyproject)
+        self.assertIn('version = "1.11.0"', pyproject)
         self.assertIn('requires-python = ">=3.10"', pyproject)
         self.assertIn('packages = ["avaya_case_review_runtime"]', pyproject)
         self.assertNotIn("dependencies", pyproject)
@@ -299,9 +299,13 @@ class RuntimePackageTests(unittest.TestCase):
 
 
 class RuntimePackageInstallerHelperTests(unittest.TestCase):
-    def run_helper(self, *arguments, environment=None):
+    def run_helper(self, *arguments, environment=None, isolate=False):
+        command = [sys.executable]
+        if isolate:
+            command.append("-S")
+        command.extend([str(RUNTIME_HELPER), *arguments])
         return subprocess.run(
-            [sys.executable, str(RUNTIME_HELPER), *arguments],
+            command,
             cwd=ROOT,
             env=environment,
             capture_output=True,
@@ -324,7 +328,9 @@ class RuntimePackageInstallerHelperTests(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             environment = os.environ.copy()
             environment["PYTHONPATH"] = temporary
-            completed = self.run_helper("installed-version", environment=environment)
+            completed = self.run_helper(
+                "installed-version", environment=environment, isolate=True
+            )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(

@@ -62,20 +62,20 @@ external action has fresh evidence, and never force a branch or tag update.
   $DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
   git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
   $DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
-  $StableBootstrap = "git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
-  if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.10.1 bootstrap" }
+  $StableBootstrap = "git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+  if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.11.0 bootstrap" }
   ```
 
   Verify the default-branch README from a new shallow `main` checkout exposes
-  the exact stable v1.10.1 clone command and exact-tag check before creating
+  the exact stable v1.11.0 clone command and exact-tag check before creating
   the tag.
 
 - [ ] **Create and verify the annotated immutable tag at the accepted SHA.**
 
   ```powershell
-  git tag -a v1.10.1 $CandidateSha -m "v1.10.1"
-  git push origin refs/tags/v1.10.1
-  $RemoteTagSha = ((git ls-remote origin "refs/tags/v1.10.1^{}") -split '\s+')[0]
+  git tag -a v1.11.0 $CandidateSha -m "v1.11.0"
+  git push origin refs/tags/v1.11.0
+  $RemoteTagSha = ((git ls-remote origin "refs/tags/v1.11.0^{}") -split '\s+')[0]
   if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
   ```
 
@@ -84,14 +84,14 @@ external action has fresh evidence, and never force a branch or tag update.
 
 - [ ] **Build and verify the release ZIP.** Do not build from the candidate
   worktree. Use this exact procedure to build outside Git from a fresh, clean,
-  detached checkout of `v1.10.1`, and confirm the tag peels to the accepted
+  detached checkout of `v1.11.0`, and confirm the tag peels to the accepted
   candidate SHA:
 
   ```powershell
-  $ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.10.1-" + [guid]::NewGuid().ToString("N"))
-  $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.10.1.zip"
+  $ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.11.0-" + [guid]::NewGuid().ToString("N"))
+  $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.11.0.zip"
   git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
-  git -C $ReleaseCheckout checkout --detach v1.10.1
+  git -C $ReleaseCheckout checkout --detach v1.11.0
   $TaggedSha = (git -C $ReleaseCheckout rev-parse HEAD).Trim()
   if ($TaggedSha -cne $CandidateSha) { throw "Tagged checkout SHA mismatch" }
   if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout is not clean" }
@@ -129,8 +129,8 @@ external action has fresh evidence, and never force a branch or tag update.
 - [ ] **Publish and verify the GitHub Release.** Only after every prior gate:
 
   ```powershell
-  gh release create v1.10.1 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.10.1.md --latest
-  gh release view v1.10.1
+  gh release create v1.11.0 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.11.0.md --latest
+  gh release view v1.11.0
   ```
 
 ## Module-package MCP launch contract

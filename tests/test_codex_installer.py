@@ -505,8 +505,8 @@ class CodexInstallerTests(unittest.TestCase):
         annotated_tag=False,
         ref_collision=False,
         target_source_type="git",
-        plugin_version="1.10.1",
-        runtime_version="1.10.1",
+        plugin_version="1.11.0",
+        runtime_version="1.11.0",
         verify_exits="0",
         login_exit=0,
         missing_tag=False,
@@ -602,7 +602,7 @@ class CodexInstallerTests(unittest.TestCase):
     def run_stateful_installer(
         self,
         *,
-        plugin_version="1.10.1",
+        plugin_version="1.11.0",
         existing_source="https://example.invalid/repo",
         existing_source_type="git",
         existing_sha="",
@@ -1066,10 +1066,10 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertIn(r"source=C:\path with spaces\repo", events)
 
     def test_fresh_install_uses_version_derived_tag(self):
-        result, events, state = self.run_stateful_installer(plugin_version="1.10.1")
+        result, events, state = self.run_stateful_installer(plugin_version="1.11.0")
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("marketplace-add:v1.10.1", events)
+        self.assertIn("marketplace-add:v1.11.0", events)
         self.assertIn(
             "plugin-add:avaya-case-review@avaya-case-review-pack", events
         )
@@ -1101,7 +1101,7 @@ class CodexInstallerTests(unittest.TestCase):
         result, events, state = self.run_stateful_installer(ref_collision=True)
 
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn("git-ls-remote:v1.10.1", events)
+        self.assertIn("git-ls-remote:v1.11.0", events)
         self.assertEqual("new-sha", state.marketplace_sha)
 
     def test_missing_release_tag_blocks_before_marketplace_mutation_with_sanitized_output(self):
@@ -1136,10 +1136,10 @@ class CodexInstallerTests(unittest.TestCase):
 
         self.assertEqual(0, result.returncode, result.stderr)
         expected = [
-            "git-ls-remote:v1.10.1",
+            "git-ls-remote:v1.11.0",
             "plugin-remove",
             "marketplace-remove",
-            "marketplace-add:v1.10.1",
+            "marketplace-add:v1.11.0",
             "git-rev-parse:new-sha",
             "plugin-add:avaya-case-review@avaya-case-review-pack",
         ]
@@ -1358,7 +1358,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(events, ["attestation-validate"])
         self.assertFalse(state.marketplace_exists)
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
 
     def test_missing_python_is_actionable_before_attestation_or_state_mutation(self):
         sentinel = "UNSANITIZED_MISSING_PYTHON"
@@ -1373,7 +1373,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(events, [])
         self.assertFalse(state.marketplace_exists)
         self.assertFalse(state.plugin_installed)
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
 
     def test_dry_run_missing_python_is_actionable_before_attestation(self):
         result, events, state = self.run_stateful_installer(
@@ -1394,7 +1394,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         ordered = (
             "runtime-build",
-            "runtime-install:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
+            "runtime-install:avaya_case_review_runtime-1.11.0-py3-none-any.whl",
             "runtime-smoke",
             "verify-bridge",
             "plugin-add",
@@ -1404,7 +1404,7 @@ class CodexInstallerTests(unittest.TestCase):
             for name in ordered
         ]
         self.assertEqual(positions, sorted(positions), events)
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
 
     def test_active_old_broker_is_stopped_before_candidate_verification(self):
         result, events, state = self.run_stateful_installer(
@@ -1418,7 +1418,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("old-broker-rejected-bridge-capabilities", events)
         self.assertLess(events.index("stop"), events.index("verify-bridge"))
-        self.assertEqual(state.broker_build, "1.10.1")
+        self.assertEqual(state.broker_build, "1.11.0")
 
     def test_candidate_preflight_failure_restores_runtime_and_prior_broker(self):
         result, events, state = self.run_stateful_installer(
@@ -1435,7 +1435,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertTrue(state.broker_running)
         self.assertEqual(state.broker_build, "1.9.9")
         candidate_install = events.index(
-            "runtime-install:avaya_case_review_runtime-1.10.1-py3-none-any.whl"
+            "runtime-install:avaya_case_review_runtime-1.11.0-py3-none-any.whl"
         )
         prior_stop = events.index("stop")
         verify = events.index("verify-bridge")
@@ -1489,7 +1489,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("dependency install", result.stderr.lower())
         self.assertNotIn("UNSANITIZED", result.stderr)
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
         self.assertNotIn("runtime-build", events)
         self.assertNotIn("marketplace-add", events)
 
@@ -1527,7 +1527,7 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("attestation", result.stderr.lower())
         self.assertEqual(events, ["attestation-validate"])
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
         self.assertFalse(state.marketplace_exists)
 
     def test_local_mcp_manifest_rejects_extra_servers_fields_and_env_before_commands(self):
@@ -1549,8 +1549,8 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         ordered = (
             "runtime-build",
-            "wheel-validate:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
-            "runtime-install:avaya_case_review_runtime-1.10.1-py3-none-any.whl",
+            "wheel-validate:avaya_case_review_runtime-1.11.0-py3-none-any.whl",
+            "runtime-install:avaya_case_review_runtime-1.11.0-py3-none-any.whl",
             "runtime-smoke",
             "verify-bridge",
             "plugin-add",
@@ -1562,7 +1562,7 @@ class CodexInstallerTests(unittest.TestCase):
             )
         positions = [next(i for i, event in enumerate(events) if event.startswith(name)) for name in ordered]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
 
     def test_installed_mcp_checks_use_the_packaged_module_contract(self):
         result, events, _ = self.run_stateful_installer(
@@ -1583,7 +1583,7 @@ class CodexInstallerTests(unittest.TestCase):
 
     def test_skip_dependency_requires_exact_runtime_without_pip_mutation(self):
         success, success_events, _ = self.run_stateful_installer(
-            runtime_version="1.10.1", skip_dependency=True
+            runtime_version="1.11.0", skip_dependency=True
         )
         self.assertEqual(success.returncode, 0, success.stderr)
         self.assertIn("runtime-smoke", success_events)
@@ -1618,9 +1618,9 @@ class CodexInstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         retained = self.temp_root / "local/AvayaCaseReview/runtime-wheels"
         self.assertTrue(
-            (retained / "avaya_case_review_runtime-1.10.1-py3-none-any.whl").is_file()
+            (retained / "avaya_case_review_runtime-1.11.0-py3-none-any.whl").is_file()
         )
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
 
     def test_successful_upgrade_accepts_transport_with_optional_defaults_omitted(self):
         result, _, state = self.run_stateful_installer(
@@ -1630,7 +1630,7 @@ class CodexInstallerTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(state.runtime_version, "1.10.1")
+        self.assertEqual(state.runtime_version, "1.11.0")
 
     def test_plugin_failure_restores_codex_then_prior_runtime(self):
         result, events, state = self.run_stateful_installer(

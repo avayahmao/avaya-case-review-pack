@@ -289,7 +289,7 @@ try {
     [pscustomobject]@{
         marketplace_installed = $false
         plugin_installed = $false
-        plugin_version = "1.10.1"
+        plugin_version = "1.11.0"
         runtime_installed = $false
         marketplace_root = $FixtureRepository
     } | ConvertTo-Json | Set-Content -LiteralPath $StatePath -Encoding UTF8

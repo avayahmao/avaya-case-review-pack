@@ -82,7 +82,7 @@ class BridgeAttestationTests(unittest.TestCase):
         return write_attestation(
             self.source_path,
             self.attestation_path,
-            plugin_version="1.10.1",
+            plugin_version="1.11.0",
             verified_at_utc=UTC_TIMESTAMP,
         )
 
@@ -92,7 +92,7 @@ class BridgeAttestationTests(unittest.TestCase):
     def test_validate_attestation_returns_a_complete_matching_attestation(self):
         expected = self.write_valid_attestation()
 
-        actual = validate_attestation(self.source_path, self.attestation_path, "1.10.1")
+        actual = validate_attestation(self.source_path, self.attestation_path, "1.11.0")
 
         self.assertEqual(actual, expected)
         self.assertEqual(actual["bridge_version"], BRIDGE_PROTOCOL_VERSION)
@@ -115,7 +115,7 @@ class BridgeAttestationTests(unittest.TestCase):
         self.source_path.write_text(stale_source, encoding="utf-8", newline="")
 
         with self.assertRaises(ValueError):
-            validate_attestation(self.source_path, self.attestation_path, "1.10.1")
+            validate_attestation(self.source_path, self.attestation_path, "1.11.0")
 
     def test_validate_attestation_rejects_each_strict_contract_violation(self):
         valid = self.write_valid_attestation()
@@ -161,7 +161,7 @@ class BridgeAttestationTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.write_payload(payload)
                 with self.assertRaises(ValueError):
-                    validate_attestation(self.source_path, self.attestation_path, "1.10.1")
+                    validate_attestation(self.source_path, self.attestation_path, "1.11.0")
 
     def test_validate_attestation_rejects_duplicate_json_keys(self):
         self.attestation_path.write_text(
@@ -169,7 +169,7 @@ class BridgeAttestationTests(unittest.TestCase):
         )
 
         with self.assertRaises(ValueError):
-            validate_attestation(self.source_path, self.attestation_path, "1.10.1")
+            validate_attestation(self.source_path, self.attestation_path, "1.11.0")
 
     def test_cli_validate_accepts_the_attestation_without_mutating_it(self):
         self.write_valid_attestation()
@@ -184,7 +184,7 @@ class BridgeAttestationTests(unittest.TestCase):
                 "--attestation",
                 str(self.attestation_path),
                 "--plugin-version",
-                "1.10.1",
+                "1.11.0",
             ],
             check=False,
             capture_output=True,

@@ -43,7 +43,7 @@ class CodexCleanProfileSmokeTests(unittest.TestCase):
             write_attestation(
                 ROOT / "tools/gmail/cloud/GmailMcpBridge.gs",
                 attestation,
-                "1.10.1",
+                "1.11.0",
                 "2026-09-09T00:00:00Z",
             )
             environment = os.environ.copy()
@@ -93,7 +93,7 @@ class CodexCleanProfileSmokeTests(unittest.TestCase):
                 "CaseToMD": ["get_case_markdown"],
             },
         )
-        self.assertEqual(summary["runtime"]["version"], "1.10.1")
+        self.assertEqual(summary["runtime"]["version"], "1.11.0")
         self.assertTrue(summary["runtime"]["real_handshake"])
         self.assertTrue(summary["marketplace"]["installed"])
         self.assertTrue(summary["plugin"]["enabled"])
@@ -148,7 +148,7 @@ foreach ($RelativePath in $ForbiddenFixturePaths) {
             write_attestation(
                 repository / "tools/gmail/cloud/GmailMcpBridge.gs",
                 attestation,
-                "1.10.1",
+                "1.11.0",
                 "2026-09-09T00:00:00Z",
             )
             result = subprocess.run(

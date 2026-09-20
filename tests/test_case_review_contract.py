@@ -776,7 +776,7 @@ class CaseReviewContractTests(unittest.TestCase):
         for content in documents:
             with self.subTest(document=content[:40]):
                 self.assertIn("install-codex.ps1", content)
-                self.assertIn("v1.10.1", content)
+                self.assertIn("v1.11.0", content)
                 self.assertIn("attestation", content.lower())
                 self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", content)
                 self.assertNotIn("Before either local installation, deploy", content)
@@ -1679,7 +1679,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 content = read(path)
                 self.assertIn("stable v1.11.0 installation contract", content)
-                self.assertIn("v1.11.0 - latest release", content)
+                self.assertIn("v1.11.0 release contract and upgrade guidance", content)
                 self.assertNotIn("v1.10.0 - latest published release", content)
                 self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)

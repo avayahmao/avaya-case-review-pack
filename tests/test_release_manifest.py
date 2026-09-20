@@ -253,7 +253,7 @@ class ReleaseManifestTests(unittest.TestCase):
                 "--attestation",
                 str(extracted / CLOUD_BRIDGE_ATTESTATION),
                 "--plugin-version",
-                "1.10.1",
+                "1.11.0",
             ]
             validation = subprocess.run(
                 validator_command,

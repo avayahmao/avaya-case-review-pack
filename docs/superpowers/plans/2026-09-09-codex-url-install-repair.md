@@ -59,7 +59,7 @@
 - `tests/test_codex_plugin_packaging.py`, `tests/test_setup_env_gmail_broker.py`, `tests/test_release_manifest.py` — packaging and installer contracts.
 - `README.md`, `README.html`, `AGENTS.md`, `INSTALL.md` — GitHub URL bootstrap and ownership model.
 - `docs/GMAIL_CLOUD_BRIDGE.md`, `docs/MANAGER_ONBOARDING_GUIDE.md`, `docs/MANAGER_ONBOARDING_GUIDE.html`, `docs/TECHNICAL_DESIGN_DOCUMENT.md`, `docs/TECHNICAL_DESIGN_DOCUMENT.html` — operator and architecture documentation.
-- `.codex-plugin/plugin.json`, `plugins/avaya-case-review/plugin.json`, `docs/RELEASE_NOTES.md`, `docs/RELEASE_NOTES.html`, `release-manifest.txt` — `v1.10.1` release metadata.
+- `.codex-plugin/plugin.json`, `plugins/avaya-case-review/plugin.json`, `docs/RELEASE_NOTES.md`, `docs/RELEASE_NOTES.html`, `release-manifest.txt` — `v1.11.0` release metadata.
 
 ### Removed file after Task 1 passes
 
@@ -243,7 +243,7 @@ class BridgeSourceIdentityTests(unittest.TestCase):
 
 - [ ] **Step 2: Write failing strict-attestation tests**
 
-Build temporary attestations with plugin version `1.10.1`, bridge version `4`,
+Build temporary attestations with plugin version `1.11.0`, bridge version `4`,
 contract revision `1`, a real computed source digest, RFC 3339 UTC timestamp,
 and all six required checks. Parameterize missing keys, extra check keys,
 non-boolean checks, a false check, malformed timestamps, version mismatch, and
@@ -707,15 +707,15 @@ git commit -m "feat(installer): bound noninteractive command stages"
 
 **Interfaces:**
 - Produces: `Get-CodexMarketplaceSnapshot`, `Set-CodexMarketplaceAtRef`, and `Restore-CodexMarketplaceSnapshot`.
-- Consumes: `Invoke-BoundedCommand` from Task 6 and reads the target ref from the Codex manifest at runtime. Tests supply a temporary manifest whose version is `1.10.1`; Task 10 updates the production manifests.
+- Consumes: `Invoke-BoundedCommand` from Task 6 and reads the target ref from the Codex manifest at runtime. Tests supply a temporary manifest whose version is `1.11.0`; Task 10 updates the production manifests.
 
 - [ ] **Step 1: Write failing fresh-install and idempotence tests**
 
 ```python
 def test_fresh_install_uses_version_derived_tag(self):
-    result, events = run_stateful_installer(plugin_version="1.10.1")
+    result, events = run_stateful_installer(plugin_version="1.11.0")
     self.assertEqual(0, result.returncode, result.stderr)
-    self.assertIn("marketplace-add:v1.10.1", events)
+    self.assertIn("marketplace-add:v1.11.0", events)
     self.assertIn("plugin-add:avaya-case-review@avaya-case-review-pack", events)
 
 def test_matching_install_is_idempotent(self):
@@ -1001,7 +1001,7 @@ git add setup_env.ps1 tools/installer/windows_common.ps1 tests/test_setup_env_gm
 git commit -m "fix(installer): gate Antigravity on bridge compatibility"
 ```
 
-### Task 10: Publish the GitHub URL Bootstrap and `v1.10.1` Metadata
+### Task 10: Publish the GitHub URL Bootstrap and `v1.11.0` Metadata
 
 **Files:**
 - Modify: `README.md:1-100`
@@ -1017,7 +1017,7 @@ git commit -m "fix(installer): gate Antigravity on bridge compatibility"
 - Modify: `tests/test_codex_plugin_packaging.py:167-238`
 
 **Interfaces:**
-- Produces: a first-screen GitHub instruction contract pinned to `v1.10.1` and synchronized version metadata.
+- Produces: a first-screen GitHub instruction contract pinned to `v1.11.0` and synchronized version metadata.
 - Consumes: the no-flag installers and central-gate behavior from Tasks 8–9.
 
 - [ ] **Step 1: Write failing documentation-contract tests**
@@ -1029,13 +1029,13 @@ def test_github_bootstrap_is_first_and_rejects_skill_installer(self):
     overview = readme.index("Overview")
     self.assertLess(bootstrap, overview)
     self.assertIn("Codex plugin marketplace, not a standalone skill", readme)
-    self.assertIn("git clone --depth 1 --branch v1.10.1", readme)
+    self.assertIn("git clone --depth 1 --branch v1.11.0", readme)
     self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", readme)
 
 def test_docs_share_stable_tag_and_no_end_user_cloud_deployment(self):
     for path in URL_INSTALL_DOCS:
         text = path.read_text(encoding="utf-8-sig")
-        self.assertIn("v1.10.1", text)
+        self.assertIn("v1.11.0", text)
         self.assertIn("install-codex.ps1", text)
         self.assertNotIn("Before either local installation, deploy", text)
 ```
@@ -1074,7 +1074,7 @@ installation sections. The release note must describe the two defects:
 incorrect skill-installer routing/manual cloud gate and unresolved Codex MCP
 paths.
 
-- [ ] **Step 6: Bump both plugin manifests to `1.10.1`**
+- [ ] **Step 6: Bump both plugin manifests to `1.11.0`**
 
 Require equality between `.codex-plugin/plugin.json` and
 `plugins/avaya-case-review/plugin.json`. Update current-version references in
@@ -1178,19 +1178,19 @@ git add tests/fixtures/run_codex_clean_profile_smoke.ps1 tests/test_codex_clean_
 git commit -m "test: cover clean-profile plugin installation"
 ```
 
-### Task 12: Deploy, Attest, Validate, and Publish `v1.10.1`
+### Task 12: Deploy, Attest, Validate, and Publish `v1.11.0`
 
 **Files:**
 - Create: `tools/gmail/cloud/bridge_release_attestation.json`
 - Modify: `release-manifest.txt`
 - Modify: `tests/test_release_manifest.py`
 - Modify: `docs/RELEASE_NOTES.md`, `docs/RELEASE_NOTES.html`
-- Create outside Git: `NOTES-v1.10.1.md`
-- Create outside Git: `avaya-case-review-pack-v1.10.1.zip`
+- Create outside Git: `NOTES-v1.11.0.md`
+- Create outside Git: `avaya-case-review-pack-v1.11.0.zip`
 
 **Interfaces:**
 - Consumes: all prior tasks and the maintainer's authorized Apps Script deployment.
-- Produces: immutable tag and GitHub Release `v1.10.1` with a verified ZIP asset.
+- Produces: immutable tag and GitHub Release `v1.11.0` with a verified ZIP asset.
 
 - [ ] **Step 1: Run the complete pre-deployment suite**
 
@@ -1236,14 +1236,14 @@ print `PASS`.
 $VerifiedAtUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 python tools/gmail/cloud/bridge_identity.py attest `
   --source tools/gmail/cloud/GmailMcpBridge.gs `
-  --plugin-version 1.10.1 `
+  --plugin-version 1.11.0 `
   --verified-at-utc $VerifiedAtUtc `
   --all-checks-passed `
   --output tools/gmail/cloud/bridge_release_attestation.json
 python tools/gmail/cloud/bridge_identity.py validate `
   --source tools/gmail/cloud/GmailMcpBridge.gs `
   --attestation tools/gmail/cloud/bridge_release_attestation.json `
-  --plugin-version 1.10.1
+  --plugin-version 1.11.0
 ```
 
 Expected: validation exits `0`. Inspect the JSON and confirm it contains none
@@ -1275,7 +1275,7 @@ Stage only intended files; inspect staged names before committing:
 ```powershell
 git add tools/gmail/cloud/bridge_release_attestation.json release-manifest.txt tests/test_release_manifest.py docs/RELEASE_NOTES.md docs/RELEASE_NOTES.html
 git diff --cached --name-status
-git commit -m "chore(release): prepare v1.10.1"
+git commit -m "chore(release): prepare v1.11.0"
 $CandidateBranch = (git branch --show-current).Trim()
 $CandidateSha = (git rev-parse HEAD).Trim()
 git push origin "HEAD:refs/heads/$CandidateBranch"
@@ -1307,12 +1307,12 @@ if ($RemoteMainSha -cne $CandidateSha) { throw "Remote main SHA mismatch" }
 $DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
 git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
 $DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
-$StableBootstrap = "git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
-if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.10.1 bootstrap" }
+$StableBootstrap = "git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.11.0 bootstrap" }
 ```
 
 Never force this update. Verify the default-branch README in a new shallow
-`main` checkout exposes the exact stable v1.10.1 clone command and exact-tag
+`main` checkout exposes the exact stable v1.11.0 clone command and exact-tag
 check before creating the tag.
 
 - [ ] **Step 10: Create and verify the immutable release tag**
@@ -1320,9 +1320,9 @@ check before creating the tag.
 After the default branch and candidate SHA checks pass:
 
 ```powershell
-git tag -a v1.10.1 $CandidateSha -m "v1.10.1"
-git push origin refs/tags/v1.10.1
-$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.10.1^{}") -split '\s+')[0]
+git tag -a v1.11.0 $CandidateSha -m "v1.11.0"
+git push origin refs/tags/v1.11.0
+$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.11.0^{}") -split '\s+')[0]
 if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
 ```
 
@@ -1337,7 +1337,7 @@ In a second clean Windows profile, give the AI agent only:
 install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 ```
 
-It must select `v1.10.1` from the GitHub landing page, verify the tag, complete
+It must select `v1.11.0` from the GitHub landing page, verify the tag, complete
 installation without `-CloudBridgeVerified`, pause only for SSO/MFA, start a
 new task, discover all six MCP tools, and perform one non-production
 evidence-complete case review.
@@ -1349,10 +1349,10 @@ checkout of the immutable tag, verify that the tag peels to the accepted
 candidate SHA, and keep the archive outside Git:
 
 ```powershell
-$ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.10.1-" + [guid]::NewGuid().ToString("N"))
-$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.10.1.zip"
+$ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.11.0-" + [guid]::NewGuid().ToString("N"))
+$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.11.0.zip"
 git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
-git -C $ReleaseCheckout checkout --detach v1.10.1
+git -C $ReleaseCheckout checkout --detach v1.11.0
 $TaggedSha = (git -C $ReleaseCheckout rev-parse HEAD).Trim()
 if ($TaggedSha -cne $CandidateSha) { throw "Tagged checkout SHA mismatch" }
 if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout is not clean" }
@@ -1393,11 +1393,11 @@ state, credentials, and temporary test evidence. Do not add the ZIP to Git.
 After explicit release authorization:
 
 ```powershell
-gh release create v1.10.1 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.10.1.md --latest
-gh release view v1.10.1
+gh release create v1.11.0 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.11.0.md --latest
+gh release view v1.11.0
 ```
 
-Expected: release `v1.10.1` is latest, the ZIP is attached, and prior affected
+Expected: release `v1.11.0` is latest, the ZIP is attached, and prior affected
 release notes contain upgrade guidance. If any release gate fails, do not
 publish; use the existing Cloud Bridge rollback procedure and the recorded
 same-source client rollback transaction.
@@ -1414,7 +1414,7 @@ Before declaring the repair complete, record all of these results in
 | Marketplace commit ref | PASS for add, remove/re-add, SHA verification, rollback |
 | Cloud source identity | Local source, attestation, and live digest identical |
 | Cloud exhaustive checks | Every documented zero/page/cursor/count/hash check PASS |
-| Codex clean install | Plugin `1.10.1` enabled; six MCP tools discovered |
+| Codex clean install | Plugin `1.11.0` enabled; six MCP tools discovered |
 | Codex reinstall | No unintended state churn; still six tools |
 | Antigravity install | Preflight before replacement; prior state preserved on failure |
 | Windows scripts | Parser success, UTF-8 BOM, CRLF |

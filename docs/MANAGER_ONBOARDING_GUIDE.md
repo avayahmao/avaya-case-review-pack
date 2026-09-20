@@ -28,14 +28,14 @@ Use the exact AI-agent request below. This repository is a Codex plugin marketpl
 install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 ```
 
-The stable v1.10.1 contract uses a unique temporary checkout:
+The stable v1.11.0 contract uses a unique temporary checkout:
 
 ```text
-git clone --depth 1 --branch v1.10.1 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
 git describe --exact-match --tags HEAD
 ```
 
-The tag check must return `v1.10.1`. Inspect `INSTALL.md`, then run the no-flag
+The tag check must return `v1.11.0`. Inspect `INSTALL.md`, then run the no-flag
 installer for the selected host. End users do not deploy the Gmail Apps Script
 Web App or provide a production Case ID during installation. Only SSO/MFA may
 pause installation. These instructions do not claim the tag, GitHub release,
@@ -55,7 +55,7 @@ entry point.
 
 ### Step-by-Step Execution
 
-Follow the v1.10.1 installer instructions only after exact-tag verification.
+Follow the v1.11.0 installer instructions only after exact-tag verification.
 
 > [!TIP]
 > The bootstrap provides the supported no-flag installer invocation.

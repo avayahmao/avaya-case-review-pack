@@ -116,6 +116,10 @@
         <span class="version-tag">v1.11.0</span>
         <span class="version-date">2026-09-20 - Deterministic Exhaustive Collection and Payload Assembly</span>
         <h3>Deterministic Exhaustive Collection and Payload Assembly</h3>
+        <p>The stable v1.11.0 installation contract uses a unique temporary checkout:</p>
+        <pre><code>git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack &lt;unique-temp-directory&gt;
+git describe --exact-match --tags HEAD</code></pre>
+        <p>The tag check must return <code>v1.11.0</code>.</p>
         <h3>Script-Driven Exhaustive Gmail Collection</h3>
         <ul>
             <li>Adds <code>gmail_collect_case.py collect/query/status</code>: one command enumerates the primary-ID thread chain, exhausts every page and cursor under a single reused snapshot, deduplicates by <code>thread_id</code>/<code>message_id</code>, reassembles and SHA-256-verifies every message body, and enforces per-thread manifest/count stability.</li>
