@@ -13,17 +13,29 @@ Alarm tickets are out of scope for this skill. Route explicit alarm QA or alarm-
 
 ## Operating modes
 
-- **Validate supplied QA:** preserve the supplied cases and assess schema, bounds, totals, and summaries. Do not silently rescore management judgments.
-- **Perform QA from a workload report:** select cases using the monthly rules below, collect complete case evidence, assign scores, and produce the requested table or workbook.
+- **Validate supplied QA:** preserve the supplied cases and assess schema, reviewability, bounds, totals, comments, and summaries. When the user asks only to validate supplied scores, do not collect case evidence or silently rescore management judgments.
+- **Assign or rescore supplied cases:** collect fresh complete case evidence for every primary Case ID before assigning any score. Produce QA output only; do not generate a case-review report or durable case record unless the user also asks for one.
+- **Perform QA from a workload report:** select cases using the monthly rules below, collect fresh complete case evidence, assign scores, and produce the requested table or workbook.
+
+## Reviewability gate
+
+Classify every candidate as `Reviewable` or `Not Reviewable` before scoring.
+
+- **Reviewable:** substantive technical or service work is attributable to the named engineer and the available evidence is sufficient to judge that work. An unknown customer outcome does not make the work unreviewable.
+- **Not Reviewable:** use one of these factual reason categories: `No substantive engineer activity`, `Duplicate / administrative / standby`, `Cancelled before assessable work`, or `Insufficient attributable evidence`.
+- `Not Reviewable` requires a concise, factual `Reviewability Reason`. Leave all three dimensions and `score` blank and exclude the row from every score average, minimum, maximum, ranking, and score distribution.
+- Customer or BP nonresponse alone is not a reason for `Not Reviewable` when substantive attributable work exists. Third-party involvement alone is also not a reason: boundary isolation, evidence collection, and a correct handoff may remain reviewable.
+- Use `Insufficient attributable evidence` only after required source collection completes. A tool, authentication, pagination, or other collection failure is `Context collection incomplete`, not a judgment that the case itself is unreviewable.
+- Do not use numeric zero as a substitute for `Not Reviewable`. A reviewable case may receive a zero in a dimension only when the evidence supports that score.
 
 ## Monthly case selection
 
 1. Use `Closed Date` to determine the requested month and include only completed/closed cases.
-2. Exclude canceled or administratively non-reviewable tickets. This includes `Status = Cancelled` and closure/status reasons such as `NO RESPONSE`, `CUSTOMER CANCELLED`, `NO LONGER REQUIRED`, `DUPLICATE TICKET`, `LACKS DATA TO DIAGNOSE`, or an equivalent closure without a reviewable technical assessment. A displayed status of `Completed` does not override an ineligible closure reason; for example, `1-23694701942` is ineligible because it closed for `NO RESPONSE`.
-3. Select the two most recently closed eligible cases for each engineer. Do not cherry-pick cases based on expected score.
+2. Apply the reviewability gate to candidates in newest-first order. Do not classify a case from its closure label alone: `NO RESPONSE`, customer cancellation, or third-party involvement may still leave substantive attributable work to assess, while a displayed status of `Completed` does not make an administrative or evidence-empty case reviewable.
+3. Select the two most recently closed `Reviewable` cases for each engineer. Do not cherry-pick cases based on expected score. Retain evaluated `Not Reviewable` candidates with their reasons for coverage reporting, but do not let them consume the two-case quota.
 4. Exclude alarm cases. Treat a case as an alarm case when its primary purpose is alarm handling or alarm clearance, even if the workload row is mislabeled `Non-Alarm`. A non-alarm case may mention alarms as supporting evidence when its primary customer problem is different.
-5. If an engineer has fewer than two eligible non-alarm cases, do not substitute alarm cases, canceled/non-reviewable cases, or cases from another month. Report the coverage gap.
-6. Use lowercase source usernames: `Assigned To Login` for `Name` and `Manager Login` for `Manager`. Do not derive a username from a display name; use `unknown` when the source login is unavailable.
+5. If an engineer has fewer than two reviewable non-alarm cases, do not substitute alarm cases, `Not Reviewable` cases, or cases from another month. Report the coverage gap.
+6. Use lowercase source usernames: `Assigned To Login` for `Name`, `Manager Login` for `Manager`, and the source auditor login for `Auditor` when supplied. Do not derive a username from a display name; use `unknown` when a required `Name` or `Manager` login is unavailable, and leave an unavailable optional `Auditor` blank.
 
 ## Required output fields
 
@@ -33,19 +45,31 @@ Each entry contains:
 - `Manager`: lowercase manager username
 - `Case ID`
 - `Product`: source-supported product, otherwise blank or `not stated` according to the output format
-- `Diagnostic & Solution`: integer from 0 through 5
-- `Service & Communication`: integer from 0 through 3
-- `Plus` / `Technical Plus`: integer from 0 through 5, calculated from demonstrated item allocations
-- `score`: calculated as the sum of the three dimensions; maximum 13
-- `Problem`: concise statement of the primary customer problem
-- `efforts`: evidence-backed technical and service actions performed by the engineer
-- `comments`: concise management assessment; mandatory when `Diagnostic & Solution < 5`, `Service & Communication < 3`, or `Plus > 0`
+- `Auditor`: lowercase source auditor username when supplied; otherwise blank
+- `Reviewability`: exactly `Reviewable` or `Not Reviewable`
+- `Reviewability Reason`: blank for `Reviewable`; required and factual for `Not Reviewable`
+- `Diagnostic & Solution`: integer from 0 through 5 for `Reviewable`; blank for `Not Reviewable`
+- `Service & Communication`: integer from 0 through 3 for `Reviewable`; blank for `Not Reviewable`
+- `Plus` / `Technical Plus`: integer from 0 through 5 for `Reviewable`, calculated from demonstrated item allocations; blank for `Not Reviewable`
+- `score`: calculated as the sum of the three dimensions for `Reviewable`, maximum 13; blank for `Not Reviewable`
+- `Problem`: case type, primary customer objective, and material impact without embedding the diagnosis
+- `efforts`: evidence-backed `Reviewed`, `Observed`, `Action`, and `Validation` facts attributable to the engineer
+- `comments`: concise criterion-based management judgment; mandatory when `Diagnostic & Solution < 5`, `Service & Communication < 3`, or `Plus > 0`
 
 For spreadsheet output, preserve this exact column order:
 
 ```text
-Name | Manager | Case ID | Product | Diagnostic & Solution (0-5) | Service & Communication (0-3) | Plus (0-5) | score | Problem | efforts | comments
+Name | Manager | Case ID | Product | Auditor | Reviewability | Reviewability Reason | Diagnostic & Solution (0-5) | Service & Communication (0-3) | Plus (0-5) | score | Problem | efforts | comments
 ```
+
+## Input normalization and wording
+
+- Normalize source-login fields to lowercase, trim repeated or leading/trailing whitespace, correct obvious spelling and encoding errors, and normalize textual not-applicable markers to `N/A`; score cells remain blank for `Not Reviewable`.
+- Keep one logical case per row. Quote embedded line breaks and delimiters correctly when using CSV/TSV so they cannot split or shift fields.
+- Write `Problem` as `<case type> — <customer objective and impact>`. State the symptom or request, not the diagnosis or an assumed cause.
+- Write `efforts` as compact facts in this order where applicable: `Reviewed: <artifact/source>; Observed: <specific fact>; Action: <action or recommendation>; Validation: <result or unknown>`. Do not turn requested, planned, or unavailable evidence into completed work.
+- Write `comments` as the criterion-based scoring judgment. Use the exact signed notation below for every deduction and Plus award; when material, append a short `RCA:` or `Outcome:` state supported by the evidence.
+- Never preserve vague judgments such as `sounds good`, `fair enough`, `job done`, `convinced conclusion`, or similar wording. Replace them with the specific criterion met, evidence gap, service behavior, or validated outcome.
 
 ## Scoring standards
 
@@ -53,21 +77,23 @@ The normal fully solved case is `5 + 3 + 0 = 8`. Plus points are exceptional; th
 
 ### Diagnostic & Solution (0-5)
 
-- **5:** Evidence supports the cause, working-as-designed conclusion, or technical boundary, and the engineer provides an actionable solution or verified fix. Strong evidence includes traces/logs, good-versus-bad comparison, KB/PSN matching, lab reproduction, source-code analysis, or an end-to-end technical proof.
-- **4:** Analysis is technically useful and substantially correct, but the solution is unconfirmed/declined, the evidence chain is incomplete, or the response does not fully address the customer's concern.
-- **3:** A plausible diagnosis or useful recovery action is documented, but causal evidence or durable validation is limited.
+- **5:** The work completely satisfies the evidenced case objective for its type. For an information request, the answer is complete, accurate, and grounded in an authoritative source. For an incident, evidence supports the technical isolation or solution, and any claimed recovery or RCA has the required validation. For a planned change, the procedure is correct, execution is attributable, and the result is validated. A working-as-designed conclusion or technical boundary also requires supporting evidence and a clear next action when one remains.
+- **4:** Analysis and action are strong and substantially complete, but one material proof gap remains. Recovery with unresolved cause or durability is normally 4 when the rest of the investigation is strong; state the unresolved limit explicitly.
+- **3:** The engineer provides a useful partial diagnosis, recovery action, or technical contribution, but evidence linkage is limited, contribution to the final solution is incomplete, or the case is handed off before the outcome is established.
 - **2:** The record shows only a basic check, workaround, reboot, or recovery confirmation without explaining the mechanism.
 - **1:** Only a minimal technical action or closure statement is attributable to the engineer.
 - **0:** No relevant technical contribution is supported.
 
-Do not award diagnostic credit merely for assignment, escalation, case closure, alarm clearance, or a replacement being available.
+Tentative guesses, self-recovery, restart alone, an uncorrelated KB match, requested or planned evidence, administrative/automatic closure, or troubleshooting with no result cannot support 5. The narrow exception is a case whose actual objective was only to define the correct next diagnostic step and where that step is complete, technically justified, and clearly owned. Do not award diagnostic credit merely for assignment, escalation, case closure, alarm clearance, or a replacement being available.
 
 ### Service & Communication (0-3)
 
-- **3:** Timely ownership, clear customer/BP communication, useful progress updates, coordination where needed, and an understandable closure outcome.
-- **2:** Service is acceptable but communication is delayed, reactive, incomplete, or the case remains open longer than the technical work justifies.
-- **1:** Minimal customer-facing communication or ownership is visible.
+- **3:** The engineer-controlled record shows timely ownership, clear customer/BP communication, useful progress updates, correct coordination or handoff, a named next owner when work remains, and an understandable closure position.
+- **2:** Service is generally acceptable but one material, documented gap exists, such as a delayed update, missed commitment, unclear next owner, or failure to create or transfer the correct follow-up.
+- **1:** A major or repeated ownership/communication lapse is evidenced, or only minimal customer-facing service is attributable to the engineer.
 - **0:** No meaningful service or communication contribution is supported.
+
+Score only behavior the engineer controlled. Customer/BP nonresponse alone does not justify a deduction after timely follow-up and a clear closure notice. Correct technical-boundary isolation plus a properly owned handoff remains reviewable and may satisfy the service standard; leaving the customer to find the next owner does not.
 
 ### Technical Plus / Extra Mile (0-5) — Item-Based Additive Scoring
 
@@ -75,7 +101,7 @@ Calculate Technical Plus by identifying specific, evidenced technical value-add 
 
 - **Default per item:** `+1` for each demonstrated item.
 - **Outstanding item:** `+2` or `+3` for one item only when execution of that specific item was exceptionally outstanding. State what made it outstanding; do not award multiple points merely because the case was severe or urgent.
-- **Baseline core work:** `0` for standard resolution, fast turnaround, routine data/configuration correction, or ordinary single-shift troubleshooting.
+- **Baseline core work:** `0` for ordinary speed, expected product knowledge, a standard workaround or document, routine data/configuration correction, normal cross-team contact, or any other core role competence.
 - **Cumulative maximum:** add all item allocations, capped at `5`.
 
 Technical Plus item menu:
@@ -90,12 +116,12 @@ Technical Plus item menu:
 Scoring examples:
 
 - **0:** no extra item; examples include `solved quickly`, `fix a corruption`, or routine NAR/single-shift troubleshooting.
-- **1:** one standard item, such as identifying a code defect or resolving an issue under a meaningful time constraint.
+- **1:** one standard item, such as identifying a code defect or delivering materially faster restoration with evidenced impact beyond the ordinary expectation.
 - **2:** two standard items (`+1 +1`) or one exceptionally outstanding item (`+2`).
 - **3:** a multi-item/outstanding combination, such as Cross-Product Integration `+1` plus exceptionally strong Customer Pressure & Ownership `+2`.
 - **4-5:** cumulative achievement across several independently evidenced items.
 
-Do not double-count the same action under different menu items. Severity, escalation, White Glove status, speed, or customer pressure alone earns `0`. State the item, allocation, and concise evidence in `comments`.
+Do not double-count the same action under different menu items or reuse work already required for a base score. Severity, escalation, White Glove status, speed, product knowledge, a workaround, documentation, or customer pressure alone earns `0`. A reusable knowledge artifact or materially faster restoration earns Plus only when its exceptional impact is demonstrated and it maps to an existing item such as Scope Extension or Trace Package Hygiene. State the item, allocation, and concise evidence in `comments`.
 
 ## Evidence and writing rules
 
@@ -117,7 +143,7 @@ Write comments in the short, practical style used by the manager examples. Prefe
   - `Service & Communication -N: <reason>`, where `N = 3 - Service & Communication`.
   - `Plus +N: <item> — <reason>` for each demonstrated item, where `N` is `1`, `2`, or `3`. The allocations must sum exactly to the Plus score.
 - Do not write `reduced by one`, `minus one`, `(+1)`, or another notation variant. Use the signed forms above consistently.
-- Use the same direct tone as the examples: `solved quickly`, `solid TS`, `solution confirmed`, `working as designed`, or `BP did not confirm`. Add only the short signed reason needed to audit a deduction or Plus point.
+- Use factual, criterion-based language. Do not retain a source comment merely because it sounds positive or decisive; rewrite vague shorthand into the observed quality, gap, or validation state.
 - Avoid polished report prose, long chronology, repeated evidence, or detailed causal explanation in `comments`; those belong in `efforts`.
 - Lead with the most important judgment: confirmed result, evidence strength, customer outcome, or principal gap.
 - Explain why the row differs from the normal `5 / 3 / 0 = 8`. For a lower score, identify the specific diagnostic or communication limitation. For a higher score, identify each exceptional contribution.
@@ -129,42 +155,46 @@ Write comments in the short, practical style used by the manager examples. Prefe
 
 Useful comment patterns include:
 
-- `Diagnostic & Solution -1: root cause not confirmed`
+- `Diagnostic & Solution -1: service recovered, but cause and durability remain unknown; Outcome: recovery observed`
 - `Diagnostic & Solution -1: BP did not confirm the trace-based solution`
 - `Service & Communication -1: took one month to close; Plus +1: Scope Extension — addressed an additional concern`
 - `Plus +1: Code Defect Discovery — reproduced in lab and identified product defect`
 - `Plus +1: Infrastructure & Hypervisor Isolation — proved issue was outside Avaya`
 - `Plus +2: Customer Pressure & Ownership — led exceptional end-to-end recovery under executive pressure`
-- `Service & Communication -1: email-only communication delayed progress`
+- `Service & Communication -1: the documented two-week response delay exceeded the agreed update interval`
 
 For supplied historical QA, preserve the original comment unless the user asks for rewriting. A blank comment is invalid when any mandatory-comment condition applies. Flag unclear, contradictory, or unsupported comments as data-quality issues.
 
 ## Data consistency
 
-- Always calculate `score = Diagnostic & Solution + Service & Communication + Plus`.
+- Require `Reviewability Reason` for `Not Reviewable` and keep it blank for `Reviewable`.
+- For `Reviewable`, require all dimensions and calculate `score = Diagnostic & Solution + Service & Communication + Plus`.
+- For `Not Reviewable`, require all dimensions and `score` to be blank and exclude the row from score statistics.
 - Reject out-of-range dimensions and conflicting supplied totals; do not silently preserve invalid examples.
 - Reject a row with a blank comment when `Diagnostic & Solution < 5`, `Service & Communication < 3`, or `Plus > 0`. A non-empty comment must explicitly justify each applicable minus or Plus score.
 - Reject comments that do not use the exact signed notation or whose signed values do not reconcile to the score dimensions. Technical Plus allocations may be `+1`, `+2`, or `+3` per item and must sum exactly to the Plus score.
-- Blank dimension cells mean the row is unscored, not zero. A row with blank dimensions and score `0` is incomplete and must be flagged rather than included in averages.
+- Blank dimension cells mean the row is unscored, not zero. A `Reviewable` row with blank dimensions is incomplete. A row with blank dimensions and score `0` is invalid even when it is `Not Reviewable`; the total must be blank.
 - If `comments` awards `+1` but `Plus` is `0`, flag the row for correction even when the numeric total is otherwise arithmetically valid.
 - A row showing `5 / 5 / 2` with score `10` is invalid because Service & Communication cannot exceed 3. It becomes `5 / 3 / 2 = 10` only after the value is explicitly corrected.
 - A row showing `5 / 3 / 0` with score `9` and a documented `+1` is inconsistent: either Plus must be 1 or the score must be 8.
 
 ## Workflow
 
-1. Determine whether the user supplied fixed QA rows or asked the skill to select cases from a workload report.
-2. Apply the relevant selection and evidence rules, then normalize the column names.
-3. Validate every entry and calculate its score.
-4. Report the overall count, average, minimum, maximum, and dimension averages.
-5. Report grouped summaries by engineer and manager, retaining source username relationships.
-6. Render the complete entry table with `Problem`, `efforts`, and `comments`.
+1. Determine whether the user requested validation-only, assignment/rescoring of supplied cases, or selection from a workload report.
+2. For assignment or rescoring, perform a fresh CaseToMD retrieval and exhaustive primary-raw-ID Gmail collection under one fresh Gmail snapshot for each case. Do not reuse a prior case-review result as the evidence corpus.
+3. Apply the monthly selection rules when relevant, then apply the reviewability gate before scoring.
+4. Normalize every entry to the exact output schema and wording contract.
+5. Validate each `Reviewable` entry and calculate its score; validate each `Not Reviewable` reason and blank score fields separately.
+6. Report reviewable and not-reviewable counts separately. Calculate overall and grouped score statistics from `Reviewable` rows only.
+7. Report grouped summaries by engineer and manager, retaining source username relationships and coverage shortfalls.
+8. Render the complete entry table with reviewability, `Problem`, `efforts`, and `comments`.
 
 For validation or summary of an existing QA file, use:
 
 ```text
-python <plugin-directory>/skills/case-review/scripts/qa.py report --input <qa.csv|qa.json|qa.md>
+python <plugin-directory>/skills/case-review/scripts/qa.py report --input <qa.csv|qa.tsv|qa.txt|qa.json|qa.md>
 ```
 
-The parser accepts JSON arrays, CSV, and GitHub-style Markdown tables using the example column names. Use `validate` when the user asks for data-quality checking only, and `score` for one entry. Preserve `Problem` and `efforts` in the final table even when the numeric validator is used separately.
+The parser accepts JSON arrays/envelopes, CSV, TSV/plain-text tabular input, and GitHub-style Markdown tables. TSV/text may use the canonical header or the documented 12-column legacy and 14-column current positional order; embedded delimiters or line breaks must be quoted. Use `validate` when the user asks for data-quality checking only, and `score` for one reviewable entry. Preserve `Problem` and `efforts` in the final table even when the numeric validator is used separately.
 
 Do not assign a pass/fail threshold, ranking, performance-management action, or recommendation unless the user supplies that policy explicitly.
