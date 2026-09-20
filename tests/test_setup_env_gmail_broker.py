@@ -535,6 +535,7 @@ function Copy-Item {
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=30,
             check=False,
         )
@@ -1369,6 +1370,7 @@ raise SystemExit(gmail_brokerctl.main(["status"], client=Client()))
             capture_output=True,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=30,
             check=False,
         )
