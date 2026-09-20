@@ -52,8 +52,8 @@ Each entry contains:
 - `Service & Communication`: integer from 0 through 3 for `Reviewable`; blank for `Not Reviewable`
 - `Plus` / `Technical Plus`: integer from 0 through 5 for `Reviewable`, calculated from demonstrated item allocations; blank for `Not Reviewable`
 - `score`: calculated as the sum of the three dimensions for `Reviewable`, maximum 13; blank for `Not Reviewable`
-- `Problem`: case type, primary customer objective, and material impact without embedding the diagnosis
-- `efforts`: evidence-backed `Reviewed`, `Observed`, `Action`, and `Validation` facts attributable to the engineer
+- `Problem`: a short, simple-English phrase stating the customer request or symptom; do not repeat the product as a routine prefix
+- `efforts`: concise evidence-backed sentences stating the attributable action, key finding, and result or validation limit
 - `comments`: concise criterion-based management judgment; mandatory when `Diagnostic & Solution < 5`, `Service & Communication < 3`, or `Plus > 0`
 
 For spreadsheet output, preserve this exact column order:
@@ -66,10 +66,25 @@ Name | Manager | Case ID | Product | Auditor | Reviewability | Reviewability Rea
 
 - Normalize source-login fields to lowercase, trim repeated or leading/trailing whitespace, correct obvious spelling and encoding errors, and normalize textual not-applicable markers to `N/A`; score cells remain blank for `Not Reviewable`.
 - Keep one logical case per row. Quote embedded line breaks and delimiters correctly when using CSV/TSV so they cannot split or shift fields.
-- Write `Problem` as `<case type> — <customer objective and impact>`. State the symptom or request, not the diagnosis or an assumed cause.
-- Write `efforts` as compact facts in this order where applicable: `Reviewed: <artifact/source>; Observed: <specific fact>; Action: <action or recommendation>; Validation: <result or unknown>`. Do not turn requested, planned, or unavailable evidence into completed work.
-- Write `comments` as the criterion-based scoring judgment. Use the exact signed notation below for every deduction and Plus award; when material, append a short `RCA:` or `Outcome:` state supported by the evidence.
+- Write `Problem` as a concise English phrase, normally about 3-12 words. Start with the request or symptom, not a product-name label or report sentence. The `Product` column already carries the product. Good examples: `New SIP trunk returned 403`, `Lost SAL login access`, and `Scheduled remote backups failed`. Mention a product or component only when it is needed to understand the issue, not as a repeated prefix. Do not embed a diagnosis or assumed cause.
+- Write `efforts` in simple English using the useful parts of `action -> finding -> result/validation`. Use one to three short direct sentences. Start with the work or case-specific fact, not the evidence source. Do not emit field labels such as `Reviewed:`, `Observed:`, `Action:`, or `Validation:`. Do not use source-led templates such as `Case history and matched emails show`, `ServiceNow record shows`, or similar wording. Source completeness belongs to the evidence workflow, not the management row. Do not turn requested, planned, or unavailable evidence into completed work.
+- Write `comments` as a short natural management judgment. Use the exact signed notation below for every deduction and Plus award, but place those machine-checkable tokens after the plain-English judgment, preferably in parentheses. When material, include a short `RCA:` or `Outcome:` state supported by the evidence.
 - Never preserve vague judgments such as `sounds good`, `fair enough`, `job done`, `convinced conclusion`, or similar wording. Replace them with the specific criterion met, evidence gap, service behavior, or validated outcome.
+
+## Example-led calibration
+
+When the supplied workload or QA workbook includes scored examples, use them as the local benchmark for both scoring and writing before completing new rows.
+
+- Compare like cases and compare each dimension separately. A total-score gap does not establish that every dimension is too strict. Inspect Diagnostic, Service, and Plus distributions independently and review the below-full cases that create the gap.
+- Use examples and cross-auditor distributions as calibration evidence, not as a target average. Do not raise a score merely to match another auditor's mean, median, full-score rate, or ranking.
+- Retain the evidence gate. A permissive example cannot turn assignment, routing, a restart alone, missing notes, another engineer's work, or an unsupported customer statement into a complete technical solution.
+- Calibrate Diagnostic consistently:
+  - `5` when the named engineer completed the evidenced technical objective, or established a supported product/technical boundary with a clear correct next owner or action. Do not deduct merely because a downstream team performs the next step after the engineer completed the assigned boundary objective.
+  - `4` for strong, substantially complete work with one material proof, attribution, recovery, cause, or durability gap. Treat an unknown production outcome as a material gap only when the actual case objective requires that outcome.
+  - `3` for a targeted check, useful recovery action, or correct handoff with limited mechanism or no established final result.
+  - `1-2` when only a basic action, evidence request, restart, routing, or closure statement is attributable and no useful diagnosis/result is established.
+- Calibrate Service and Plus on their own evidence. Do not use Service or Plus to compensate for a Diagnostic distribution difference. Keep Plus exceptional and item-based.
+- Preserve `Not Reviewable` and `Context collection incomplete` states during calibration unless new complete evidence changes the reviewability facts.
 
 ## Scoring standards
 
@@ -77,7 +92,7 @@ The normal fully solved case is `5 + 3 + 0 = 8`. Plus points are exceptional; th
 
 ### Diagnostic & Solution (0-5)
 
-- **5:** The work completely satisfies the evidenced case objective for its type. For an information request, the answer is complete, accurate, and grounded in an authoritative source. For an incident, evidence supports the technical isolation or solution, and any claimed recovery or RCA has the required validation. For a planned change, the procedure is correct, execution is attributable, and the result is validated. A working-as-designed conclusion or technical boundary also requires supporting evidence and a clear next action when one remains.
+- **5:** The work completely satisfies the evidenced case objective for its type. For an information request, the answer is complete, accurate, and grounded in an authoritative source. For an incident, evidence supports the technical isolation or solution, and any claimed recovery or RCA has the required validation. For a planned change, the procedure is correct, execution is attributable, and the result is validated. A working-as-designed conclusion or technical boundary also requires supporting evidence and a clear next action when one remains; a correctly completed boundary objective does not require the named engineer to perform another team's downstream work.
 - **4:** Analysis and action are strong and substantially complete, but one material proof gap remains. Recovery with unresolved cause or durability is normally 4 when the rest of the investigation is strong; state the unresolved limit explicitly.
 - **3:** The engineer provides a useful partial diagnosis, recovery action, or technical contribution, but evidence linkage is limited, contribution to the final solution is incomplete, or the case is handed off before the outcome is established.
 - **2:** The record shows only a basic check, workaround, reboot, or recovery confirmation without explaining the mechanism.
@@ -133,12 +148,12 @@ Do not double-count the same action under different menu items or reuse work alr
 
 ### Comments writing standard
 
-Write comments in the short, practical style used by the manager examples. Prefer one line of plain management language or short semicolon-separated phrases. A comment interprets the case quality; it does not repeat the `Problem`, rewrite `efforts`, quote logs, or retell the investigation.
+Write comments in the short, practical style used by the manager examples. Prefer one or two short plain-English sentences. A comment interprets the case quality; it does not repeat the `Problem`, rewrite `efforts`, quote logs, or retell the investigation.
 
 - A comment is mandatory whenever `Diagnostic & Solution` is below 5, `Service & Communication` is below 3, or `Plus` is above 0. The comment must explain every applicable deduction and award. One comment may cover multiple reasons.
 - A `5 / 3 / 0` row may have a blank comment, although a concise outcome statement is still useful.
 - Keep the score explanation very short—normally only the decisive missing proof, communication gap, or exceptional contribution. Examples: `root cause not confirmed`, `delayed update`, `cross-product coordination`, or `solution confirmed`.
-- Use consistent signed notation at the start of each scoring explanation:
+- For newly generated or rewritten QA, state the natural judgment first and place each exact signed token at the end, preferably in parentheses. Historical supplied QA may retain token-first wording when the user did not request a rewrite. The required tokens are:
   - `Diagnostic & Solution -N: <reason>`, where `N = 5 - Diagnostic & Solution`.
   - `Service & Communication -N: <reason>`, where `N = 3 - Service & Communication`.
   - `Plus +N: <item> — <reason>` for each demonstrated item, where `N` is `1`, `2`, or `3`. The allocations must sum exactly to the Plus score.
@@ -153,15 +168,15 @@ Write comments in the short, practical style used by the manager examples. Prefe
 - Keep criticism factual and non-accusatory. Describe the observable delay or gap rather than judging the person.
 - Do not claim RCA, customer acceptance, production recovery, or cross-team contribution unless the evidence supports it.
 
-Useful comment patterns include:
+Useful generated-comment patterns include:
 
-- `Diagnostic & Solution -1: service recovered, but cause and durability remain unknown; Outcome: recovery observed`
-- `Diagnostic & Solution -1: BP did not confirm the trace-based solution`
-- `Service & Communication -1: took one month to close; Plus +1: Scope Extension — addressed an additional concern`
-- `Plus +1: Code Defect Discovery — reproduced in lab and identified product defect`
-- `Plus +1: Infrastructure & Hypervisor Isolation — proved issue was outside Avaya`
-- `Plus +2: Customer Pressure & Ownership — led exceptional end-to-end recovery under executive pressure`
-- `Service & Communication -1: the documented two-week response delay exceeded the agreed update interval`
+- `Service recovered, but cause and durability remain unknown. (Diagnostic & Solution -1: cause and durability remain unknown)`
+- `BP did not confirm the trace-based solution. (Diagnostic & Solution -1: outcome not confirmed)`
+- `Closure took one month. An additional concern was also addressed. (Service & Communication -1: delayed closure) (Plus +1: Scope Extension — addressed an additional concern)`
+- `The issue was reproduced in the lab and identified as a product defect. (Plus +1: Code Defect Discovery — reproduced and identified the defect)`
+- `The issue was isolated outside Avaya. (Plus +1: Infrastructure & Hypervisor Isolation — isolated the customer infrastructure fault)`
+- `Recovery was led end to end under executive pressure. (Plus +2: Customer Pressure & Ownership — led exceptional recovery)`
+- `The response missed the agreed update interval. (Service & Communication -1: two-week response delay)`
 
 For supplied historical QA, preserve the original comment unless the user asks for rewriting. A blank comment is invalid when any mandatory-comment condition applies. Flag unclear, contradictory, or unsupported comments as data-quality issues.
 
@@ -180,14 +195,15 @@ For supplied historical QA, preserve the original comment unless the user asks f
 
 ## Workflow
 
-1. Determine whether the user requested validation-only, assignment/rescoring of supplied cases, or selection from a workload report.
+1. Determine whether the user requested validation-only, assignment/rescoring of supplied cases, or selection from a workload report. If scored examples are supplied, benchmark their score distribution and writing style before generating new rows.
 2. For assignment or rescoring, perform a fresh CaseToMD retrieval and exhaustive primary-raw-ID Gmail collection under one fresh Gmail snapshot for each case. Do not reuse a prior case-review result as the evidence corpus.
 3. Apply the monthly selection rules when relevant, then apply the reviewability gate before scoring.
-4. Normalize every entry to the exact output schema and wording contract.
-5. Validate each `Reviewable` entry and calculate its score; validate each `Not Reviewable` reason and blank score fields separately.
-6. Report reviewable and not-reviewable counts separately. Calculate overall and grouped score statistics from `Reviewable` rows only.
-7. Report grouped summaries by engineer and manager, retaining source username relationships and coverage shortfalls.
-8. Render the complete entry table with reviewability, `Problem`, `efforts`, and `comments`.
+4. Apply the example-led calibration rules by dimension without forcing score-distribution parity.
+5. Normalize every entry to the exact output schema and simple-English wording contract.
+6. Validate each `Reviewable` entry and calculate its score; validate each `Not Reviewable` reason and blank score fields separately.
+7. Report reviewable and not-reviewable counts separately. Calculate overall and grouped score statistics from `Reviewable` rows only.
+8. Report grouped summaries by engineer and manager, retaining source username relationships and coverage shortfalls.
+9. Render the complete entry table with reviewability, `Problem`, `efforts`, and `comments`.
 
 For validation or summary of an existing QA file, use:
 

@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QA_PATH = ROOT / "plugins/avaya-case-review/skills/case-review/scripts/qa.py"
+QA_SKILL_PATH = ROOT / "plugins/avaya-case-review/skills/qa/SKILL.md"
 SPEC = importlib.util.spec_from_file_location("qa", QA_PATH)
 qa = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
@@ -144,6 +145,17 @@ class QATests(unittest.TestCase):
                 diagnostic_solution=4,
                 comments="Analysis was incomplete.",
             )
+
+    def test_natural_first_comment_accepts_parenthetical_signed_notation(self):
+        entry = self.scored_entry(
+            diagnostic_solution=4,
+            comments=(
+                "Service recovered, but the cause remains unknown. "
+                "(Diagnostic & Solution -1: cause remains unknown)"
+            ),
+        )
+        self.assertEqual(4, entry["diagnostic_solution"])
+        self.assertEqual(7, entry["score"])
 
     def test_wrong_deduction_magnitude_is_rejected(self):
         with self.assertRaisesRegex(qa.QAError, "deduction must be -1"):
@@ -457,6 +469,16 @@ class QATests(unittest.TestCase):
         self.assertEqual("auditor", rendered["auditor"])
         self.assertEqual("Customer issue", rendered["problem"])
         self.assertEqual("Engineer resolved it", rendered["efforts"])
+
+    def test_qa_skill_requires_example_led_simple_english_generation(self):
+        content = QA_SKILL_PATH.read_text(encoding="utf-8")
+        self.assertIn("## Example-led calibration", content)
+        self.assertIn("New SIP trunk returned 403", content)
+        self.assertIn("Do not raise a score merely to match another auditor's mean", content)
+        self.assertIn("Do not emit field labels such as `Reviewed:`", content)
+        self.assertIn("state the natural judgment first", content)
+        self.assertNotIn("Write `Problem` as `<case type> —", content)
+        self.assertNotIn("Use consistent signed notation at the start", content)
 
 
 if __name__ == "__main__":
