@@ -8,6 +8,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "plugins/avaya-case-review/skills/case-review/SKILL.md"
+CASE_REVIEW_CONTRACT = (
+    ROOT
+    / "plugins/avaya-case-review/skills/case-review/references/case-review-contract.md"
+)
 OUTPUT_MODES = ROOT / "plugins/avaya-case-review/skills/case-review/references/output-modes.md"
 PRESENTER = ROOT / "plugins/avaya-case-review/skills/case-review/scripts/review_presenter.py"
 GMAIL_CAPABILITY_SKILL = ROOT / "plugins/avaya-case-review/skills/gmail-capability/SKILL.md"
@@ -194,7 +198,8 @@ def normalized_function_signatures(source: str) -> list[str]:
 class CaseReviewContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.skill = read(SKILL)
+        cls.skill_entrypoint = read(SKILL)
+        cls.skill = cls.skill_entrypoint + "\n" + read(CASE_REVIEW_CONTRACT)
         cls.contract_docs = {
             "manager_md": read(MANAGER_MD),
             "manager_html": read(MANAGER_HTML),
@@ -211,6 +216,19 @@ class CaseReviewContractTests(unittest.TestCase):
             "tdd_md": cls.contract_docs["tdd_md"],
             "tdd_html": cls.contract_docs["tdd_html"],
         }
+
+    def test_runtime_skill_uses_progressive_disclosure(self):
+        self.assertLess(len(self.skill_entrypoint), 18000)
+        self.assertIn("Normal review fast path", self.skill_entrypoint)
+        self.assertIn("case-review-contract.md", self.skill_entrypoint)
+        self.assertIn("Do not load it during a passing normal review", self.skill_entrypoint)
+        self.assertIn("target completion within three minutes", self.skill_entrypoint)
+        self.assertIn("must be the final tool call", self.skill_entrypoint)
+        self.assertIn("complete stdout byte-for-byte", self.skill_entrypoint)
+        self.assertIn("Never replace the canonical standard review", self.skill_entrypoint)
+        agents = read(AGENTS_MD)
+        self.assertIn("Do not open the versioned plugin-cache canonical copy", agents)
+        self.assertIn("Never claim the complete sections were persisted", agents)
 
     def test_dynamic_evidence_gate_is_explicit(self):
         required = [
@@ -776,7 +794,7 @@ class CaseReviewContractTests(unittest.TestCase):
         for content in documents:
             with self.subTest(document=content[:40]):
                 self.assertIn("install-codex.ps1", content)
-                self.assertIn("v1.11.0", content)
+                self.assertIn("v1.12.0", content)
                 self.assertIn("attestation", content.lower())
                 self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", content)
                 self.assertNotIn("Before either local installation, deploy", content)
@@ -839,11 +857,12 @@ class CaseReviewContractTests(unittest.TestCase):
 
         agents = read(AGENTS_MD)
         self.assertIn(
-            "entries are published on GitHub Releases only after their release gates complete",
+            "Current candidate (unpublished until every release gate completes)",
             agents,
         )
+        self.assertIn("Published release history (most recent first)", agents)
         self.assertNotIn(
-            "Release history (most recent first; published versions are on GitHub Releases)",
+            "Release history (most recent first; entries are published on GitHub Releases only after their release gates complete)",
             agents,
         )
 
@@ -968,14 +987,17 @@ class CaseReviewContractTests(unittest.TestCase):
         for marker in ["original objective", "blocker", "secondary issue"]:
             self.assertIn(marker, reflection)
 
-    def test_rendered_date_time_content_is_ascending(self):
+    def test_rendered_date_time_content_is_ascending_with_mixed_flow_exception(self):
         for marker in [
             "Chronological output order",
             "ascending order (oldest first)",
-            "undated entries after all dated entries",
+            "undated entries follow dated entries",
             "Assign rendered `E1..EN` identifiers after this chronological sort",
             "oldest first",
             "milestones and timeline chronological",
+            "sort `visual_context.transitions` oldest first only when every transition has a date",
+            "If any transition lacks a date, preserve the authored sequence",
+            "unknown precise timing",
         ]:
             self.assertIn(marker, self.skill)
         self.assertNotIn("newest first", self.skill)
@@ -1014,11 +1036,14 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("Outputs must not generate risk scores", self.skill)
         self.assertNotIn("All action items must live exclusively", self.skill)
 
-    def test_default_output_is_investigation_complete_not_an_executive_paragraph(self):
+    def test_default_output_starts_with_summary_and_preserves_investigation_detail(self):
         output_modes = read(OUTPUT_MODES)
         standard = extract_between(output_modes, "### `standard`", "### `compact`")
         for marker in [
+            "Executive Summary",
             "Case Card",
+            "Action Plan",
+            "Technical Advice",
             "Investigation Progress flow",
             "Causal Assessment",
             "six key Technical Specification fields",
@@ -1029,6 +1054,37 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertNotIn("Write one natural-language paragraph of 6-8 sentences", self.skill)
         for marker in ("case_record.py present", "--markdown-only", "verify-final"):
             self.assertIn(marker, self.skill)
+
+    def test_successful_output_contract_separates_progress_commitments_and_advice(self):
+        for name, content in {
+            "skill": read(SKILL),
+            "output_modes": read(OUTPUT_MODES),
+            "case_review_contract": read(CASE_REVIEW_CONTRACT),
+        }.items():
+            with self.subTest(document=name):
+                lowered = content.lower()
+                for marker in (
+                    "Executive Summary",
+                    "Impact",
+                    "Reported Problem / Symptom",
+                    "Current State",
+                    "Action Plan",
+                    "Technical Advice",
+                    "current.impact",
+                    "current.current_progress",
+                    "technical_advice",
+                    "immediate_diagnostics",
+                    "potential_solutions",
+                    "long_term_steps",
+                    "NotebookLM",
+                ):
+                    self.assertIn(marker.lower(), lowered)
+                self.assertTrue(
+                    "required action / next step" in lowered
+                    or "recorded next action" in lowered
+                )
+                self.assertIn("unknown", lowered)
+                self.assertIn("evidence", lowered)
 
     def test_technical_mode_uses_fixed_proof_state_schema(self):
         output_modes = read(OUTPUT_MODES)
@@ -1091,12 +1147,13 @@ class CaseReviewContractTests(unittest.TestCase):
             self.assertIn(marker, adaptive_adm)
         self.assertIn("preserve unsupported values", reflection)
 
-    def test_preventive_next_checkpoint_is_commitment_not_control(self):
+    def test_next_commitment_and_recommended_advice_are_distinct_from_controls(self):
         for marker in [
             "Outputs must not generate risk scores",
-            "Evidence-stated actions and checkpoints remain existing commitments",
-            "never agent recommendations or implemented controls",
-            "planned work is not an existing control",
+            "Evidence-stated actions",
+            "existing commitments",
+            "recommendation or conditional hypothesis",
+            "implemented control or confirmed cause",
         ]:
             self.assertIn(marker, self.skill)
 
@@ -1120,6 +1177,8 @@ class CaseReviewContractTests(unittest.TestCase):
         output_modes = read(OUTPUT_MODES)
         self.assertNotIn("## Risk Flags", output_modes)
         self.assertNotIn("## Targeted Recommendations", output_modes)
+        self.assertIn("### Action Plan", output_modes)
+        self.assertIn("## Technical Advice", output_modes)
         self.assertIn("must not generate risk scores", self.skill)
 
     def test_current_contract_docs_match_skill(self):
@@ -1182,12 +1241,15 @@ class CaseReviewContractTests(unittest.TestCase):
         for name, content in self.contract_docs.items():
             with self.subTest(document=name):
                 normalized = normalize_contract_item(content).lower()
-                for marker in [
-                    "whole-case storyline",
-                    "primary problem",
-                    "secondary problems",
-                ]:
-                    self.assertIn(marker, normalized)
+                self.assertIn("whole-case storyline", normalized)
+                if name.startswith("manager_"):
+                    self.assertIn("problem lineage", normalized)
+                else:
+                    self.assertIn("secondary problems", normalized)
+                self.assertTrue(
+                    "primary problem" in normalized
+                    or "reported problem / symptom" in normalized
+                )
 
         presentation = normalize_contract_item(read(PRESENTATION_HTML)).lower()
         for marker in [
@@ -1531,7 +1593,7 @@ class CaseReviewContractTests(unittest.TestCase):
             with self.subTest(document=path.name):
                 validate_html_structure(read(path))
 
-    def test_tdd_contract_unconditionally_forbids_generated_recommendations(self):
+    def test_tdd_contract_separates_conditional_advice_from_implemented_controls(self):
         sections = {
             "tdd_md": extract_template_section(
                 self.contract_docs["tdd_md"],
@@ -1546,13 +1608,16 @@ class CaseReviewContractTests(unittest.TestCase):
         }
         for name, section in sections.items():
             with self.subTest(document=name):
-                self.assertIn("The agent does not generate recommendations.", section)
-                self.assertIn(
-                    "Evidence-backed commitments may be restated only as planned work "
-                    "or evidence-stated next checkpoints.",
-                    section,
-                )
-                self.assertNotIn("unsupported recommendations", section)
+                normalized = normalize_contract_item(section).lower()
+                self.assertNotIn("the agent does not generate recommendations", normalized)
+                for marker in (
+                    "recommendations",
+                    "diagnostic",
+                    "conditional",
+                    "evidence",
+                    "existing prevention controls",
+                ):
+                    self.assertIn(marker, normalized)
 
     def test_tdd_optional_apps_script_contract_has_md_html_parity(self):
         tdd_md = self.contract_docs["tdd_md"]
@@ -1672,14 +1737,18 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.11.0", release_html)
         self.assertIn("Deterministic Exhaustive Collection and Payload Assembly", release_md)
         self.assertIn("Deterministic Exhaustive Collection and Payload Assembly", release_html)
+        self.assertIn("[v1.12.0]", release_md)
+        self.assertIn("v1.12.0", release_html)
+        self.assertIn("Clearer Case Progress and Technical Advice", release_md)
+        self.assertIn("Clearer Case Progress and Technical Advice", release_html)
         plugin = json.loads(read(PLUGIN_JSON))
-        self.assertEqual("1.11.0", plugin["version"])
+        self.assertEqual("1.12.0", plugin["version"])
 
         for path in [README_MD, README_HTML]:
             with self.subTest(document=path.name):
                 content = read(path)
-                self.assertIn("stable v1.11.0 installation contract", content)
-                self.assertIn("v1.11.0 release contract and upgrade guidance", content)
+                self.assertIn("stable v1.12.0 installation contract", content)
+                self.assertIn("v1.12.0 release contract and upgrade guidance", content)
                 self.assertNotIn("v1.10.0 - latest published release", content)
                 self.assertNotIn("release candidate", content)
                 self.assertNotIn("published latest remains v1.3.0", content)
@@ -1697,6 +1766,7 @@ class CaseReviewContractTests(unittest.TestCase):
         self.assertIn("v1.10.0", agents)
         self.assertIn("v1.10.1", agents)
         self.assertIn("v1.11.0", agents)
+        self.assertIn("v1.12.0", agents)
         self.assertNotIn("Target release (not yet published)", agents)
 
     def test_distributable_docs_have_no_machine_specific_file_urls(self):

@@ -15,15 +15,15 @@ not use a skill installer; the repository root is the plugin selected by its
 marketplace manifest. Do not search for a root `SKILL.md` or route this URL to
 a skill-only install.
 
-The stable v1.11.0 installation contract requires an installation-capable agent
+The stable v1.12.0 installation contract requires an installation-capable agent
 to clone the exact release into a unique temporary directory and verify the tag:
 
 ```text
-git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
 git describe --exact-match --tags HEAD
 ```
 
-The second command must return `v1.11.0`. The agent then inspects `INSTALL.md`
+The second command must return `v1.12.0`. The agent then inspects `INSTALL.md`
 and the selected local installer, runs no-flag `install-codex.ps1` for Codex or
 `install.bat` for Antigravity, and allows only SSO/MFA as an intentional pause.
 End users never deploy Apps Script or provide a production Case ID during
@@ -79,20 +79,22 @@ flowchart TD
 
 ## Evidence-Grounded Review Contract
 
-- Before presentation, the review builds a **structured ReviewSnapshot v2** containing the Case Card, whole-case storyline and problem lineage, fixed Technical Specification, milestones, timeline, evidence register, and evidence-only visual context.
-- The deterministic router supports six modes: investigation-complete **standard** for a first or unchanged plain review, investigation-complete **follow-up** with delta first when evidence materially changes, explicit-only **compact**, **technical** for the fixed proof-state Technical Specification, **flow** for the investigation chronology, and explicit **full** output.
-- Default chat output preserves the Case Card, Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and one optional secondary diagnostic visual.
+- Before presentation, the review builds a **structured ReviewSnapshot v2** containing evidenced impact and current progress, recorded next-action fields, separate technical advice, the whole-case storyline and problem lineage, fixed Technical Specification, milestones, timeline, evidence register, and evidence-only visual context.
+- The deterministic router supports six modes: investigation-complete **standard** for a first or unchanged plain review, investigation-complete **follow-up** with delta after the summary when evidence materially changes, explicit-only **compact**, **technical** for the fixed proof-state Technical Specification, **flow** for the investigation chronology, and explicit **full** output.
+- Every successful mode opens with a concise four-line **Executive Summary**. Its first line combines official status and a brief reported issue; the other lines state customer impact, a critical confirmed finding, and production outcome. Unsupported values are `unknown`; NotebookLM validation appears only if an actual case-specific result is available and substantiated.
+- The **Case Card** separates **Reported Problem / Symptom** from **Current State** (work completed, trace or log findings, and validation gaps). Its **Action Plan** shows only the documented **Required Action / Next Step**, owner, and due date. A separate **Technical Advice** section gives evidence-linked immediate diagnostics, conditional potential solutions, and long-term recommendations; these are labeled as advice rather than existing commitments or completed work.
+- Default chat output also preserves the Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and one optional secondary diagnostic visual.
 - A repeated review becomes follow-up mode only when state, ownership, or evidence materially changes; otherwise it remains the complete standard view without a delta block.
 - Technical Specification distinguishes `NOT OBSERVED`, `NOT COLLECTED`, `UNKNOWN`, and `NOT APPLICABLE`; it never uses numeric confidence percentages.
 - The Investigation Progress flow is always present in standard/follow-up and is limited to seven nodes; arrows show chronology, not causal proof. The router may add one secondary event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint.
-- Explicit full mode renders the structured Case Card, problem lineage, Technical Specification, timeline, and **Appendix A - Evidence Register**. The Evidence Register remains last and its Supports field reverse-maps evidence to exact structured conclusions.
+- Explicit full mode renders the Executive Summary, Current Case Card with recorded Action Plan, separate Technical Advice, problem lineage, Technical Specification, timeline, and **Appendix A - Evidence Register**. The Evidence Register remains last and its Supports field reverse-maps evidence to exact structured conclusions.
 - `case_record.py present --markdown-only` writes canonical `chat-output.md` and `chat-output.sha256`; `verify-final` blocks completion if the proposed final response differs beyond line-ending or final-newline transport normalization.
 - All dated milestones, timeline rows, and evidence rows are ordered oldest to newest; undated entries follow dated entries.
 - Any rendered list or table containing dates or timestamps is ordered oldest to newest; undated entries follow dated entries.
 - The agent answers only what case-specific evidence supports. With zero verifiable case evidence, it outputs exactly `unknown`.
 - **Case record freshness** and **Last substantive progress age** are reported separately; Closed/Resolved records are not stale solely because they are old.
 - Mitigation maturity is one of Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
-- Risk and action judgments remain with the Manager. Ownership fields only restate commitments already present in evidence.
+- Risk ranking remains with the Manager. The documented next action and ownership fields restate commitments already present in evidence; new diagnostic or solution suggestions state their basis and conditions.
 - Every successful review creates or updates one durable record for the normalized primary Case ID. A follow-up still recollects a new complete CaseToMD/Gmail snapshot; the prior record is used only after analysis to compute what changed.
 - The durable record retains ReviewSnapshot v2, the current Case Card, computed delta, decisive evidence digest, and append-only compact history. Detailed views are generated on demand from the structured snapshot.
 - Incomplete collection never changes the stored record. Official closure remains separate from RCA state and customer-confirmed production outcome.
@@ -144,7 +146,7 @@ The broker owns one dedicated Edge context and serializes requests from all Gmai
 All project documentation, release notes, installation guides, design specifications, and presentation decks are organized in the **[`docs/`](docs/)** directory:
 
 - **Release Notes & Version Track**:
-  - **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** - v1.11.0 release contract and upgrade guidance
+  - **[docs/RELEASE_NOTES.html](docs/RELEASE_NOTES.html)** / **[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)** - v1.12.0 release contract and upgrade guidance
 - **Executive Presentation**:
   - **[docs/PRESENTATION.html](docs/PRESENTATION.html)** - Interactive Browser Slide Deck
   - **[docs/Avaya_Case_Review_Suite_Presentation.pptx](docs/Avaya_Case_Review_Suite_Presentation.pptx)** - PowerPoint Presentation Deck

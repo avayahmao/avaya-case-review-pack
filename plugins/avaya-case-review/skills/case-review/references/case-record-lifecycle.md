@@ -11,6 +11,7 @@ Use this contract after the current review has passed Complete Context Before An
 - If collection or evidence validation fails, leave the existing record byte-for-byte unchanged.
 - Preserve every successful review as an append-only compact history entry while replacing the current card, current evidence digest, and current structured ReviewSnapshot v2.
 - Keep official administrative status, RCA state, mitigation maturity, and production outcome as separate fields.
+- Require new reviews to record customer impact and concrete investigation progress separately; older saved snapshots render missing fields as `unknown` without changing their history.
 
 ## Storage
 
@@ -33,7 +34,7 @@ Reading prior conclusions before completing the fresh analysis creates anchoring
 Create a temporary UTF-8 JSON payload only after the current structured analysis is complete. Follow [output-modes.md](output-modes.md) and run:
 
 ```text
-python <skill-directory>/scripts/case_record.py finalize --input <payload.json> --case-id <Case ID> --request "<original user request>"
+python <skill-directory>/scripts/case_record.py finalize-overlay --manifest <manifest.json> --overlay <overlay.json> --case-id <Case ID> --request "<original user request>"
 ```
 
 The v2 payload retains the verified coverage, current state, and decisive evidence digest, then adds a structured `presentation` object:
@@ -67,7 +68,9 @@ The v2 payload retains the verified coverage, current state, and decisive eviden
     "priority": "P2",
     "assignee": "Name or unknown",
     "primary_problem": "Concise primary problem",
-    "confirmed_finding": "Concise confirmed finding or unknown",
+    "impact": "One plain-language impact statement, or unknown",
+    "current_progress": "Work completed, trace or log findings, and validation gap, or unknown",
+    "confirmed_finding": "One plain-language confirmed finding, or unknown",
     "unproven_or_contradicted": "Material unsupported or contradicted claim",
     "rca_state": "Under Investigation",
     "mitigation_state": "None Active",
@@ -86,6 +89,11 @@ The v2 payload retains the verified coverage, current state, and decisive eviden
     }
   ],
   "presentation": {
+    "technical_advice": {
+      "immediate_diagnostics": [],
+      "potential_solutions": [],
+      "long_term_steps": []
+    },
     "technical_spec": {
       "scope": {
         "state": "OBSERVED",
@@ -119,21 +127,30 @@ The v2 payload retains the verified coverage, current state, and decisive eviden
 }
 ```
 
-Populate all twelve Technical Specification fields defined in `output-modes.md`; the abbreviated example above shows only `scope`. A v2 payload does not require `full_review_markdown`.
+Populate all twelve Technical Specification fields defined in `output-modes.md`; the abbreviated example above shows only `scope`. Every new payload requires the three `technical_advice` arrays even when they are empty. An immediate or long-term item has `action` and `basis`; a potential solution also has `condition`. Tie each `basis` to case evidence or a precise missing validation item, and render each step in a separate Technical Advice section rather than as completed work. `current.next_action` remains the documented commitment in the Case Card's Action Plan, with its separate owner and due date. `finalize` and `finalize-overlay` require structured `presentation` and reject `full_review_markdown` alone before changing the record; legacy `update` still accepts that field for compatibility.
 
 The helper validates coverage and schema, migrates a v1 record without losing its history or legacy report, computes deltas, appends one history entry, and atomically rewrites the current Markdown view. Reusing the same completed snapshot and state is idempotent.
 
 ## Deterministic Chat Response
 
-Use `case_record.py finalize` after every successful evidence-gated analysis. It validates and prepares the record update, renders from the resulting snapshot, writes the record plus canonical `chat-output.md` and `chat-output.sha256` files, internally verifies the artifact, and emits only the Markdown intended for chat. Validation and rendering occur before durable files are replaced, and the full operation runs under one per-case lock. The default first-review artifact begins with:
+Use `case_record.py finalize-overlay` after every successful evidence-gated analysis. It assembles the manifest and overlay, validates and prepares the record update, renders from the resulting snapshot, writes the record plus canonical `chat-output.md` and `chat-output.sha256` files, internally verifies the artifact, and emits only the Markdown intended for chat. Validation and rendering occur before durable files are replaced, and the full operation runs under one per-case lock. Every successful structured artifact begins with:
 
 ```markdown
-# Case Card - ...
+# Case Review - 1-23700000001
+
+## Executive Summary
+
+- **Status:** In Progress — **Reported issue:** Concise primary problem
+- **Impact:** Evidence-backed impact or unknown
+- **Critical finding:** Evidence-backed finding or unknown
+- **Production outcome:** unknown
+
+## Case Card
 ```
 
-Return the exact `finalize` stdout without alteration. The command verifies the stored artifact hash and canonical bytes internally before it succeeds. The backward-compatible `case_record.py update`, `case_record.py present --markdown-only`, and `case_record.py verify-final` commands remain supported for existing integrations and diagnostics; `verify-final` continues to tolerate line-ending and final-newline transport differences while rejecting content or structure drift.
+Return the exact `finalize-overlay` stdout without alteration. The command verifies the stored artifact hash and canonical bytes internally before it succeeds. The backward-compatible `case_record.py update`, `case_record.py present --markdown-only`, and `case_record.py verify-final` commands remain supported for existing integrations and diagnostics; `verify-final` continues to tolerate line-ending and final-newline transport differences while rejecting content or structure drift.
 
-Do not manually recreate, shorten, expand, or append to the Case Card, delta, Investigation Progress flow, Causal Assessment, Technical Specification, Timeline, Evidence Register, or full report. The renderer selects investigation-complete `standard` for a first or unchanged plain review, investigation-complete `follow-up` for a materially changed later review, and `compact` only for an explicit compact request. It applies the secondary diagnostic-visual thresholds from `output-modes.md`.
+Do not manually recreate, shorten, expand, or append to the Executive Summary, Case Card, Action Plan, Technical Advice, delta, Investigation Progress flow, Causal Assessment, Technical Specification, Timeline, Evidence Register, or full report. The renderer selects investigation-complete `standard` for a first or unchanged plain review, investigation-complete `follow-up` for a materially changed later review, and `compact` only for an explicit compact request. It applies the secondary diagnostic-visual thresholds from `output-modes.md`.
 
 If persistence fails after a valid review, say `Case record update failed` with the sanitized failure and do not claim the record was saved. The evidence-grounded review remains valid, but continuity is not complete until the write succeeds.
 

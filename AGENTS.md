@@ -34,7 +34,7 @@ install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 Follow [`INSTALL.md`](INSTALL.md). Do not execute a remote script directly: clone the repository into a unique temporary directory, inspect the checked-out installer, and select the current host's supported entry point.
 
 - **Do not use a skill installer.** This is a Codex plugin marketplace, not a standalone skill; the repository root is the plugin selected by its marketplace manifest.
-- **Stable checkout:** run `git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>`, then require `git describe --exact-match --tags HEAD` to return exactly `v1.11.0`. These are the release instructions published by this commit; they do not assert that the tag, GitHub release, release asset, or URL-only acceptance already succeeded.
+- **Stable checkout:** run `git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>`, then require `git describe --exact-match --tags HEAD` to return exactly `v1.12.0`. These are the release instructions published by this commit; they do not assert that the tag, GitHub release, release asset, or URL-only acceptance already succeeded.
 - **Codex:** run the checked-out no-flag `install-codex.ps1`. It installs the runtime package, validates local attestation and live cloud compatibility, registers the Git-backed marketplace, installs `avaya-case-review@avaya-case-review-pack`, and completes Managed Edge login when required.
 - **Antigravity:** run the checked-out no-flag `install.bat`; it validates the same release and retains the existing `setup_env.ps1` deployment into `%USERPROFILE%\.gemini\`.
 - **Claude Code:** out of scope. Do not create or install a `.claude-plugin` package.
@@ -59,6 +59,8 @@ Skill definition (the source of truth for the workflow):
 - **[`plugins/avaya-case-review/skills/case-review/SKILL.md`](plugins/avaya-case-review/skills/case-review/SKILL.md)** — the workflow (fetch CaseToMD → Complete Context Before Analysis → analyze → produce the brief)
 - **[`plugins/avaya-case-review/skills/case-review/references/`](plugins/avaya-case-review/skills/case-review/references/)** — 10 domain guides. Read the relevant one(s) based on what the case mentions (AES/JTAPI, Contact Center, Recording/WFO, Analytics, Security, SIP, Certificates/Outage, Digital Channels, IP Office, Log Collection). The SKILL.md has the exact routing table.
 
+When the current workspace is this repository, load the repository canonical `plugins/avaya-case-review/skills/case-review/SKILL.md` exactly once after the installed thin entrypoint. Do not open the versioned plugin-cache canonical copy and do not reread the repository skill in chunks; the repository file is the active development source and is intentionally sized to fit one read.
+
 Required MCP tools (the skill will call these; fail loudly if missing rather than fabricating a review):
 
 | Tool | Server | Purpose |
@@ -75,7 +77,13 @@ For every case review, **Complete Context Before Analysis** is mandatory: proces
 
 The exhaustive cloud endpoint is the existing Gmail MCP Apps Script Web App with the **Advanced Gmail Service** named Gmail, API version v1. Its tracked source is `tools/gmail/cloud/GmailMcpBridge.gs`; it is operational MCP code, not the optional governance example at `examples/optional-appsscript/Code.gs`. Deploy and verify the cloud version first using `docs/GMAIL_CLOUD_BRIDGE.md`, then deploy the local MCP modules and Agent SKILL. `setup_env.ps1` intentionally does not deploy the cloud source. Keep the Agent gate inactive if cloud authorization, stable snapshot/page coverage, cursor exhaustion, or hash/count verification fails.
 
-After a successful evidence-gated review, create or update the durable per-Case-ID follow-up record with `plugins/avaya-case-review/skills/case-review/scripts/case_record.py`. The prior record is only a post-analysis comparison baseline: every follow-up must recollect a fresh CaseToMD/Gmail snapshot, and incomplete collection must leave the record unchanged. Default and material follow-up chat output is investigation-complete: Case Card/delta, progress flow, causal assessment, technical proof states, substantive Timeline, complete dynamic Evidence Register, and durable-record link. `compact` is explicit-only. Administrative closure remains separate from RCA and production outcome. Offer closed-case learning, but draft it only on explicit request and apply sanitized learning to the persistent local domain overlay only after explicit user approval.
+After a successful evidence-gated review, create or update the durable per-Case-ID follow-up record with `plugins/avaya-case-review/skills/case-review/scripts/case_record.py`. The prior record is only a post-analysis comparison baseline: every follow-up must recollect a fresh CaseToMD/Gmail snapshot, and incomplete collection must leave the record unchanged.
+
+Every successful structured mode starts with a concise four-line Executive Summary: the first line combines official status with a brief reported issue from `current.primary_problem`; the remaining lines give evidenced impact, critical confirmed finding, and production outcome (`unknown` when unsupported). The Case Card distinguishes Reported Problem / Symptom from detailed Current State. Its Action Plan contains only the recorded Required Action / Next Step, owner, and due date. A separate Technical Advice section gives evidence-linked immediate diagnostic recommendations, conditional potential solutions, and long-term recommendations. New overlays require `current.impact`, `current.current_progress`, and `presentation.technical_advice` with `immediate_diagnostics`, `potential_solutions`, and `long_term_steps` arrays. NotebookLM findings appear only when actual case-specific validation is available and substantiated; NotebookLM is not a required source.
+
+Default and material follow-up chat output is investigation-complete: Case Card/delta, progress flow, causal assessment, technical proof states, substantive Timeline, complete dynamic Evidence Register, and durable-record link. `compact` is explicit-only. Administrative closure remains separate from RCA and production outcome. Offer closed-case learning, but draft it only on explicit request and apply sanitized learning to the persistent local domain overlay only after explicit user approval.
+
+For a successful normal review, `case_record.py finalize-overlay` must be the final tool call. Return its complete stdout byte-for-byte as the final answer, with no summary, replacement Case Card, cleanup call, memory reread, or appended text. If stdout is unavailable or truncated, run `case_record.py present --markdown-only` as the final tool call and return that stdout byte-for-byte. Never claim the complete sections were persisted while omitting them from chat.
 
 ---
 
@@ -169,7 +177,7 @@ These are enforced by `.gitattributes` / release process — please don't fight 
 
 ## 7. Release workflow
 
-The v1.11.0 publication gates are sequential. Do not skip or reorder them, and
+The v1.12.0 publication gates are sequential. Do not skip or reorder them, and
 never force a branch or tag update.
 
 ### 1. Push the candidate branch and verify its exact remote SHA
@@ -195,19 +203,19 @@ if ($RemoteMainSha -cne $CandidateSha) { throw "Remote main SHA mismatch" }
 $DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
 git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
 $DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
-$StableBootstrap = "git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
-if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.11.0 bootstrap" }
+$StableBootstrap = "git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.12.0 bootstrap" }
 ```
 
 Never force this update. Verify the default-branch README in a fresh checkout
-exposes the exact stable v1.11.0 bootstrap before creating the tag.
+exposes the exact stable v1.12.0 bootstrap before creating the tag.
 
 ### 4. Create and verify the immutable tag
 
 ```powershell
-git tag -a v1.11.0 $CandidateSha -m "v1.11.0"
-git push origin refs/tags/v1.11.0
-$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.11.0^{}") -split '\s+')[0]
+git tag -a v1.12.0 $CandidateSha -m "v1.12.0"
+git push origin refs/tags/v1.12.0
+$RemoteTagSha = ((git ls-remote origin "refs/tags/v1.12.0^{}") -split '\s+')[0]
 if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
 ```
 
@@ -217,7 +225,7 @@ Run the canonical GitHub-URL-only install in a second clean Windows profile.
 
 ### 6. Build and verify the release ZIP
 
-Build outside Git only from a fresh, clean, detached checkout of `v1.11.0`.
+Build outside Git only from a fresh, clean, detached checkout of `v1.12.0`.
 Confirm the tag peels to `$CandidateSha`, use that checkout's
 `release-manifest.txt`, require `git status --porcelain` to be empty, require
 the ZIP entry list to equal the manifest exactly, and compare every ZIP member
@@ -226,22 +234,27 @@ the candidate worktree. The exact executable procedure is maintained in
 `docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md`.
 
 ```powershell
-$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.11.0.zip"
+$ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.12.0-" + [guid]::NewGuid().ToString("N"))
+$ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.12.0.zip"
 git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
-git -C $ReleaseCheckout checkout --detach v1.11.0
-git -C $ReleaseCheckout status --porcelain
+git -C $ReleaseCheckout checkout --detach v1.12.0
+$TaggedSha = (git -C $ReleaseCheckout rev-parse HEAD).Trim()
+if ($TaggedSha -cne $CandidateSha) { throw "Tagged checkout SHA mismatch" }
+if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout is not clean" }
 ```
 
 ### 7. Publish the GitHub Release
 
 ```powershell
-gh release create v1.11.0 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.11.0.md --latest
+gh release create v1.12.0 $ArchivePath --title "Clearer case progress and technical advice" --notes-file NOTES-v1.12.0.md --latest
 ```
 
-Release history (most recent first; entries are published on GitHub Releases only after their release gates complete):
+Current candidate (unpublished until every release gate completes): **v1.12.0** —
+Clearer executive status, Case Card progress, and evidence-based Technical Advice.
 
-- **v1.10.1 (2026-09-14)** — GitHub URL plugin bootstrap, Version-17 complete-response repair, and runtime-packaged Codex MCP launch repair
+Published release history (most recent first):
 - **v1.11.0** — Deterministic exhaustive collection and payload assembly
+- **v1.10.1 (2026-09-14)** — GitHub URL plugin bootstrap, Version-17 complete-response repair, and runtime-packaged Codex MCP launch repair
 - **v1.10.0** — Investigation-complete reviews, QA scoring, and alarm audit
 - **v1.9.4** — Cloud bridge pagination speedup
 - **v1.9.3** — Whole-case storyline and problem lineage

@@ -7,6 +7,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,9 +117,9 @@ class FakeClient:
             cursor = params.get("cursor", "")
             if cursor == "":
                 return json.dumps(pages[0])
-            for page in pages:
+            for index, page in enumerate(pages[:-1]):
                 if page["next_cursor"] == cursor:
-                    return json.dumps(page)
+                    return json.dumps(pages[index + 1])
             return json.dumps({"success": False, "error": "cursor not found"})
         raise AssertionError(f"unexpected method {method}")
 
@@ -175,6 +176,26 @@ class CollectPassTests(unittest.TestCase):
             gcc.DIGEST_SIZE_LIMIT_BYTES,
         )
 
+    def test_collect_exhausts_successive_thread_cursor_pages(self):
+        threads = {
+            "t-long": build_thread_pages(
+                "t-long",
+                [("2026-09-01T00:00:00.000Z", "A <a@avaya.com>", ["one", "two", "three"])],
+                per_page=1,
+            )
+        }
+        client = FakeClient(threads)
+        code, paths, _ = self.run_collect(threads, client_factory=lambda: client)
+        self.assertEqual(code, 0)
+        corpus = json.loads((paths["stable"] / "corpus.json").read_text(encoding="utf-8"))
+        self.assertEqual(corpus["threads"][0]["messages"][0]["body"], "onetwothree")
+        cursors = [
+            params["cursor"]
+            for method, params in client.calls
+            if method == "gmail_read_thread_page"
+        ]
+        self.assertEqual(cursors, ["", "cursor-t-long-0", "cursor-t-long-1"])
+
     def test_second_collection_rotates_previous(self):
         tmp = TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -193,6 +214,69 @@ class CollectPassTests(unittest.TestCase):
             (paths["previous"] / "manifest.json").read_text(encoding="utf-8"),
             first_manifest,
         )
+
+    def test_failed_promotion_restores_the_prior_stable_collection(self):
+        with TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            first_threads = sample_threads()
+            self.assertEqual(
+                gcc.collect_case(
+                    "INC123", data_dir, client_factory=lambda: FakeClient(first_threads)
+                ),
+                0,
+            )
+            paths = gcc.collection_paths(data_dir, "INC123")
+            replacement_threads = sample_threads()
+            replacement_threads["t-beta"] = build_thread_pages(
+                "t-beta",
+                [("2026-09-03T00:00:00.000Z", "C <c@avaya.com>", ["new body"])],
+            )
+            self.assertEqual(
+                gcc.collect_case(
+                    "INC123",
+                    data_dir,
+                    client_factory=lambda: FakeClient(replacement_threads),
+                ),
+                0,
+            )
+            original_corpus = (paths["stable"] / "corpus.json").read_bytes()
+            original_backup = (paths["previous"] / "corpus.json").read_bytes()
+            third_threads = sample_threads()
+            third_threads["t-beta"] = build_thread_pages(
+                "t-beta",
+                [("2026-09-03T00:00:00.000Z", "C <c@avaya.com>", ["third body"])],
+            )
+            original_rename = Path.rename
+
+            def fail_staging_promotion(source, target):
+                if source == paths["staging"] and Path(target) == paths["stable"]:
+                    raise OSError("injected second rename failure")
+                return original_rename(source, target)
+
+            with patch.object(Path, "rename", fail_staging_promotion):
+                code = gcc.collect_case(
+                    "INC123",
+                    data_dir,
+                    client_factory=lambda: FakeClient(third_threads),
+                )
+            self.assertEqual(code, 1)
+            self.assertEqual((paths["stable"] / "corpus.json").read_bytes(), original_corpus)
+            self.assertEqual((paths["previous"] / "corpus.json").read_bytes(), original_backup)
+            self.assertTrue(paths["staging"].is_dir())
+            self.assertFalse(paths["promotion_backup"].exists())
+
+    def test_promotion_recovers_an_interrupted_prior_rename(self):
+        with TemporaryDirectory() as tmp:
+            paths = gcc.collection_paths(Path(tmp), "INC123")
+            paths["previous"].mkdir(parents=True)
+            paths["staging"].mkdir()
+            (paths["previous"] / "old.txt").write_text("old", encoding="utf-8")
+            (paths["staging"] / "new.txt").write_text("new", encoding="utf-8")
+
+            gcc.promote_collection(paths)
+
+            self.assertEqual((paths["stable"] / "new.txt").read_text(encoding="utf-8"), "new")
+            self.assertEqual((paths["previous"] / "old.txt").read_text(encoding="utf-8"), "old")
 
     def test_digest_contains_message_index_and_thread_rollup(self):
         code, paths, _ = self.run_collect(sample_threads())
@@ -213,6 +297,31 @@ class CollectPassTests(unittest.TestCase):
 
 
 class CollectFailureTests(unittest.TestCase):
+    def test_failed_list_does_not_claim_completed_query(self):
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        class FailingList:
+            def request(self, method, params):
+                raise RuntimeError("broker unavailable")
+
+        with TemporaryDirectory() as tmp:
+            output = io.StringIO()
+            error_output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(error_output):
+                code = gcc.collect_case(
+                    "INC123", Path(tmp), client_factory=FailingList
+                )
+        self.assertEqual(code, 1)
+        self.assertIn("Record-ID queries: 0/1", output.getvalue())
+        self.assertIn("Gmail threads: 0/unknown", output.getvalue())
+        self.assertIn("Gmail messages: 0/unknown", output.getvalue())
+        self.assertIn(
+            "no frozen snapshot was saved; re-run collect without --resume",
+            error_output.getvalue(),
+        )
+        self.assertNotIn("re-run with --resume to continue", error_output.getvalue())
+
     def test_message_count_mismatch_blocks(self):
         threads = sample_threads()
         for page in threads["t-beta"]:
@@ -241,6 +350,17 @@ class CollectFailureTests(unittest.TestCase):
         with self.assertRaises(gcc.CollectionError):
             gcc.read_thread(client, "t-beta", "2026-09-19T00:00:00.000Z")
 
+    def test_thread_page_must_keep_the_requested_snapshot(self):
+        pages = build_thread_pages(
+            "t-alpha",
+            [("2026-09-01T00:00:00.000Z", "A <a@avaya.com>", ["body"])],
+        )
+        pages[0]["snapshot_before"] = "2026-09-20T00:00:00.000Z"
+        client = FakeClient({"t-alpha": pages})
+        with self.assertRaises(gcc.CollectionError) as raised:
+            gcc.read_thread(client, "t-alpha", "2026-09-19T00:00:00.000Z")
+        self.assertEqual(raised.exception.code, "PROTOCOL")
+
     def test_missing_chunk_rejected(self):
         pages = build_thread_pages(
             "t-alpha",
@@ -256,25 +376,40 @@ class CollectFailureTests(unittest.TestCase):
 
 
 class ResumeTests(unittest.TestCase):
-    def test_resume_preserves_snapshot_and_skips_completed(self):
-        threads = sample_threads()
-
+    def stopped_after_alpha(self, data_dir, threads):
         class FailingOnBeta(FakeClient):
             def request(self, method, params):
                 if method == "gmail_read_thread_page" and params["thread_id"] == "t-beta":
                     raise RuntimeError("broker exploded")
                 return super().request(method, params)
 
+        code = gcc.collect_case(
+            "INC123", data_dir, client_factory=lambda: FailingOnBeta(threads)
+        )
+        self.assertEqual(code, 1)
+        return gcc.collection_paths(data_dir, "INC123")
+
+    def test_resume_preserves_snapshot_and_skips_completed(self):
+        import io
+        from contextlib import redirect_stdout
+
+        threads = sample_threads()
         with TemporaryDirectory() as tmp:
             data_dir = Path(tmp)
-            code = gcc.collect_case(
-                "INC123", data_dir, client_factory=lambda: FailingOnBeta(threads)
-            )
-            self.assertEqual(code, 1)
-            paths = gcc.collection_paths(data_dir, "INC123")
+            blocked_output = io.StringIO()
+            with redirect_stdout(blocked_output):
+                paths = self.stopped_after_alpha(data_dir, threads)
+            self.assertIn("Record-ID queries: 1/1", blocked_output.getvalue())
+            self.assertIn("Gmail threads: 1/2", blocked_output.getvalue())
+            self.assertIn("Gmail messages: 2/unknown", blocked_output.getvalue())
             progress = json.loads(paths["progress"].read_text(encoding="utf-8"))
-            self.assertIn("t-alpha", progress["completed_threads"])
-            self.assertNotIn("t-beta", progress["completed_threads"])
+            self.assertEqual(progress["completed_threads"], {})
+            self.assertTrue(
+                gcc.thread_checkpoint_path(paths["checkpoints"], "t-alpha").is_file()
+            )
+            self.assertFalse(
+                gcc.thread_checkpoint_path(paths["checkpoints"], "t-beta").exists()
+            )
 
             good_client = FakeClient(threads)
             code = gcc.collect_case(
@@ -285,16 +420,184 @@ class ResumeTests(unittest.TestCase):
             )
             self.assertEqual(code, 0)
             list_calls = [c for c in good_client.calls if c[0] == "gmail_list_threads"]
-            self.assertEqual(list_calls, [])
+            self.assertEqual(len(list_calls), 1)
+            self.assertEqual(
+                list_calls[0][1]["snapshot_before"], progress["snapshot_before"]
+            )
             beta_reads = [
                 c
                 for c in good_client.calls
                 if c[0] == "gmail_read_thread_page" and c[1]["thread_id"] == "t-beta"
             ]
             self.assertTrue(beta_reads)
+            alpha_reads = [
+                params
+                for method, params in good_client.calls
+                if method == "gmail_read_thread_page" and params["thread_id"] == "t-alpha"
+            ]
+            self.assertEqual(len(alpha_reads), 1)
+            self.assertEqual(alpha_reads[0]["cursor"], "")
             manifest = json.loads(paths["stable_manifest"].read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "pass")
             self.assertEqual(manifest["snapshot_before"], progress["snapshot_before"])
+
+    def test_resume_rejects_a_corrupt_checkpoint(self):
+        threads = sample_threads()
+        for corruption in ("body", "count", "snapshot"):
+            with self.subTest(corruption=corruption), TemporaryDirectory() as tmp:
+                data_dir = Path(tmp)
+                paths = self.stopped_after_alpha(data_dir, threads)
+                checkpoint_path = gcc.thread_checkpoint_path(
+                    paths["checkpoints"], "t-alpha"
+                )
+                checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                payload = checkpoint["payload"]
+                if corruption == "body":
+                    payload["state"]["messages"][0]["body"] = "tampered"
+                elif corruption == "count":
+                    payload["state"]["stats"]["message_count"] += 1
+                else:
+                    payload["snapshot_before"] = "2026-09-20T00:00:00.000Z"
+                checkpoint["sha256"] = gcc.canonical_hash(payload)
+                checkpoint_path.write_text(json.dumps(checkpoint), encoding="utf-8")
+
+                good_client = FakeClient(threads)
+                code = gcc.collect_case(
+                    "INC123", data_dir, resume=True, client_factory=lambda: good_client
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(
+                    [method for method, _params in good_client.calls],
+                    ["gmail_list_threads"],
+                )
+                self.assertFalse(paths["stable_manifest"].exists())
+
+    def test_resume_rejects_a_changed_frozen_thread_list(self):
+        threads = sample_threads()
+        for saved_ids in (["t-alpha"], ["t-beta", "t-alpha"]):
+            with self.subTest(saved_ids=saved_ids), TemporaryDirectory() as tmp:
+                data_dir = Path(tmp)
+                paths = self.stopped_after_alpha(data_dir, threads)
+                progress = json.loads(paths["progress"].read_text(encoding="utf-8"))
+                progress["thread_ids"] = saved_ids
+                paths["progress"].write_text(json.dumps(progress), encoding="utf-8")
+
+                good_client = FakeClient(threads)
+                code = gcc.collect_case(
+                    "INC123", data_dir, resume=True, client_factory=lambda: good_client
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(
+                    [method for method, _params in good_client.calls],
+                    ["gmail_list_threads"],
+                )
+                self.assertFalse(paths["stable_manifest"].exists())
+
+    def test_resume_rejects_a_changed_thread_manifest(self):
+        threads = sample_threads()
+        for changed_field in ("manifest_sha256", "message_count"):
+            with self.subTest(changed_field=changed_field), TemporaryDirectory() as tmp:
+                data_dir = Path(tmp)
+                paths = self.stopped_after_alpha(data_dir, threads)
+
+                class ChangedThread(FakeClient):
+                    def request(self, method, params):
+                        raw = super().request(method, params)
+                        if method == "gmail_read_thread_page" and params["thread_id"] == "t-alpha":
+                            page = json.loads(raw)
+                            if changed_field == "manifest_sha256":
+                                page[changed_field] = "new-pre-cutoff-message-set"
+                            else:
+                                page[changed_field] += 1
+                            return json.dumps(page)
+                        return raw
+
+                client = ChangedThread(threads)
+                code = gcc.collect_case(
+                    "INC123", data_dir, resume=True, client_factory=lambda: client
+                )
+                self.assertEqual(code, 1)
+                self.assertEqual(
+                    [method for method, _params in client.calls],
+                    ["gmail_list_threads", "gmail_read_thread_page"],
+                )
+                self.assertFalse(paths["stable_manifest"].exists())
+
+    def test_resume_migrates_legacy_inline_progress(self):
+        threads = sample_threads()
+        with TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            paths = self.stopped_after_alpha(data_dir, threads)
+            checkpoint_path = gcc.thread_checkpoint_path(
+                paths["checkpoints"], "t-alpha"
+            )
+            checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            state = checkpoint["payload"]["state"]
+            progress = json.loads(paths["progress"].read_text(encoding="utf-8"))
+            progress["completed_threads"] = {"t-alpha": {**state, "pages": threads["t-alpha"]}}
+            paths["progress"].write_text(json.dumps(progress), encoding="utf-8")
+            checkpoint_path.unlink()
+
+            good_client = FakeClient(threads)
+            code = gcc.collect_case(
+                "INC123", data_dir, resume=True, client_factory=lambda: good_client
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(
+                sum(
+                    method == "gmail_read_thread_page" and params["thread_id"] == "t-alpha"
+                    for method, params in good_client.calls
+                ),
+                1,
+            )
+            saved_progress = json.loads(
+                (paths["stable"] / "progress.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(saved_progress["completed_threads"], {})
+            self.assertTrue(
+                gcc.thread_checkpoint_path(paths["stable"] / "threads", "t-alpha").is_file()
+            )
+
+
+class CheckpointWriteTests(unittest.TestCase):
+    def test_many_threads_write_one_checkpoint_each(self):
+        threads = {
+            f"t-{index}": build_thread_pages(
+                f"t-{index}",
+                [
+                    (
+                        "2026-09-01T00:00:00.000Z",
+                        "A <a@avaya.com>",
+                        [f"thread {index} " + "x" * 8_000],
+                    )
+                ],
+            )
+            for index in range(30)
+        }
+        with TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            paths = gcc.collection_paths(data_dir, "INC123")
+            writes = []
+            original_atomic_write = gcc.atomic_write
+
+            def count_staging_writes(path, content):
+                if path == paths["progress"] or path.parent == paths["checkpoints"]:
+                    writes.append((path, len(content.encode("utf-8"))))
+                original_atomic_write(path, content)
+
+            with patch.object(gcc, "atomic_write", side_effect=count_staging_writes):
+                code = gcc.collect_case(
+                    "INC123", data_dir, client_factory=lambda: FakeClient(threads)
+                )
+            self.assertEqual(code, 0)
+            progress_bytes = [size for path, size in writes if path == paths["progress"]]
+            checkpoint_bytes = [
+                size for path, size in writes if path.parent == paths["checkpoints"]
+            ]
+            self.assertEqual(len(progress_bytes), 2)
+            self.assertEqual(len(checkpoint_bytes), len(threads))
+            corpus_bytes = (paths["stable"] / "corpus.json").stat().st_size
+            self.assertLess(sum(progress_bytes) + sum(checkpoint_bytes), 2 * corpus_bytes)
 
 
 class QueryTests(unittest.TestCase):
@@ -307,6 +610,48 @@ class QueryTests(unittest.TestCase):
         )
         self.assertEqual(code, 0)
         return data_dir
+
+    def snippets_for_messages(self, messages, **options):
+        import io
+        from contextlib import redirect_stdout
+
+        tmp = TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        data_dir = Path(tmp.name)
+        stable = gcc.collection_paths(data_dir, "INC123")["stable"]
+        stable.mkdir(parents=True)
+        corpus = {
+            "snapshot_before": "2026-09-19T00:00:00.000Z",
+            "threads": [
+                {
+                    "thread_id": "t-alpha",
+                    "messages": [
+                        {
+                            "message_id": f"m-{index}",
+                            "internal_date": f"2026-09-19T00:00:{index:02d}.000Z",
+                            "from": "a@avaya.com",
+                            "subject": subject,
+                            "attachment_names": [],
+                            "body": body,
+                        }
+                        for index, (subject, body) in enumerate(messages)
+                    ],
+                }
+            ],
+        }
+        (stable / "corpus.json").write_text(json.dumps(corpus), encoding="utf-8")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = gcc.query_snippets(
+                "INC123",
+                data_dir,
+                terms=options.get("terms", ["target"]),
+                chars=options.get("chars", 100),
+                context_chars=options.get("context_chars", 20),
+                max_per_message=options.get("max_per_message", 2),
+            )
+        self.assertEqual(code, 0)
+        return json.loads(output.getvalue())
 
     def test_query_filters_and_budget(self):
         data_dir = self.collected()
@@ -335,6 +680,121 @@ class QueryTests(unittest.TestCase):
             self.assertEqual(
                 gcc.main([f"--data-dir={tmp}", "query", "--case-id", "INC999"]), 2
             )
+
+    def test_snippets_scan_complete_corpus_and_return_bounded_matches(self):
+        data_dir = self.collected()
+        import io
+        from contextlib import redirect_stdout
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = gcc.query_snippets(
+                "INC123",
+                data_dir,
+                terms=["chunk", "missing-term"],
+                chars=100,
+                context_chars=18,
+                max_per_message=2,
+            )
+        self.assertEqual(code, 0)
+        payload = json.loads(buffer.getvalue())
+        self.assertEqual(payload["scanned_messages"], 3)
+        self.assertEqual(payload["matched_messages"], 1)
+        self.assertEqual(payload["snippet_count"], 2)
+        self.assertLessEqual(
+            sum(len(item) for item in payload["messages"][0]["snippets"]),
+            36,
+        )
+        self.assertTrue(
+            all(
+                "chunk" in item.casefold()
+                for item in payload["messages"][0]["snippets"]
+            )
+        )
+
+    def test_snippets_cli_requires_a_search_term(self):
+        data_dir = self.collected()
+        with self.assertRaises(SystemExit):
+            gcc.main(
+                [
+                    f"--data-dir={data_dir}",
+                    "snippets",
+                    "--case-id",
+                    "INC123",
+                ]
+            )
+
+    def test_snippets_use_original_offsets_after_unicode_casefold(self):
+        payload = self.snippets_for_messages(
+            [("other", "ß" * 100 + " target " + "x" * 300)]
+        )
+        self.assertEqual(payload["scanned_messages"], 1)
+        self.assertFalse(payload["truncated"])
+        self.assertIn("target", payload["messages"][0]["snippets"][0])
+
+    def test_snippets_keep_the_full_match_in_narrow_context(self):
+        payload = self.snippets_for_messages(
+            [("other", "prefix target suffix")], context_chars=8
+        )
+        snippet = payload["messages"][0]["snippets"][0]
+        self.assertIn("target", snippet)
+        self.assertLessEqual(len(snippet), 8)
+        self.assertFalse(payload["truncated"])
+
+        oversized = self.snippets_for_messages(
+            [("other", "prefix extraordinary suffix")],
+            terms=["extraordinary"],
+            context_chars=5,
+        )
+        self.assertEqual(oversized["messages"][0]["snippets"], ["extra"])
+        self.assertTrue(oversized["truncated"])
+
+    def test_snippets_include_subject_only_matches_with_empty_bodies(self):
+        payload = self.snippets_for_messages([("Status target review", "")])
+        self.assertEqual(payload["matching_messages_total"], 1)
+        self.assertEqual(payload["matched_messages"], 1)
+        self.assertEqual(payload["messages"][0]["snippet_source"], "subject")
+        self.assertIn("target", payload["messages"][0]["snippets"][0])
+        self.assertFalse(payload["truncated"])
+
+    def test_snippets_count_all_messages_after_budget_is_exhausted(self):
+        messages = [("other", "target"), ("other", "target")]
+        limited = self.snippets_for_messages(
+            messages, chars=6, context_chars=8
+        )
+        self.assertEqual(limited["scanned_messages"], 2)
+        self.assertEqual(limited["matching_messages_total"], 2)
+        self.assertEqual(limited["matched_messages"], 1)
+        self.assertTrue(limited["truncated"])
+
+        complete = self.snippets_for_messages(
+            messages, chars=12, context_chars=8
+        )
+        self.assertEqual(complete["matched_messages"], 2)
+        self.assertEqual(
+            [item["message_id"] for item in complete["messages"]],
+            ["m-0", "m-1"],
+        )
+        self.assertFalse(complete["truncated"])
+
+    def test_snippets_do_not_accumulate_every_repeated_match(self):
+        import tracemalloc
+
+        tracemalloc.start()
+        try:
+            payload = self.snippets_for_messages(
+                [("other", "a" * 500_000)],
+                terms=["a"],
+                chars=1000,
+                context_chars=80,
+                max_per_message=1,
+            )
+            peak_bytes = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+        self.assertEqual(payload["snippet_count"], 1)
+        self.assertTrue(payload["truncated"])
+        self.assertLess(peak_bytes, 10 * 1024 * 1024)
 
 
 class DigestBudgetTests(unittest.TestCase):
@@ -426,6 +886,7 @@ class LayoutBootstrapTests(unittest.TestCase):
                 [sys.executable, str(script_dest), "collect", "--case-id", "INC1"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env=environment,
                 timeout=60,
             )

@@ -30,6 +30,14 @@ def snapshot():
             "rca_state": "Suspected",
             "mitigation_state": "Production Deployed",
             "primary_problem": "Tomcat stopped serving the management application.",
+            "impact": (
+                "Administrators could not use the management application during "
+                "the reported outage; call handling impact is unknown."
+            ),
+            "current_progress": (
+                "Application logs reported an OutOfMemoryError, and the service "
+                "recovered after restart. GC and heap evidence remain unexamined."
+            ),
             "confirmed_finding": "The service recovered after restart.",
             "unproven_or_contradicted": "A memory leak is not proven.",
             "production_outcome": "Immediate recovery confirmed; sustained outcome unknown.",
@@ -131,6 +139,30 @@ def snapshot():
                 "supports": "Primary problem",
             }
         ],
+        "technical_advice": {
+            "immediate_diagnostics": [
+                {
+                    "action": "Correlate GC logs with the outage and inspect the heap dump.",
+                    "basis": "GC logs and heap evidence have not been analyzed.",
+                }
+            ],
+            "potential_solutions": [
+                {
+                    "action": "adjust the heap setting within supported limits",
+                    "condition": (
+                        "heap analysis shows the configured limit caused "
+                        "allocation failures"
+                    ),
+                    "basis": "The logged memory error alone does not prove the cause.",
+                }
+            ],
+            "long_term_steps": [
+                {
+                    "action": "Monitor memory trends and confirm recurrence-free service.",
+                    "basis": "Sustained production recovery has not been verified.",
+                }
+            ],
+        },
         "visual_context": {},
     }
 
@@ -141,6 +173,14 @@ def final_drift_regression_snapshot():
     data["current"].update(
         {
             "primary_problem": "Intermittent production transactions failed during the reported window.",
+            "impact": (
+                "The case record reports business impact, while a later email "
+                "says no end-user impact; the conflict remains unresolved."
+            ),
+            "current_progress": (
+                "A configuration change was deployed and immediate recovery was "
+                "reported; recurrence-free monitoring has not been supplied."
+            ),
             "confirmed_finding": "Service recovery was reported after the configuration change.",
             "unproven_or_contradicted": (
                 "The case record reports business impact, while a later email says no "
@@ -191,6 +231,12 @@ def final_drift_regression_snapshot():
     return data
 
 
+def executive_summary(markdown):
+    start = markdown.index("## Executive Summary")
+    end = markdown.find("\n## ", start + len("## Executive Summary"))
+    return markdown[start : end if end >= 0 else None]
+
+
 class CaseReviewPresentationTests(unittest.TestCase):
     def test_skill_uses_structured_snapshot_and_on_demand_full_output(self):
         skill = SKILL.read_text(encoding="utf-8-sig")
@@ -234,8 +280,15 @@ class CaseReviewPresentationTests(unittest.TestCase):
         )
 
         self.assertEqual("standard", result["mode"])
-        self.assertIn("# Case Card - 1-23700000001", result["markdown"])
-        self.assertIn("Primary problem", result["markdown"])
+        self.assertTrue(result["markdown"].startswith("# Case Review - 1-23700000001"))
+        self.assertIn("## Executive Summary", result["markdown"])
+        self.assertIn("## Case Card", result["markdown"])
+        self.assertIn("Reported Problem / Symptom", result["markdown"])
+        self.assertIn("Current State", result["markdown"])
+        self.assertIn("GC and heap evidence remain unexamined.", result["markdown"])
+        self.assertIn("### Action Plan", result["markdown"])
+        self.assertIn("Required Action / Next Step", result["markdown"])
+        self.assertIn("## Technical Advice", result["markdown"])
         self.assertIn("## Key Technical Specification", result["markdown"])
         for field in (
             "Scope",
@@ -255,10 +308,12 @@ class CaseReviewPresentationTests(unittest.TestCase):
             "## Evidence Register",
         ):
             self.assertIn(marker, result["markdown"])
-        for forbidden in ("Executive Summary",):
-            self.assertNotIn(forbidden, result["markdown"])
+        self.assertLess(
+            result["markdown"].index("## Executive Summary"),
+            result["markdown"].index("## Case Card"),
+        )
 
-    def test_explicit_compact_request_returns_case_card_only(self):
+    def test_explicit_compact_request_keeps_the_summary_card_and_advice(self):
         result = review_presenter.render_review(
             request_text="Give me a compact review of 1-23700000001",
             snapshot=snapshot(),
@@ -268,9 +323,131 @@ class CaseReviewPresentationTests(unittest.TestCase):
         )
 
         self.assertEqual("compact", result["mode"])
-        self.assertIn("# Case Card - 1-23700000001", result["markdown"])
+        self.assertTrue(result["markdown"].startswith("# Case Review - 1-23700000001"))
+        self.assertIn("## Executive Summary", result["markdown"])
+        self.assertIn("## Case Card", result["markdown"])
+        self.assertIn("### Action Plan", result["markdown"])
+        self.assertIn("## Technical Advice", result["markdown"])
         self.assertNotIn("## Key Technical Specification", result["markdown"])
         self.assertNotIn("## Progress Milestones", result["markdown"])
+
+    def test_every_mode_starts_with_a_concise_evidence_based_executive_summary(self):
+        material_delta = {
+            "state_changes": ["impact: unknown -> Administrators affected"],
+            "ownership_changes": [],
+            "new_evidence": ["The outage affected administrator access."],
+            "unchanged_blockers": [],
+        }
+        requests = (
+            ("standard", "Review 1-23700000001", 1, None),
+            ("compact", "Compact review 1-23700000001", 1, None),
+            ("follow-up", "Review 1-23700000001 again", 2, material_delta),
+            ("technical", "Dry technical review for 1-23700000001", 1, None),
+            ("flow", "Draw the investigation progress flow chart", 1, None),
+            ("full", "Show the full report for 1-23700000001", 1, None),
+        )
+        for expected_mode, request_text, review_count, delta in requests:
+            with self.subTest(mode=expected_mode):
+                result = review_presenter.render_review(
+                    request_text=request_text,
+                    snapshot=snapshot(),
+                    review_count=review_count,
+                    delta=delta,
+                    record_path="C:/records/1-23700000001/record.md",
+                )
+                markdown = result["markdown"]
+                summary = executive_summary(markdown)
+                self.assertEqual(expected_mode, result["mode"])
+                self.assertEqual("# Case Review - 1-23700000001", markdown.splitlines()[0])
+                self.assertEqual("## Executive Summary", next(
+                    line for line in markdown.splitlines() if line.startswith("## ")
+                ))
+                for marker in (
+                    "Status",
+                    "Working",
+                    "Impact",
+                    "Administrators could not use the management application",
+                    "Critical finding",
+                    "The service recovered after restart",
+                    "Production outcome",
+                    "sustained outcome unknown",
+                ):
+                    self.assertIn(marker, summary)
+                self.assertLessEqual(len(summary.split()), 110)
+                self.assertNotIn("NotebookLM validated", summary)
+                self.assertIn("### Action Plan", markdown)
+                self.assertIn("## Technical Advice", markdown)
+
+    def test_action_plan_is_the_recorded_next_step_and_advice_is_separate(self):
+        result = review_presenter.render_review(
+            request_text="Review 1-23700000001",
+            snapshot=snapshot(),
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23700000001/record.md",
+        )
+        markdown = result["markdown"]
+        action_plan = markdown.split("### Action Plan", 1)[1].split("\n## ", 1)[0]
+        for marker in (
+            "Required Action / Next Step",
+            "Analyze the heap evidence.",
+            "Engineer A",
+            "2026-08-21",
+        ):
+            self.assertIn(marker, action_plan)
+        self.assertNotIn("Immediate diagnostic steps", action_plan)
+        self.assertNotIn("Potential solutions", action_plan)
+        self.assertNotIn("Long-term next steps", action_plan)
+
+        technical_advice = markdown.split("## Technical Advice", 1)[1].split(
+            "\n## ", 1
+        )[0]
+        for marker in (
+            "### Immediate diagnostic steps",
+            "Correlate GC logs with the outage and inspect the heap dump.",
+            "GC logs and heap evidence have not been analyzed.",
+            "### Potential solutions (conditional)",
+            "The logged memory error alone does not prove the cause.",
+            "### Long-term next steps",
+            "Monitor memory trends and confirm recurrence-free service.",
+            "Sustained production recovery has not been verified.",
+        ):
+            self.assertIn(marker, technical_advice)
+        self.assertIn(
+            "If heap analysis shows the configured limit caused allocation failures, "
+            "consider this solution: adjust the heap setting within supported limits",
+            technical_advice,
+        )
+        self.assertNotIn("adjusting the heap setting", executive_summary(markdown))
+        self.assertNotIn("Confirmed mechanism: adjusting the heap setting", markdown)
+
+    def test_unknown_impact_and_empty_advice_are_presented_as_gaps(self):
+        data = copy.deepcopy(snapshot())
+        data["current"]["impact"] = "unknown"
+        data["technical_advice"] = {
+            "immediate_diagnostics": [],
+            "potential_solutions": [],
+            "long_term_steps": [],
+        }
+        markdown = review_presenter.render_review(
+            request_text="Review 1-23700000001",
+            snapshot=data,
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23700000001/record.md",
+        )["markdown"]
+
+        self.assertRegex(executive_summary(markdown), r"Impact[^\n]*unknown")
+        advice = markdown.split("## Technical Advice", 1)[1].split("\n## ", 1)[0]
+        for heading in (
+            "### Immediate diagnostic steps",
+            "### Potential solutions (conditional)",
+            "### Long-term next steps",
+        ):
+            section = advice.split(heading, 1)[1].split("\n### ", 1)[0]
+            self.assertIn("unknown", section.lower())
+        self.assertNotIn("adjusting the heap setting", advice)
+        self.assertNotIn("NotebookLM validated", markdown)
 
     def test_standard_view_preserves_final_drift_regression_details(self):
         result = review_presenter.render_review(
@@ -297,6 +474,80 @@ class CaseReviewPresentationTests(unittest.TestCase):
         self.assertEqual(4, sum(1 for line in markdown.splitlines() if line.startswith("- **2026-")))
         self.assertIn("## Evidence Register", markdown)
 
+    def test_summary_keeps_conflicting_case_and_email_impact_unresolved(self):
+        markdown = review_presenter.render_review(
+            request_text="Review 1-23780000000",
+            snapshot=final_drift_regression_snapshot(),
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23780000000/record.md",
+        )["markdown"]
+        summary = executive_summary(markdown)
+
+        self.assertIn("The case record reports business impact", summary)
+        self.assertIn("later email says no end-user impact", summary)
+        self.assertIn("conflict remains unresolved", summary)
+        self.assertNotIn("NotebookLM validated", summary)
+
+    def test_summary_keeps_reported_issue_visible_when_findings_and_impact_unknown(self):
+        data = copy.deepcopy(snapshot())
+        data["current"].update(
+            {
+                "impact": "unknown",
+                "confirmed_finding": "unknown",
+                "production_outcome": "unknown",
+            }
+        )
+        markdown = review_presenter.render_review(
+            request_text="Review 1-23700000001",
+            snapshot=data,
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23700000001/record.md",
+        )["markdown"]
+        summary = executive_summary(markdown)
+
+        self.assertIn("**Status:** Working", summary)
+        self.assertIn(
+            "**Reported issue:** Tomcat stopped serving the management application.",
+            summary,
+        )
+        self.assertIn("**Impact:** unknown", summary)
+        self.assertIn("**Critical finding:** unknown", summary)
+        self.assertIn("**Production outcome:** unknown", summary)
+        self.assertEqual(4, sum(line.startswith("**") for line in summary.splitlines()))
+
+    def test_older_snapshot_missing_progress_displays_unknown_in_current_state(self):
+        data = copy.deepcopy(snapshot())
+        data["current"].pop("current_progress")
+        markdown = review_presenter.render_review(
+            request_text="Review 1-23700000001",
+            snapshot=data,
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23700000001/record.md",
+        )["markdown"]
+        card = markdown.split("## Case Card", 1)[1].split("\n## Technical Advice", 1)[0]
+
+        self.assertIn("**Current State:** unknown", card)
+        self.assertIn("**Confirmed finding:** The service recovered after restart.", card)
+        self.assertNotIn("**Current State:** The service recovered after restart.", card)
+
+    def test_empty_timeline_is_an_explicit_gap(self):
+        data = copy.deepcopy(snapshot())
+        data["timeline"] = []
+        markdown = review_presenter.render_review(
+            request_text="Review 1-23700000001",
+            snapshot=data,
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23700000001/record.md",
+        )["markdown"]
+        timeline = markdown.split("## Timeline", 1)[1].split("\n## Evidence Register", 1)[0]
+
+        self.assertIn("unknown", timeline.lower())
+        self.assertNotIn("2026-08-18", timeline)
+
     def test_existing_record_defaults_to_delta_first_follow_up(self):
         delta = {
             "state_changes": ["rca state: Under Investigation -> Suspected"],
@@ -318,7 +569,7 @@ class CaseReviewPresentationTests(unittest.TestCase):
         self.assertIn("Unchanged blocker", result["markdown"])
         self.assertLess(
             result["markdown"].index("Changed since last review"),
-            result["markdown"].index("Primary problem"),
+            result["markdown"].index("Reported Problem / Symptom"),
         )
         self.assertNotIn("Follow-up History", result["markdown"])
         changed_line = next(
@@ -382,7 +633,7 @@ class CaseReviewPresentationTests(unittest.TestCase):
         )
 
         self.assertEqual("standard", result["mode"])
-        self.assertIn("# Case Card - 1-23700000001", result["markdown"])
+        self.assertTrue(result["markdown"].startswith("# Case Review - 1-23700000001"))
         self.assertNotIn("Changed since last review", result["markdown"])
         self.assertIn("## Investigation Progress", result["markdown"])
         self.assertIn("## Timeline", result["markdown"])
@@ -421,7 +672,7 @@ class CaseReviewPresentationTests(unittest.TestCase):
         self.assertEqual("standard", result["mode"])
         self.assertLess(
             result["markdown"].index("Changed since last review"),
-            result["markdown"].index("Primary problem"),
+            result["markdown"].index("Reported Problem / Symptom"),
         )
         self.assertIn("## Key Technical Specification", result["markdown"])
 
@@ -453,7 +704,7 @@ class CaseReviewPresentationTests(unittest.TestCase):
         ):
             self.assertIn(state, result["markdown"])
         self.assertIn("Evidence basis", result["markdown"])
-        self.assertNotIn("Executive Summary", result["markdown"])
+        self.assertIn("## Executive Summary", result["markdown"])
 
     def test_full_report_is_explicit_and_evidence_register_is_last(self):
         result = review_presenter.render_review(
@@ -495,13 +746,54 @@ class CaseReviewPresentationTests(unittest.TestCase):
         self.assertEqual("flow", result["mode"])
         self.assertEqual("progress-flow", result["visual"])
         self.assertIn("flowchart TD", result["markdown"])
-        self.assertIn("not causal proof", result["markdown"])
+        self.assertIn("arrows do not prove causation", result["markdown"])
         for semantic_class in ("observed", "blocker", "hypothesis", "confirmed", "pending"):
             self.assertIn(f"classDef {semantic_class}", result["markdown"])
         node_lines = [
             line for line in result["markdown"].splitlines() if line.strip().startswith("N") and "[\"" in line
         ]
         self.assertLessEqual(len(node_lines), 7)
+
+    def test_mixed_dated_and_undated_flow_keeps_documented_sequence(self):
+        data = copy.deepcopy(snapshot())
+        data["visual_context"] = {
+            "transitions": [
+                {
+                    "date": "2026-08-18",
+                    "label": "Initial failure reported",
+                    "state": "OBSERVED",
+                },
+                {
+                    "label": "Investigation continued without a recorded time",
+                    "state": "BLOCKER",
+                },
+                {
+                    "date": "2026-08-20",
+                    "label": "Later recovery check",
+                    "state": "PENDING",
+                },
+            ]
+        }
+        result = review_presenter.render_review(
+            request_text="Draw the investigation progress flow chart",
+            snapshot=data,
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23700000001/record.md",
+        )
+        flow = result["markdown"].split("## Investigation Progress", 1)[1]
+
+        self.assertEqual("flow", result["mode"])
+        self.assertIn("undated steps have unknown timing", flow)
+        self.assertLess(
+            flow.index("Initial failure reported"),
+            flow.index("Investigation continued without a recorded time"),
+        )
+        self.assertLess(
+            flow.index("Investigation continued without a recorded time"),
+            flow.index("Later recovery check"),
+        )
+        self.assertNotIn("Dated investigation states are chronological", flow)
 
     def test_recurring_events_add_event_comparison_to_standard_view(self):
         data = copy.deepcopy(snapshot())
@@ -533,6 +825,70 @@ class CaseReviewPresentationTests(unittest.TestCase):
         self.assertEqual("event-comparison", result["visual"])
         self.assertIn("## Event Comparison", result["markdown"])
         self.assertIn("Tomcat unavailable again", result["markdown"])
+
+    def test_dated_rows_render_oldest_first_even_when_input_is_newest_first(self):
+        data = copy.deepcopy(snapshot())
+        data["milestones"] = [
+            {"date": "2026-08-20", "change": "Later milestone."},
+            {"date": "2026-08-18", "change": "Earlier milestone."},
+        ]
+        data["timeline"] = [
+            {
+                "date": "2026-08-20",
+                "by": "Support",
+                "source": "Case record",
+                "change": "Later timeline event.",
+            },
+            {
+                "date": "2026-08-18",
+                "by": "Customer",
+                "source": "Case record",
+                "change": "Earlier timeline event.",
+            },
+        ]
+        data["evidence_register"] = [
+            {
+                "ref": "E2",
+                "date": "2026-08-20",
+                "source": "Later source",
+                "evidence": "Later evidence.",
+                "supports": "Later state.",
+            },
+            {
+                "ref": "E1",
+                "date": "2026-08-18",
+                "source": "Earlier source",
+                "evidence": "Earlier evidence.",
+                "supports": "Initial state.",
+            },
+        ]
+        data["visual_context"] = {
+            "transitions": [
+                {"date": "2026-08-20", "label": "Later state", "state": "PENDING"},
+                {"date": "2026-08-18", "label": "Earlier state", "state": "OBSERVED"},
+            ]
+        }
+
+        result = review_presenter.render_review(
+            request_text="Review 1-23700000001",
+            snapshot=data,
+            review_count=1,
+            delta=None,
+            record_path="C:/records/1-23700000001/record.md",
+        )
+        markdown = result["markdown"]
+        milestones = markdown.split("## Progress Milestones", 1)[1].split(
+            "## Timeline", 1
+        )[0]
+        timeline = markdown.split("## Timeline", 1)[1].split(
+            "## Evidence Register", 1
+        )[0]
+        evidence = markdown.split("## Evidence Register", 1)[1]
+        progress = markdown.split("## Investigation Progress", 1)[1]
+        self.assertLess(milestones.index("2026-08-18"), milestones.index("2026-08-20"))
+        self.assertLess(timeline.index("2026-08-18"), timeline.index("2026-08-20"))
+        self.assertLess(evidence.index("E1"), evidence.index("E2"))
+        self.assertLess(progress.index("Earlier state"), progress.index("Later state"))
 
     def test_competing_hypotheses_use_claim_evidence_matrix(self):
         data = copy.deepcopy(snapshot())

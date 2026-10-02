@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import re
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -68,10 +70,152 @@ CURRENT_PRESENTATION_FIELDS = (
     "next_action_owner",
     "next_due",
 )
+TECHNICAL_ADVICE_FIELDS = {
+    "immediate_diagnostics": ("action", "basis"),
+    "potential_solutions": ("action", "condition", "basis"),
+    "long_term_steps": ("action", "basis"),
+}
+PROBLEM_LINEAGE_FIELDS = (
+    "original_objective",
+    "intended_action",
+    "blocker",
+    "working_hypotheses",
+    "corrected_finding",
+    "implemented_action",
+    "outcome",
+    "secondary_problems",
+)
+
+
+def describe_presentation_schema() -> dict[str, Any]:
+    """Return the complete agent-facing presentation contract."""
+
+    return {
+        "required_when_full_review_markdown_absent": [
+            "technical_spec",
+            "problem_lineage",
+            "technical_advice",
+            "milestones",
+            "timeline",
+            "evidence_register",
+            "visual_context",
+        ],
+        "technical_spec": {
+            "required_fields": [key for key, _label in TECHNICAL_FIELDS],
+            "item_fields": ["state", "value", "evidence"],
+            "states": sorted(PROOF_STATES),
+        },
+        "problem_lineage": {
+            "fields": list(PROBLEM_LINEAGE_FIELDS),
+            "list_fields": ["working_hypotheses", "secondary_problems"],
+        },
+        "technical_advice": {
+            "item_lists": {
+                key: {
+                    "item_fields": list(fields),
+                    "empty_list": "render an explicit unknown evidence gap",
+                }
+                for key, fields in TECHNICAL_ADVICE_FIELDS.items()
+            },
+            "boundary": (
+                "all items are recommendations, separate from the evidence-stated "
+                "Action Plan in current.next_action; potential solutions are "
+                "conditional, never confirmed or implemented facts"
+            ),
+        },
+        "milestones": {
+            "item_fields": ["date", "change"],
+            "optional_fields": ["label", "evidence"],
+            "maximum_rendered_in_standard": 5,
+        },
+        "timeline": {
+            "item_fields": ["date", "by", "source", "change"],
+            "optional_fields": ["evidence"],
+        },
+        "evidence_register": {
+            "minimum_items": 1,
+            "item_fields": ["ref", "date", "source", "evidence", "supports"],
+        },
+        "visual_context": {
+            "selection_priority": [
+                "recurrences",
+                "hypotheses",
+                "components_and_handoffs",
+                "transitions",
+                "ownership_stall",
+            ],
+            "variants": {
+                "recurrences": {
+                    "minimum_items": 2,
+                    "item_fields": ["date", "symptom", "change", "outcome"],
+                    "optional_fields": ["evidence"],
+                },
+                "hypotheses": {
+                    "minimum_items": 2,
+                    "item_fields": ["claim", "state", "evidence", "validation"],
+                    "states": sorted(PROOF_STATES),
+                },
+                "components_and_handoffs": {
+                    "minimum_components": 3,
+                    "component_fields": ["name", "finding", "state"],
+                    "handoff_fields": ["from", "to", "label"],
+                },
+                "transitions": {
+                    "minimum_items_for_secondary_visual": 3,
+                    "item_fields": ["label", "state"],
+                    "optional_fields": ["date", "detail", "evidence"],
+                    "states": sorted(VISUAL_STATE_CLASSES),
+                },
+                "ownership_stall": {
+                    "requires_flag": True,
+                    "item_fields": ["owner", "action", "deadline", "status"],
+                },
+            },
+        },
+        "or": "a non-empty full_review_markdown string",
+    }
 
 
 def _inline(value: Any) -> str:
     return str(value).replace("\r", " ").replace("\n", " ").strip()
+
+
+_ISO_DATE_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}(?:$|[T ])")
+
+
+def _date_sort_key(value: Any) -> datetime | None:
+    """Return a comparable UTC date for normalized ISO values only."""
+
+    text = _inline(value)
+    if not _ISO_DATE_PREFIX.match(text):
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _chronological_items(items: list[Any]) -> list[Any]:
+    """Sort dated presentation rows oldest-first and keep undated rows last."""
+
+    prepared = []
+    for index, item in enumerate(items):
+        date_key = _date_sort_key(item.get("date")) if isinstance(item, dict) else None
+        prepared.append((index, item, date_key))
+    return [
+        item
+        for _index, item, date_key in sorted(
+            prepared,
+            key=lambda row: (
+                row[2] is None,
+                row[2] or datetime.max.replace(tzinfo=timezone.utc),
+                row[0],
+            ),
+        )
+    ]
 
 
 def _cell(value: Any) -> str:
@@ -148,14 +292,123 @@ def select_mode(
     return "standard"
 
 
-def render_case_card(snapshot: dict[str, Any], record_path: str) -> str:
+def render_executive_summary(snapshot: dict[str, Any]) -> str:
+    """Open every successful view with the same short management summary."""
+
     current = snapshot["current"]
-    checkpoint = (
-        f"{current['next_action']} — {current['next_action_owner']} — "
-        f"{current['next_due']}"
+    return "\n".join(
+        [
+            f"# Case Review - {snapshot['case_id']}",
+            "",
+            "## Executive Summary",
+            "",
+            (
+                f"**Status:** {_inline(current['official_status'])}. "
+                f"**Reported issue:** {_truncate(current['primary_problem'], 180)}  "
+            ),
+            f"**Impact:** {_inline(current.get('impact') or 'unknown')}  ",
+            f"**Critical finding:** {_inline(current['confirmed_finding'])}  ",
+            f"**Production outcome:** {_inline(current['production_outcome'])}",
+        ]
     )
+
+
+def _technical_advice_items(
+    snapshot: dict[str, Any], key: str
+) -> list[dict[str, str]]:
+    """Validate authored advice while allowing older saved snapshots to render."""
+
+    advice = snapshot.get("technical_advice", {})
+    if not isinstance(advice, dict):
+        raise PresentationError("technical_advice must be an object")
+    if "technical_advice" in snapshot and key not in advice:
+        raise PresentationError(f"technical_advice.{key} is required")
+    raw = advice.get(key, [])
+    if not isinstance(raw, list):
+        raise PresentationError(f"technical_advice.{key} must be a list")
+    required = TECHNICAL_ADVICE_FIELDS[key]
+    items: list[dict[str, str]] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise PresentationError(
+                f"technical_advice.{key}[{index}] must be an object"
+            )
+        normalized: dict[str, str] = {}
+        for field in required:
+            value = item.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise PresentationError(
+                    f"technical_advice.{key}[{index}].{field} must be non-empty"
+                )
+            normalized[field] = _inline(value)
+        items.append(normalized)
+    return items
+
+
+def render_action_plan(snapshot: dict[str, Any]) -> str:
+    """Show only the next checkpoint recorded in the case evidence."""
+
+    current = snapshot["current"]
+    return "\n".join(
+        [
+            "### Action Plan",
+            "",
+            f"- **Required Action / Next Step:** {_inline(current['next_action'])}",
+            (
+                f"- **Owner / Due:** {_inline(current['next_action_owner'])} / "
+                f"{_inline(current['next_due'])}"
+            ),
+        ]
+    )
+
+
+def render_technical_advice(snapshot: dict[str, Any]) -> str:
+    """Keep proposed technical work separate from recorded case commitments."""
+
+    diagnostics = _technical_advice_items(snapshot, "immediate_diagnostics")
+    solutions = _technical_advice_items(snapshot, "potential_solutions")
+    long_term = _technical_advice_items(snapshot, "long_term_steps")
     lines = [
-        f"# Case Card - {snapshot['case_id']}",
+        "## Technical Advice",
+        "",
+        "These are proposed steps based on the available evidence; they are not completed work or recorded commitments.",
+        "",
+        "### Immediate diagnostic steps",
+        "",
+    ]
+    if diagnostics:
+        lines.extend(
+            f"- **Recommended diagnostic:** {item['action']} **Basis:** {item['basis']}"
+            for item in diagnostics
+        )
+    else:
+        lines.append("- unknown — no additional case-specific diagnostic step is supported yet.")
+    lines.extend(["", "### Potential solutions (conditional)", ""])
+    if solutions:
+        lines.extend(
+            f"- If {item['condition'].rstrip('.')}, consider this solution: "
+            f"{item['action'].rstrip('.')}. **Basis:** {item['basis']}"
+            for item in solutions
+        )
+    else:
+        lines.append("- unknown — no case-specific solution is supported yet.")
+    lines.extend(["", "### Long-term next steps", ""])
+    if long_term:
+        lines.extend(
+            f"- **Recommended follow-up:** {item['action']} **Basis:** {item['basis']}"
+            for item in long_term
+        )
+    else:
+        lines.append("- unknown — no long-term case-specific action is supported yet.")
+    return "\n".join(lines)
+
+
+def render_case_card(
+    snapshot: dict[str, Any], record_path: str, heading: str = "## Case Card"
+) -> str:
+    current = snapshot["current"]
+    lines = [
+        heading,
         "",
         (
             f"**Status:** {_inline(current['official_status'])} | "
@@ -163,16 +416,21 @@ def render_case_card(snapshot: dict[str, Any], record_path: str) -> str:
             f"**Mitigation:** {_inline(current['mitigation_state'])}"
         ),
         "",
-        f"- **Primary problem:** {_inline(current['primary_problem'])}",
-        f"- **Confirmed:** {_inline(current['confirmed_finding'])}",
+        f"- **Reported Problem / Symptom:** {_inline(current['primary_problem'])}",
+        (
+            "- **Current State:** "
+            f"{_inline(current.get('current_progress') or 'unknown')}"
+        ),
+        f"- **Confirmed finding:** {_inline(current['confirmed_finding'])}",
         (
             "- **Unproven or contradicted:** "
             f"{_inline(current['unproven_or_contradicted'])}"
         ),
         f"- **Production outcome:** {_inline(current['production_outcome'])}",
         f"- **Current blocker:** {_inline(current['current_blocker'])}",
-        f"- **Next checkpoint:** {_inline(checkpoint)}",
         f"- **Record:** [record.md]({record_path})",
+        "",
+        render_action_plan(snapshot),
     ]
     return "\n".join(lines)
 
@@ -273,9 +531,15 @@ def _technical_table_lines(
 
 
 def render_technical_spec(snapshot: dict[str, Any], record_path: str) -> str:
-    lines = [f"# Technical Specification - {snapshot['case_id']}", ""]
+    lines = [
+        render_case_card(snapshot, record_path),
+        "",
+        render_technical_advice(snapshot),
+        "",
+        "## Technical Specification",
+        "",
+    ]
     lines.extend(_technical_table_lines(snapshot))
-    lines.extend(["", f"**Record:** [record.md]({record_path})"])
     return "\n".join(lines)
 
 
@@ -287,12 +551,16 @@ def render_standard(
     show_delta: bool = False,
 ) -> str:
     lines: list[str] = []
-    case_card = render_case_card(snapshot, record_path)
+    case_card = render_case_card(
+        snapshot,
+        record_path,
+        heading="## Current Case Card" if show_delta and _has_material_delta(delta) else "## Case Card",
+    )
     if show_delta and _has_material_delta(delta):
         new_evidence = _new_evidence_items(delta or {})
         unchanged_items = (delta or {}).get("unchanged_blockers", [])
         delta_lines = [
-            f"# Case Review Update - {snapshot['case_id']}",
+            "## Changed Since Last Review",
             "",
             f"- **Changed since last review:** {_changed_field_summary(delta or {})}",
             (
@@ -309,12 +577,8 @@ def render_standard(
             ),
         ]
         lines.append("\n".join(delta_lines))
-        case_card = case_card.replace(
-            f"# Case Card - {snapshot['case_id']}",
-            "## Current Case Card",
-            1,
-        )
     lines.append(case_card)
+    lines.append(render_technical_advice(snapshot))
     lines.append(render_progress_flow_section(snapshot))
     if visual not in ("none", "progress-flow"):
         section = render_visual_section(snapshot, visual)
@@ -326,7 +590,7 @@ def render_standard(
         _technical_table_lines(snapshot, STANDARD_TECHNICAL_FIELDS)
     )
     lines.append("\n".join(technical_lines))
-    milestones = snapshot.get("milestones", [])
+    milestones = _chronological_items(snapshot.get("milestones", []))
     if milestones:
         milestone_lines = ["## Progress Milestones", ""]
         milestone_lines.extend(
@@ -417,6 +681,12 @@ def _timeline_lines(snapshot: dict[str, Any]) -> list[str]:
     timeline = snapshot.get("timeline")
     if not isinstance(timeline, list):
         raise PresentationError("timeline must be a list")
+    if not timeline:
+        return [
+            "## Timeline",
+            "",
+            "unknown — no evidence-backed timeline event is available for display.",
+        ]
     lines = [
         "## Timeline",
         "",
@@ -426,7 +696,7 @@ def _timeline_lines(snapshot: dict[str, Any]) -> list[str]:
     lines.extend(
         f"| {_cell(item['date'])} | {_cell(item['by'])} | "
         f"{_cell(item['source'])} | {_cell(item['change'])} |"
-        for item in timeline
+        for item in _chronological_items(timeline)
     )
     return lines
 
@@ -447,36 +717,19 @@ def _evidence_register_lines(
         f"| {_cell(item['ref'])} | {_cell(item['date'])} | "
         f"{_cell(item['source'])} | {_cell(item['evidence'])} | "
         f"{_cell(item['supports'])} |"
-        for item in evidence
+        for item in _chronological_items(evidence)
     )
     return lines
 
 
 def render_full(snapshot: dict[str, Any], record_path: str) -> str:
-    current = snapshot["current"]
     lineage = snapshot.get("problem_lineage")
     if not isinstance(lineage, dict):
         raise PresentationError("problem_lineage must be an object")
     lines = [
-        f"# Full Case Review - {snapshot['case_id']}",
+        render_case_card(snapshot, record_path, heading="## Current Case Card"),
         "",
-        (
-            f"**Status:** {_inline(current['official_status'])} | "
-            f"**RCA:** {_inline(current['rca_state'])} | "
-            f"**Mitigation:** {_inline(current['mitigation_state'])}"
-        ),
-        f"**Record:** [record.md]({record_path})",
-        "",
-        "## Current Case Card",
-        "",
-        f"- **Primary problem:** {_inline(current['primary_problem'])}",
-        f"- **Confirmed:** {_inline(current['confirmed_finding'])}",
-        (
-            "- **Unproven or contradicted:** "
-            f"{_inline(current['unproven_or_contradicted'])}"
-        ),
-        f"- **Production outcome:** {_inline(current['production_outcome'])}",
-        f"- **Current blocker:** {_inline(current['current_blocker'])}",
+        render_technical_advice(snapshot),
         "",
         render_progress_flow_section(snapshot),
         "",
@@ -487,44 +740,30 @@ def render_full(snapshot: dict[str, Any], record_path: str) -> str:
         "| Dimension | Value |",
         "|---|---|",
     ]
-    lineage_fields = (
-        ("original_objective", "Original objective"),
-        ("intended_action", "Intended action"),
-        ("blocker", "Blocker"),
-        ("working_hypotheses", "Working hypotheses"),
-        ("corrected_finding", "Corrected finding"),
-        ("implemented_action", "Implemented action"),
-        ("outcome", "Outcome"),
-        ("secondary_problems", "Secondary problems"),
-    )
-    for key, label in lineage_fields:
+    lineage_labels = {
+        "original_objective": "Original objective",
+        "intended_action": "Intended action",
+        "blocker": "Blocker",
+        "working_hypotheses": "Working hypotheses",
+        "corrected_finding": "Corrected finding",
+        "implemented_action": "Implemented action",
+        "outcome": "Outcome",
+        "secondary_problems": "Secondary problems",
+    }
+    for key in PROBLEM_LINEAGE_FIELDS:
+        label = lineage_labels[key]
         lines.append(f"| {label} | {_cell(_lineage_value(lineage.get(key)))} |")
     lines.extend(["", "## Technical Specification", ""])
     lines.extend(_technical_table_lines(snapshot))
-    milestones = snapshot.get("milestones", [])
+    milestones = _chronological_items(snapshot.get("milestones", []))
     if milestones:
         lines.extend(["", "## Progress Milestones", ""])
         lines.extend(
             f"- **{_inline(item['date'])}:** {_inline(item['change'])}"
             for item in milestones
         )
-    timeline = snapshot.get("timeline")
-    if not isinstance(timeline, list):
-        raise PresentationError("timeline must be a list")
-    lines.extend(
-        [
-            "",
-            "## Timeline",
-            "",
-            "| Date | By | Source | What changed |",
-            "|---|---|---|---|",
-        ]
-    )
-    lines.extend(
-        f"| {_cell(item['date'])} | {_cell(item['by'])} | "
-        f"{_cell(item['source'])} | {_cell(item['change'])} |"
-        for item in timeline
-    )
+    lines.append("")
+    lines.extend(_timeline_lines(snapshot))
     evidence = snapshot.get("evidence_register")
     if not isinstance(evidence, list) or not evidence:
         raise PresentationError("evidence_register must contain evidence")
@@ -541,7 +780,7 @@ def render_full(snapshot: dict[str, Any], record_path: str) -> str:
         f"| {_cell(item['ref'])} | {_cell(item['date'])} | "
         f"{_cell(item['source'])} | {_cell(item['evidence'])} | "
         f"{_cell(item['supports'])} |"
-        for item in evidence
+        for item in _chronological_items(evidence)
     )
     return "\n".join(lines)
 
@@ -559,13 +798,25 @@ def _mermaid_label(value: Any) -> str:
 def render_progress_flow_section(snapshot: dict[str, Any]) -> str:
     visual = snapshot.get("visual_context")
     transitions = visual.get("transitions") if isinstance(visual, dict) else None
+    if isinstance(transitions, list):
+        # Keep the authored investigation sequence when any step lacks a date.
+        # Sorting just the dated subset would move an undated middle step to the end.
+        transitions = (
+            _chronological_items(transitions)
+            if all(
+                isinstance(item, dict) and _date_sort_key(item.get("date")) is not None
+                for item in transitions
+            )
+            else list(transitions)
+        )
     if not isinstance(transitions, list) or len(transitions) < 2:
-        milestones = snapshot.get("milestones")
+        milestones = _chronological_items(snapshot.get("milestones", []))
         if isinstance(milestones, list) and len(milestones) >= 2:
             transitions = [
                 {
                     "label": f"{_inline(item['date'])}: {_inline(item['change'])}",
                     "state": "OBSERVED",
+                    "date": item["date"],
                 }
                 for item in milestones
             ]
@@ -592,10 +843,18 @@ def render_progress_flow_section(snapshot: dict[str, Any]) -> str:
                     "progress flow requires at least two transitions, milestones, or lineage states"
                 )
     bounded = transitions if len(transitions) <= 7 else transitions[:3] + transitions[-4:]
+    fully_dated = all(
+        isinstance(item, dict) and _date_sort_key(item.get("date")) is not None
+        for item in bounded
+    )
     lines = [
         "## Investigation Progress",
         "",
-        "Sequence of investigation states; arrows show chronology, not causal proof.",
+        (
+            "Dated investigation states are chronological; arrows do not prove causation."
+            if fully_dated
+            else "Investigation states follow the documented sequence; undated steps have unknown timing, and arrows do not prove causation."
+        ),
         "",
         "```mermaid",
         "flowchart TD",
@@ -605,7 +864,7 @@ def render_progress_flow_section(snapshot: dict[str, Any]) -> str:
             raise PresentationError("each transition requires a label")
         lines.append(f'    N{index}["{_mermaid_label(item["label"])}"]')
     for index in range(1, len(bounded)):
-        lines.append(f"    N{index} -->|next observed state| N{index + 1}")
+        lines.append(f"    N{index} -->|next documented step| N{index + 1}")
     lines.extend(
         [
             "    classDef observed fill:#dbeafe,stroke:#2563eb,color:#0f172a;",
@@ -663,7 +922,7 @@ def select_visual(snapshot: dict[str, Any]) -> str:
 
 def render_event_comparison(snapshot: dict[str, Any]) -> str:
     context = snapshot.get("visual_context", {})
-    recurrences = context.get("recurrences", [])
+    recurrences = _chronological_items(context.get("recurrences", []))
     lines = [
         "## Event Comparison",
         "",
@@ -783,6 +1042,9 @@ def validate_snapshot(snapshot: dict[str, Any]) -> None:
     for field in CURRENT_PRESENTATION_FIELDS:
         if not _inline(current.get(field, "")):
             raise PresentationError(f"snapshot.current.{field} is required")
+    for field in ("impact", "current_progress"):
+        if field in current and not _inline(current[field]):
+            raise PresentationError(f"snapshot.current.{field} must be non-empty")
     render_full(snapshot, "")
     visual = select_visual(snapshot)
     if visual != "none":
@@ -801,64 +1063,45 @@ def render_review(
     mode = select_mode(request_text, review_count, delta)
     visual = select_visual(snapshot)
     if mode == "flow":
-        selected = "progress-flow"
-        section = render_progress_flow_section(snapshot)
-        markdown = "\n\n".join(
+        visual = "progress-flow"
+        body = "\n\n".join(
             [
-                f"# Investigation View - {snapshot['case_id']}",
-                section,
-                f"**Record:** [record.md]({record_path})",
+                render_case_card(snapshot, record_path),
+                render_technical_advice(snapshot),
+                render_progress_flow_section(snapshot),
             ]
         )
-        return {
-            "mode": mode,
-            "visual": selected,
-            "markdown": markdown,
-        }
-    if mode == "full":
-        return {
-            "mode": mode,
-            "visual": "none",
-            "markdown": render_full(snapshot, record_path),
-        }
-    if mode == "technical":
-        return {
-            "mode": mode,
-            "visual": "none",
-            "markdown": render_technical_spec(snapshot, record_path),
-        }
-    if mode == "compact":
-        markdown = render_case_card(snapshot, record_path)
+    elif mode == "full":
+        visual = "none"
+        body = render_full(snapshot, record_path)
+    elif mode == "technical":
+        visual = "none"
+        body = render_technical_spec(snapshot, record_path)
+    elif mode == "compact":
+        body = "\n\n".join(
+            [render_case_card(snapshot, record_path), render_technical_advice(snapshot)]
+        )
         section = render_visual_section(snapshot, visual)
         if section:
-            markdown += "\n\n" + section
-        return {
-            "mode": mode,
-            "visual": visual,
-            "markdown": markdown,
-        }
-    if mode == "follow-up":
-        markdown = render_standard(
+            body += "\n\n" + section
+    elif mode == "follow-up":
+        body = render_standard(
             snapshot,
             record_path,
             visual,
             delta,
             show_delta=True,
         )
-        return {
-            "mode": mode,
-            "visual": visual,
-            "markdown": markdown,
-        }
-    markdown = render_standard(
-        snapshot,
-        record_path,
-        visual,
-        delta,
-        show_delta=review_count > 1,
-    )
+    else:
+        body = render_standard(
+            snapshot,
+            record_path,
+            visual,
+            delta,
+            show_delta=review_count > 1,
+        )
     return {
-        "mode": "standard",
+        "mode": mode,
         "visual": visual,
-        "markdown": markdown,
+        "markdown": render_executive_summary(snapshot) + "\n\n" + body,
     }

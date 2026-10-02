@@ -171,7 +171,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
             write_attestation(
                 fixture / "tools/gmail/cloud/GmailMcpBridge.gs",
                 fixture / "tools/gmail/cloud/bridge_release_attestation.json",
-                "1.11.0",
+                "1.12.0",
                 "2026-09-09T00:00:00Z",
             )
             dry_run = subprocess.run(
@@ -192,7 +192,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 check=False,
             )
         self.assertEqual(0, dry_run.returncode, dry_run.stderr)
-        self.assertIn("Ref:         v1.11.0", dry_run.stdout)
+        self.assertIn("Ref:         v1.12.0", dry_run.stdout)
         self.assertIn("mcp==1.28.1", dry_run.stdout)
         self.assertIn("Planned stage: new marketplace add", dry_run.stdout)
         self.assertIn("Planned stage: new plugin add", dry_run.stdout)
@@ -204,7 +204,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
         overview = readme.index("Overview")
         self.assertLess(bootstrap, overview)
         self.assertIn("Codex plugin marketplace, not a standalone skill", readme)
-        self.assertIn("git clone --depth 1 --branch v1.11.0", readme)
+        self.assertIn("git clone --depth 1 --branch v1.12.0", readme)
         self.assertIn("git describe --exact-match --tags HEAD", readme)
         self.assertNotIn("install-codex.ps1 -CloudBridgeVerified", readme)
 
@@ -219,20 +219,20 @@ class CodexPluginPackagingTests(unittest.TestCase):
 
         self.assertFalse((ROOT / "SKILL.md").exists())
 
-    def test_docs_publish_the_v1_11_0_stable_url_install_contract(self):
+    def test_docs_publish_the_v1_12_0_stable_url_install_contract(self):
         for path in URL_INSTALL_DOCS:
             with self.subTest(document=path.name):
                 text = path.read_text(encoding="utf-8-sig")
-                self.assertIn("v1.11.0", text)
+                self.assertIn("v1.12.0", text)
                 self.assertIn("install-codex.ps1", text)
                 self.assertNotIn("Before either local installation, deploy", text)
-                self.assertIn("git clone --depth 1 --branch v1.11.0", text)
+                self.assertIn("git clone --depth 1 --branch v1.12.0", text)
                 self.assertIn("git describe --exact-match --tags HEAD", text)
                 self.assertNotRegex(
                     text,
                     re.compile(
-                        r"v1\.11\.0.{0,80}(?:unreleased|not published|do not (?:install|clone|run))"
-                        r"|(?:unreleased|not published|do not (?:install|clone|run)).{0,80}v1\.11\.0",
+                        r"v1\.12\.0.{0,80}(?:unreleased|not published|do not (?:install|clone|run))"
+                        r"|(?:unreleased|not published|do not (?:install|clone|run)).{0,80}v1\.12\.0",
                         re.IGNORECASE | re.DOTALL,
                     ),
                 )
@@ -246,22 +246,26 @@ class CodexPluginPackagingTests(unittest.TestCase):
         self.assertIn("production Case ID", install_contract)
 
     def test_release_docs_gate_main_tag_url_acceptance_and_tagged_zip_in_order(self):
-        publication_docs = (AGENTS, IMPLEMENTATION_PLAN, RELEASE_CHECKLIST)
-        ordered_markers = (
-            "Push the candidate branch and verify its exact remote SHA",
-            "Run explicit-SHA clean-profile acceptance",
-            "git push origin HEAD:main",
-            "$RemoteMainSha",
-            "Verify the default-branch README",
-            "git tag -a v1.11.0 $CandidateSha",
-            "Run URL-only acceptance",
-            "Build and verify the release ZIP",
-            "gh release create v1.11.0",
+        publication_docs = (
+            (AGENTS, "v1.12.0"),
+            (IMPLEMENTATION_PLAN, "v1.11.0"),
+            (RELEASE_CHECKLIST, "v1.12.0"),
         )
-        for path in publication_docs:
+        for path, release_tag in publication_docs:
             with self.subTest(document=path.name):
                 content = re.sub(
                     r"\s+", " ", path.read_text(encoding="utf-8-sig")
+                )
+                ordered_markers = (
+                    "Push the candidate branch and verify its exact remote SHA",
+                    "Run explicit-SHA clean-profile acceptance",
+                    "git push origin HEAD:main",
+                    "$RemoteMainSha",
+                    "Verify the default-branch README",
+                    f"git tag -a {release_tag} $CandidateSha",
+                    "Run URL-only acceptance",
+                    "Build and verify the release ZIP",
+                    f"gh release create {release_tag}",
                 )
                 positions = []
                 for marker in ordered_markers:
@@ -271,7 +275,7 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 self.assertIn("git clone --depth 1 --branch main", content)
                 self.assertIn("$StableBootstrap", content)
                 self.assertIn("never force", content)
-                self.assertIn("refs/tags/v1.11.0^{}", content)
+                self.assertIn(f"refs/tags/{release_tag}^{{}}", content)
                 self.assertIn("fresh, clean, detached checkout", content)
                 self.assertIn("git clone --no-checkout", content)
                 self.assertIn("checkout --detach", content)
@@ -294,7 +298,12 @@ class CodexPluginPackagingTests(unittest.TestCase):
         self.assertNotIn("Build the ZIP strictly from `release-manifest.txt`", checklist)
 
     def test_release_commands_publish_the_archive_built_by_the_tagged_checkout(self):
-        for path in (AGENTS, IMPLEMENTATION_PLAN, RELEASE_CHECKLIST):
+        publication_docs = (
+            (AGENTS, "v1.12.0"),
+            (IMPLEMENTATION_PLAN, "v1.11.0"),
+            (RELEASE_CHECKLIST, "v1.12.0"),
+        )
+        for path, release_tag in publication_docs:
             with self.subTest(document=path.name):
                 content = path.read_text(encoding="utf-8-sig")
                 build_start = content.index("Build and verify the release ZIP")
@@ -304,13 +313,18 @@ class CodexPluginPackagingTests(unittest.TestCase):
                 assignment = re.search(r"(?m)^\s*(\$ArchivePath)\s*=", build)
                 self.assertIsNotNone(assignment)
                 archive_variable = assignment.group(1)
+                self.assertRegex(build, r"(?m)^\s*\$ReleaseCheckout\s*=")
+                self.assertLess(
+                    build.index("$ReleaseCheckout ="),
+                    build.index("git clone --no-checkout"),
+                )
                 if path != AGENTS:
                     self.assertIn(
                         f"python - $ReleaseCheckout {archive_variable}",
                         build,
                     )
                 release_command = re.search(
-                    r"(?m)^\s*gh release create v1\.11\.0\s+(\S+)",
+                    rf"(?m)^\s*gh release create {re.escape(release_tag)}\s+(\S+)",
                     publish,
                 )
                 self.assertIsNotNone(release_command)

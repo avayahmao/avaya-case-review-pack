@@ -28,14 +28,14 @@ Use the exact AI-agent request below. This repository is a Codex plugin marketpl
 install this plugin: https://github.com/avayahmao/avaya-case-review-pack
 ```
 
-The stable v1.11.0 contract uses a unique temporary checkout:
+The stable v1.12.0 contract uses a unique temporary checkout:
 
 ```text
-git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
 git describe --exact-match --tags HEAD
 ```
 
-The tag check must return `v1.11.0`. Inspect `INSTALL.md`, then run the no-flag
+The tag check must return `v1.12.0`. Inspect `INSTALL.md`, then run the no-flag
 installer for the selected host. End users do not deploy the Gmail Apps Script
 Web App or provide a production Case ID during installation. Only SSO/MFA may
 pause installation. These instructions do not claim the tag, GitHub release,
@@ -55,7 +55,7 @@ entry point.
 
 ### Step-by-Step Execution
 
-Follow the v1.11.0 installer instructions only after exact-tag verification.
+Follow the v1.12.0 installer instructions only after exact-tag verification.
 
 > [!TIP]
 > The bootstrap provides the supported no-flag installer invocation.
@@ -132,16 +132,18 @@ To request a case review for any Siebel SR or ServiceNow INC, simply ask Antigra
 
 ### What the Generated Case Review Contains
 
-Every successful review first creates a **structured ReviewSnapshot v2** from the complete evidence corpus. It preserves the whole-case storyline and problem lineage from the primary problem through blockers, corrections, outcome, and secondary problems, plus the fixed proof-state Technical Specification, milestones, timeline, Evidence Register, and evidence-only visual context before any chat presentation is rendered.
+Every successful review first creates a **structured ReviewSnapshot v2** from the complete evidence corpus. It preserves customer impact, concrete investigation progress, the recorded next action, separate technical advice, the whole-case storyline and problem lineage, the fixed proof-state Technical Specification, milestones, timeline, Evidence Register, and evidence-only visual context before any chat presentation is rendered.
+
+Every successful mode opens with a concise four-line **Executive Summary**: the first line combines official status with a brief reported issue from `current.primary_problem`; the remaining lines give customer or service impact, the most important confirmed finding, and production outcome. Unsupported values are `unknown`. NotebookLM validation is included only when an actual case-specific result is available and substantiated by evidence; it is not a required source. The **Case Card** then gives **Reported Problem / Symptom** and **Current State**, including work completed, trace or log findings, and remaining validation gaps. Its **Action Plan** contains only the documented **Required Action / Next Step**, owner, and due date. A separate **Technical Advice** section gives recommended immediate diagnostics, conditional potential solutions, and long-term follow-up. Each recommendation names its evidence or validation gap and does not imply an existing commitment or implemented action.
 
 The deterministic router then selects one mode:
 
-1. **standard**: Default investigation-complete first or unchanged review. It includes the Case Card, Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and an optional secondary diagnostic visual.
-2. **compact**: Explicit compact request only. It returns the Case Card without replaying the complete investigation.
-3. **follow-up**: Automatic when a prior successful review exists and material state, ownership, or evidence changed. Computed changes appear first, followed by the same investigation-complete core as standard.
-4. **technical**: A fixed **Technical Specification** table using Field / Proof state / Value / Evidence basis. `NOT OBSERVED`, `NOT COLLECTED`, `UNKNOWN`, and `NOT APPLICABLE` remain distinct.
-5. **flow**: An investigation visual requested by the user. Chronology arrows do not claim causality and Mermaid flows are limited to seven nodes.
-6. **full**: Explicit on-demand structured report. This is the only mode that renders the complete Timeline and **Appendix A — Evidence Register**, with the Evidence Register last.
+1. **standard**: Default investigation-complete first or unchanged review. After the summary, Case Card, and Technical Advice, it includes the Investigation Progress flow, Causal Assessment, six key Technical Specification fields, the complete substantive Timeline, complete dynamic Evidence Register, and an optional secondary diagnostic visual.
+2. **compact**: Explicit compact request only. It retains the summary, Case Card with recorded Action Plan, and Technical Advice without replaying the complete investigation.
+3. **follow-up**: Automatic when a prior successful review exists and material state, ownership, or evidence changed. Computed changes appear after the summary, followed by the Current Case Card, Technical Advice, and the same investigation-complete core as standard.
+4. **technical**: Adds a fixed **Technical Specification** table after the summary, Case Card, and Technical Advice, using Field / Proof state / Value / Evidence basis. `NOT OBSERVED`, `NOT COLLECTED`, `UNKNOWN`, and `NOT APPLICABLE` remain distinct.
+5. **flow**: Adds the requested investigation visual after the summary, Case Card, and Technical Advice. Chronology arrows do not claim causality and Mermaid flows are limited to seven nodes.
+6. **full**: Explicit on-demand structured report with the summary, Current Case Card, and Technical Advice first. It retains the complete Timeline, as standard and follow-up do, and uniquely renders the Evidence Register as **Appendix A**, with that appendix last.
 
 The Investigation Progress flow is always present in standard/follow-up and uses chronology arrows, never causal arrows. The router may add one secondary evidence-backed event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint. It never invents a causal edge or component handoff, and a Claim-Evidence Matrix always retains all four columns.
 
@@ -149,7 +151,7 @@ The presenter writes canonical `chat-output.md` plus `chat-output.sha256`. The f
 
 All dated milestones, timeline rows, and evidence rows are ordered oldest to newest; undated entries follow dated entries.
 
-Mitigation maturity remains Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Risk and action judgments remain with the Manager. With no verifiable case-specific evidence, the answer is exactly `unknown` and the record is unchanged.
+Mitigation maturity remains Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active. Risk ranking remains with the Manager; recommended diagnostic and solution steps state their basis and conditions. With no verifiable case-specific evidence, the answer is exactly `unknown` and the record is unchanged.
 
 ### Durable Follow-up Record
 

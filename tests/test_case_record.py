@@ -67,6 +67,11 @@ def payload(
             "priority": "P2",
             "assignee": assignee,
             "primary_problem": "Calls fail on node 2",
+            "impact": "Call attempts failed on node 2; wider customer impact is unknown.",
+            "current_progress": (
+                "The failure was reproduced on node 2; a same-event trace "
+                "has not yet been collected."
+            ),
             "confirmed_finding": "Failure is isolated to node 2",
             "unproven_or_contradicted": "Database causality is not proven",
             "rca_state": rca_state,
@@ -150,6 +155,27 @@ def presentation_payload():
                 "supports": "Primary problem",
             }
         ],
+        "technical_advice": {
+            "immediate_diagnostics": [
+                {
+                    "action": "Collect and correlate a same-event trace from node 2.",
+                    "basis": "The failure was reproduced on node 2 without a trace.",
+                }
+            ],
+            "potential_solutions": [
+                {
+                    "action": "correct the node configuration",
+                    "condition": "the trace confirms a node-specific configuration mismatch",
+                    "basis": "The current record does not establish configuration causality.",
+                }
+            ],
+            "long_term_steps": [
+                {
+                    "action": "Verify sustained call success after the supported fix.",
+                    "basis": "The durable production outcome remains unknown.",
+                }
+            ],
+        },
         "visual_context": {},
     }
 
@@ -286,7 +312,10 @@ class CaseRecordTests(unittest.TestCase):
             artifact = case_dir / "chat-output.md"
             digest_file = case_dir / "chat-output.sha256"
             self.assertEqual(completed.stdout, artifact.read_bytes())
-            self.assertEqual(1, completed.stdout.count(b"# Case Card - 1-23700000001"))
+            self.assertEqual(1, completed.stdout.count(b"# Case Review - 1-23700000001"))
+            self.assertIn(b"## Executive Summary", completed.stdout)
+            self.assertIn(b"### Action Plan", completed.stdout)
+            self.assertIn(b"## Technical Advice", completed.stdout)
             self.assertEqual(
                 f"{hashlib.sha256(completed.stdout).hexdigest()}  chat-output.md\n",
                 digest_file.read_text(encoding="ascii"),
@@ -364,6 +393,81 @@ class CaseRecordTests(unittest.TestCase):
                 )
 
             self.assertEqual(before, durable_bytes(temporary))
+
+    def test_finalize_rejects_legacy_markdown_only_follow_up_without_mutation(self):
+        with TemporaryDirectory() as temporary:
+            case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+            follow_up = payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+                status="Closed - Complete",
+            )
+            follow_up["full_review_markdown"] = (
+                "# Case Review - 1-23700000001\n\n**Status:** In Progress"
+            )
+
+            with self.assertRaisesRegex(
+                case_record.RecordError, "current structured presentation"
+            ):
+                case_record.finalize_case_record(
+                    follow_up,
+                    "1-23700000001",
+                    "Review 1-23700000001 again",
+                    temporary,
+                )
+
+            self.assertEqual(before, durable_bytes(temporary))
+
+    def test_presentation_cannot_override_validated_case_or_current(self):
+        with TemporaryDirectory() as temporary:
+            first = case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            before = durable_bytes(temporary)
+
+            for reserved, injected in (
+                ("case_id", "1-23700000002"),
+                (
+                    "current",
+                    {
+                        **structured_payload()["current"],
+                        "official_status": "Resolved",
+                        "primary_problem": "A forged report-only problem",
+                    },
+                ),
+            ):
+                with self.subTest(reserved=reserved):
+                    follow_up = structured_payload(
+                        reviewed_at="2026-08-21T01:00:00Z",
+                        snapshot="2026-08-21T00:59:00Z",
+                    )
+                    follow_up["presentation"][reserved] = injected
+
+                    with self.assertRaisesRegex(
+                        case_record.RecordError,
+                        rf"presentation\.{reserved} may not override",
+                    ):
+                        case_record.finalize_case_record(
+                            follow_up,
+                            "1-23700000001",
+                            "Review 1-23700000001 again",
+                            temporary,
+                        )
+                    self.assertEqual(before, durable_bytes(temporary))
+
+            stored = json.loads(Path(first["record_json"]).read_text(encoding="utf-8"))
+            self.assertEqual(stored["current"], stored["review_snapshot"]["current"])
+            self.assertIn("**Status:** In Progress", first["markdown"])
+            self.assertNotIn("A forged report-only problem", first["markdown"])
 
     def test_finalize_matches_update_then_present_byte_for_byte(self):
         with TemporaryDirectory() as temporary:
@@ -521,7 +625,12 @@ class CaseRecordTests(unittest.TestCase):
             )
 
             self.assertEqual("standard", result["mode"])
-            self.assertIn("# Case Card - 1-23700000001", result["markdown"])
+            self.assertTrue(result["markdown"].startswith("# Case Review - 1-23700000001"))
+            self.assertIn("## Executive Summary", result["markdown"])
+            self.assertIn("Reported Problem / Symptom", result["markdown"])
+            self.assertIn("Current State", result["markdown"])
+            self.assertIn("### Action Plan", result["markdown"])
+            self.assertIn("## Technical Advice", result["markdown"])
             self.assertIn("## Investigation Progress", result["markdown"])
             self.assertIn("## Causal Assessment", result["markdown"])
             self.assertIn("## Timeline", result["markdown"])
@@ -562,7 +671,7 @@ class CaseRecordTests(unittest.TestCase):
                 f"{expected_digest}  chat-output.md\n",
                 digest_file.read_text(encoding="ascii"),
             )
-            self.assertTrue(completed.stdout.startswith("# Case Card - 1-23700000001"))
+            self.assertTrue(completed.stdout.startswith("# Case Review - 1-23700000001"))
             self.assertNotIn('"markdown"', completed.stdout)
 
     def test_verify_final_accepts_exact_output_and_blocks_drift(self):
@@ -660,6 +769,80 @@ class CaseRecordTests(unittest.TestCase):
             )
             self.assertFalse(paths["json"].exists())
 
+    def test_current_impact_and_progress_are_required(self):
+        for field in ("impact", "current_progress"):
+            with self.subTest(field=field):
+                value = structured_payload()
+                value["current"].pop(field)
+                with self.assertRaisesRegex(case_record.RecordError, field):
+                    case_record.validate_update_payload(value)
+
+    def test_structured_technical_advice_requires_evidence_based_item_fields(self):
+        missing_advice = structured_payload()
+        missing_advice["presentation"].pop("technical_advice")
+        with self.assertRaisesRegex(case_record.RecordError, "technical_advice"):
+            case_record.validate_update_payload(missing_advice)
+
+        for list_name, missing_field in (
+            ("immediate_diagnostics", "basis"),
+            ("potential_solutions", "condition"),
+            ("long_term_steps", "action"),
+        ):
+            with self.subTest(list_name=list_name, missing_field=missing_field):
+                value = structured_payload()
+                value["presentation"]["technical_advice"][list_name][0].pop(
+                    missing_field
+                )
+                with self.assertRaises(case_record.RecordError):
+                    case_record.validate_update_payload(value)
+
+        empty = structured_payload()
+        empty["current"]["impact"] = "unknown"
+        empty["presentation"]["technical_advice"] = {
+            "immediate_diagnostics": [],
+            "potential_solutions": [],
+            "long_term_steps": [],
+        }
+        normalized = case_record.validate_update_payload(empty)
+        self.assertEqual("unknown", normalized["current"]["impact"])
+        self.assertEqual(
+            [],
+            normalized["presentation"]["technical_advice"]["potential_solutions"],
+        )
+
+    def test_structured_snapshot_normalizes_underscored_proof_states(self):
+        structured = structured_payload()
+        structured["presentation"]["technical_spec"]["evidence_gaps"]["state"] = (
+            "NOT_COLLECTED"
+        )
+        structured["presentation"]["visual_context"] = {
+            "hypotheses": [
+                {
+                    "claim": "One",
+                    "state": "NOT_TESTED",
+                    "evidence": "E1",
+                    "validation": "Test one",
+                },
+                {
+                    "claim": "Two",
+                    "state": "SUSPECTED",
+                    "evidence": "E1",
+                    "validation": "Test two",
+                },
+            ]
+        }
+
+        normalized = case_record.validate_update_payload(structured)
+
+        self.assertEqual(
+            "NOT COLLECTED",
+            normalized["presentation"]["technical_spec"]["evidence_gaps"]["state"],
+        )
+        self.assertEqual(
+            "NOT TESTED",
+            normalized["presentation"]["visual_context"]["hypotheses"][0]["state"],
+        )
+
     def test_follow_up_updates_current_state_and_preserves_history(self):
         with TemporaryDirectory() as temporary:
             case_record.update_case_record(payload(), temporary)
@@ -680,6 +863,89 @@ class CaseRecordTests(unittest.TestCase):
             self.assertEqual(
                 ["Configuration mismatch was found on node 2."],
                 result["delta"]["new_evidence"],
+            )
+
+    def test_legacy_update_after_structured_review_cannot_present_stale_snapshot(self):
+        with TemporaryDirectory() as temporary:
+            case_record.finalize_case_record(
+                structured_payload(),
+                "1-23700000001",
+                "Review 1-23700000001",
+                temporary,
+            )
+            follow_up = payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+                status="Resolved",
+            )
+            follow_up["full_review_markdown"] = (
+                "# Case Review - 1-23700000001\n\n**Status:** Resolved"
+            )
+            result = case_record.update_case_record(follow_up, temporary)
+            stored = json.loads(Path(result["record_json"]).read_text(encoding="utf-8"))
+
+            self.assertEqual("Resolved", stored["current"]["official_status"])
+            self.assertEqual(follow_up["full_review_markdown"], stored["current_report_markdown"])
+            self.assertEqual(2, len(stored["reviews"]))
+            with self.assertRaisesRegex(
+                case_record.RecordError, "structured v2 review before presentation"
+            ):
+                case_record.present_case_record(
+                    "1-23700000001", "Review 1-23700000001 again", temporary
+                )
+
+    def test_impact_change_is_material_follow_up(self):
+        with TemporaryDirectory() as temporary:
+            case_record.update_case_record(structured_payload(), temporary)
+            follow_up = structured_payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+            )
+            follow_up["current"]["impact"] = (
+                "Customer confirmed call failures across both production nodes."
+            )
+            result = case_record.update_case_record(follow_up, temporary)
+            rendered = case_record.present_case_record(
+                "1-23700000001", "Review 1-23700000001 again", temporary
+            )
+
+            self.assertTrue(
+                any("impact" in change for change in result["delta"]["state_changes"])
+            )
+            self.assertEqual("follow-up", rendered["mode"])
+            self.assertIn(
+                "Customer confirmed call failures across both production nodes.",
+                rendered["markdown"],
+            )
+
+    def test_first_follow_up_from_older_v2_record_does_not_invent_progress_changes(self):
+        with TemporaryDirectory() as temporary:
+            first = case_record.update_case_record(structured_payload(), temporary)
+            record_path = Path(first["record_json"])
+            older_v2 = json.loads(record_path.read_text(encoding="utf-8"))
+            for prior_current in (
+                older_v2["current"],
+                older_v2["reviews"][-1]["current"],
+                older_v2["review_snapshot"]["current"],
+            ):
+                prior_current.pop("impact")
+                prior_current.pop("current_progress")
+            record_path.write_text(json.dumps(older_v2), encoding="utf-8")
+
+            follow_up = structured_payload(
+                reviewed_at="2026-08-21T01:00:00Z",
+                snapshot="2026-08-21T00:59:00Z",
+            )
+            result = case_record.update_case_record(follow_up, temporary)
+            rendered = case_record.present_case_record(
+                "1-23700000001", "Review 1-23700000001 again", temporary
+            )
+
+            self.assertEqual([], result["delta"]["state_changes"])
+            self.assertEqual("standard", rendered["mode"])
+            self.assertIn(
+                "Call attempts failed on node 2; wider customer impact is unknown.",
+                rendered["markdown"],
             )
 
     def test_duplicate_complete_snapshot_is_idempotent(self):
@@ -809,6 +1075,8 @@ class SchemaCommandTests(unittest.TestCase):
             sorted(case_record.CURRENT_FIELDS),
         )
         self.assertIn("rca_state", update["current"]["enums"])
+        self.assertIn("impact", update["current"]["required_non_empty_strings"])
+        self.assertIn("current_progress", update["current"]["required_non_empty_strings"])
         self.assertEqual(
             update["evidence_digest"]["states"], sorted(case_record.EVIDENCE_STATES)
         )
@@ -819,6 +1087,58 @@ class SchemaCommandTests(unittest.TestCase):
         self.assertEqual(
             update["coverage"]["required_non_negative_integers"],
             sorted(case_record.coverage_required_numbers()),
+        )
+        presentation = update["presentation"]
+        advice_lists = presentation["technical_advice"]["item_lists"]
+        self.assertEqual(
+            ["action", "basis"],
+            advice_lists["immediate_diagnostics"]["item_fields"],
+        )
+        self.assertEqual(
+            ["action", "condition", "basis"],
+            advice_lists["potential_solutions"]["item_fields"],
+        )
+        self.assertEqual(
+            ["action", "basis"],
+            advice_lists["long_term_steps"]["item_fields"],
+        )
+        self.assertEqual(
+            presentation["technical_spec"]["item_fields"],
+            ["state", "value", "evidence"],
+        )
+        self.assertEqual(
+            presentation["milestones"]["item_fields"],
+            ["date", "change"],
+        )
+        self.assertEqual(
+            presentation["timeline"]["item_fields"],
+            ["date", "by", "source", "change"],
+        )
+        self.assertEqual(
+            presentation["evidence_register"]["item_fields"],
+            ["ref", "date", "source", "evidence", "supports"],
+        )
+        variants = presentation["visual_context"]["variants"]
+        self.assertEqual(
+            variants["recurrences"]["item_fields"],
+            ["date", "symptom", "change", "outcome"],
+        )
+        self.assertEqual(
+            variants["transitions"]["item_fields"],
+            ["label", "state"],
+        )
+        evidence_rows = schema["build_payload"]["overlay_fields"]["evidence_rows"]
+        self.assertTrue(evidence_rows["normal_path"])
+        self.assertIn("supports", evidence_rows["required_item_fields"])
+        self.assertIn("milestone_change", evidence_rows["optional_item_fields"])
+        self.assertIn("trailing commas", schema["build_payload"]["overlay_syntax"])
+        self.assertIn(
+            "current structured presentation",
+            schema["build_payload"]["finalize_requirement"],
+        )
+        self.assertIn(
+            "full_review_markdown is supported by update only",
+            schema["build_payload"]["finalize_requirement"],
         )
 
     def test_schema_cli_prints_json(self):
@@ -833,6 +1153,7 @@ class SchemaCommandTests(unittest.TestCase):
         parsed = json.loads(result.stdout)
         self.assertIn("build_payload", parsed)
         self.assertIn("update_input", parsed)
+        self.assertIn("finalize-overlay", parsed["build_payload"]["normal_one_shot_command"])
 
 
 class BuildPayloadTests(unittest.TestCase):
@@ -884,6 +1205,218 @@ class BuildPayloadTests(unittest.TestCase):
             self.assertTrue(record["updated"])
             self.assertEqual(record["review_count"], 1)
 
+    def test_build_payload_runs_render_preflight_before_writing(self):
+        overlay = self.overlay()
+        overlay.pop("full_review_markdown")
+        overlay["presentation"] = presentation_payload()
+        overlay["presentation"]["milestones"] = [
+            {"date": "2026-08-20", "detail": "Field name is invalid."}
+        ]
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            out_path = Path(tmp) / "payload.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_path.write_text(json.dumps(overlay), encoding="utf-8")
+            with self.assertRaisesRegex(
+                case_record.RecordError,
+                r"presentation is not renderable.*change",
+            ):
+                case_record.build_update_payload(
+                    manifest_path, overlay_path, out_path
+                )
+            self.assertFalse(out_path.exists())
+
+    def test_build_payload_expands_single_source_evidence_rows(self):
+        overlay = self.overlay()
+        overlay.pop("evidence_digest")
+        overlay.pop("full_review_markdown")
+        presentation = presentation_payload()
+        presentation.pop("evidence_register")
+        presentation.pop("timeline")
+        presentation.pop("milestones")
+        overlay["presentation"] = presentation
+        overlay["evidence_rows"] = [
+            {
+                "state": "OBSERVED",
+                "date": "2026-08-19T10:00:00Z",
+                "source": "application.log",
+                "fact": "Failure reproduced on node 2.",
+                "supports": "Primary problem",
+                "by": "Support",
+                "change": "The failure was reproduced.",
+                "milestone_change": "Reproduction established the failing node.",
+            },
+            {
+                "state": "NOT TESTED",
+                "date": "not stated",
+                "source": "Coverage review",
+                "fact": "A same-event network trace was not collected.",
+                "supports": "Evidence gaps",
+            },
+        ]
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            out_path = Path(tmp) / "payload.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_path.write_text(json.dumps(overlay), encoding="utf-8")
+            case_record.build_update_payload(manifest_path, overlay_path, out_path)
+            built = json.loads(out_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(2, len(built["evidence_digest"]))
+            self.assertEqual(
+                ["E1", "E2"],
+                [item["ref"] for item in built["presentation"]["evidence_register"]],
+            )
+            self.assertEqual(1, len(built["presentation"]["timeline"]))
+            self.assertEqual("E1", built["presentation"]["timeline"][0]["evidence"])
+            self.assertEqual(1, len(built["presentation"]["milestones"]))
+            self.assertEqual("E1", built["presentation"]["milestones"][0]["evidence"])
+
+    def test_build_payload_rejects_mixed_evidence_surfaces(self):
+        overlay = self.overlay()
+        overlay["evidence_rows"] = [
+            {
+                "state": "OBSERVED",
+                "date": "2026-08-19T10:00:00Z",
+                "source": "application.log",
+                "fact": "Failure reproduced on node 2.",
+                "supports": "Primary problem",
+            }
+        ]
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_path.write_text(json.dumps(overlay), encoding="utf-8")
+            with self.assertRaisesRegex(
+                case_record.RecordError,
+                "cannot be combined with evidence_digest",
+            ):
+                case_record.build_update_payload(
+                    manifest_path, overlay_path, Path(tmp) / "out.json"
+                )
+
+    def test_evidence_rows_require_chronological_order(self):
+        rows = [
+            {
+                "state": "OBSERVED",
+                "date": "2026-08-20",
+                "source": "Later source",
+                "fact": "Later fact.",
+                "supports": "Current state",
+            },
+            {
+                "state": "OBSERVED",
+                "date": "2026-08-19",
+                "source": "Earlier source",
+                "fact": "Earlier fact.",
+                "supports": "Primary problem",
+            },
+        ]
+        with self.assertRaisesRegex(
+            case_record.RecordError, "ordered oldest-first"
+        ):
+            case_record.expand_evidence_rows(rows)
+
+    def test_evidence_rows_reject_compact_iso_date_that_presenter_cannot_sort(self):
+        rows = [
+            {
+                "state": "OBSERVED",
+                "date": "20260819",
+                "source": "Case record",
+                "fact": "A dated event occurred.",
+                "supports": "Timeline",
+            }
+        ]
+        with self.assertRaisesRegex(case_record.RecordError, "extended ISO-8601"):
+            case_record.expand_evidence_rows(rows)
+
+    def test_evidence_rows_bound_milestones_without_retry(self):
+        rows = [
+            {
+                "state": "OBSERVED",
+                "date": f"2026-08-{day:02d}",
+                "source": f"Source {day}",
+                "fact": f"Fact {day}.",
+                "supports": "Timeline",
+                "milestone_change": f"Milestone {day}.",
+            }
+            for day in range(1, 7)
+        ]
+        _digest, _register, _timeline, milestones = (
+            case_record.expand_evidence_rows(rows)
+        )
+        self.assertEqual(
+            ["2026-08-01", "2026-08-02", "2026-08-04", "2026-08-05", "2026-08-06"],
+            [item["date"] for item in milestones],
+        )
+
+    def test_finalize_overlay_cli_builds_and_finalizes_in_one_process(self):
+        overlay = self.overlay()
+        overlay.pop("evidence_digest")
+        overlay.pop("full_review_markdown")
+        presentation = presentation_payload()
+        presentation.pop("evidence_register")
+        presentation.pop("timeline")
+        presentation.pop("milestones")
+        overlay["presentation"] = presentation
+        overlay["evidence_rows"] = [
+            {
+                "state": "OBSERVED",
+                "date": "2026-08-19T10:00:00Z",
+                "source": "application.log",
+                "fact": "Failure reproduced on node 2.",
+                "supports": "Primary problem",
+                "by": "Support",
+                "change": "The failure was reproduced.",
+                "milestone_change": "Reproduction established the failing node.",
+            }
+        ]
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_path.write_text(json.dumps(overlay), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--data-dir",
+                    tmp,
+                    "finalize-overlay",
+                    "--manifest",
+                    str(manifest_path),
+                    "--overlay",
+                    str(overlay_path),
+                    "--case-id",
+                    "1-23700000001",
+                    "--request",
+                    "Review 1-23700000001",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("# Case Review - 1-23700000001", result.stdout)
+            case_dir = Path(tmp) / "case-records" / "1-23700000001"
+            self.assertTrue((case_dir / "record.json").is_file())
+            self.assertEqual(
+                result.stdout,
+                (case_dir / "chat-output.md").read_text(encoding="utf-8"),
+            )
+
     def test_build_payload_rejects_non_passing_manifest(self):
         manifest = passing_manifest()
         manifest["status"] = "fail"
@@ -926,6 +1459,34 @@ class BuildPayloadTests(unittest.TestCase):
                 case_record.build_update_payload(
                     manifest_path, overlay_path, Path(tmp) / "out.json"
                 )
+
+    def test_build_payload_accepts_utf8_bom_in_agent_overlay(self):
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            out_path = Path(tmp) / "payload.json"
+            manifest_path.write_text(json.dumps(passing_manifest()), encoding="utf-8")
+            overlay_path.write_bytes(
+                b"\xef\xbb\xbf" + json.dumps(self.overlay()).encode("utf-8")
+            )
+            case_record.build_update_payload(manifest_path, overlay_path, out_path)
+            self.assertTrue(out_path.is_file())
+
+    def test_build_payload_accepts_trailing_commas_in_agent_overlay(self):
+        with TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            overlay_path = Path(tmp) / "overlay.json"
+            out_path = Path(tmp) / "payload.json"
+            manifest_path.write_text(
+                json.dumps(passing_manifest()), encoding="utf-8"
+            )
+            overlay_text = json.dumps(self.overlay(), indent=2)
+            overlay_path.write_text(
+                overlay_text.rsplit("\n}", 1)[0] + ",\n}\n",
+                encoding="utf-8",
+            )
+            case_record.build_update_payload(manifest_path, overlay_path, out_path)
+            self.assertTrue(out_path.is_file())
 
 
 if __name__ == "__main__":

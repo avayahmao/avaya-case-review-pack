@@ -10,6 +10,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from avaya_case_review_runtime import __version__
+from avaya_case_review_runtime.bridge_identity import BROKER_BUILD_ID
 from avaya_case_review_runtime.gmail_broker_protocol import (
     BrokerErrorCode,
     BrokerRequest,
@@ -194,9 +195,11 @@ class CodexRuntimeLifecycleTests(unittest.TestCase):
         self._install_candidate()
         self.assertTrue((self.target / "avaya_case_review_runtime").is_dir())
 
+        old_build = "1.10.0-old"
+
         def old_response(request):
             if request.method == "health":
-                return self._health(request, "1.10.0-old")
+                return self._health(request, old_build)
             if request.method == "shutdown":
                 return BrokerResponse.success(request.id, {"stopping": True})
             return BrokerResponse.failure(
@@ -206,18 +209,19 @@ class CodexRuntimeLifecycleTests(unittest.TestCase):
             )
 
         with IsolatedBroker(old_response) as old:
-            self._publish(old, "1.10.0-old")
+            self._publish(old, old_build)
             rejected = self._run_control("verify-bridge")
             self.assertEqual(rejected.returncode, 30, rejected.stdout + rejected.stderr)
             stopped = self._run_control("stop")
             self.assertEqual(stopped.returncode, 0, stopped.stdout + stopped.stderr)
+            self.assertEqual(old.requests, ["health", "shutdown"])
         self.state_file.unlink(missing_ok=True)
 
         attestation = json.loads(self.attestation.read_text(encoding="utf-8"))
 
         def candidate_response(request, *, compatible):
             if request.method == "health":
-                return self._health(request, "candidate")
+                return self._health(request, BROKER_BUILD_ID)
             if request.method == "bridge_capabilities":
                 digest = attestation["bridge_source_sha256"] if compatible else "f" * 64
                 return BrokerResponse.success(
@@ -240,13 +244,14 @@ class CodexRuntimeLifecycleTests(unittest.TestCase):
             return BrokerResponse.success(request.id, {"stopping": True})
 
         with IsolatedBroker(lambda request: candidate_response(request, compatible=False)) as bad:
-            self._publish(bad, "candidate")
+            self._publish(bad, BROKER_BUILD_ID)
             failed = self._run_control("verify-bridge")
             self.assertEqual(failed.returncode, 30, failed.stdout + failed.stderr)
+            self.assertEqual(bad.requests, ["health", "bridge_capabilities"])
         self.state_file.unlink(missing_ok=True)
 
         with IsolatedBroker(lambda request: candidate_response(request, compatible=True)) as good:
-            self._publish(good, "candidate")
+            self._publish(good, BROKER_BUILD_ID)
             verified = self._run_control("verify-bridge")
             self.assertEqual(
                 verified.returncode,
@@ -254,6 +259,7 @@ class CodexRuntimeLifecycleTests(unittest.TestCase):
                 verified.stdout + verified.stderr + repr(good.requests),
             )
             self.assertIn('"compatible": true', verified.stdout)
+            self.assertEqual(good.requests, ["health", "bridge_capabilities"])
 
 
 if __name__ == "__main__":

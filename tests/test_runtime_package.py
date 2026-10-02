@@ -128,7 +128,7 @@ class RuntimePackageTests(unittest.TestCase):
     def test_distribution_metadata_and_package_are_installable(self):
         pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('name = "avaya-case-review-runtime"', pyproject)
-        self.assertIn('version = "1.11.0"', pyproject)
+        self.assertIn('version = "1.12.0"', pyproject)
         self.assertIn('requires-python = ">=3.10"', pyproject)
         self.assertIn('packages = ["avaya_case_review_runtime"]', pyproject)
         self.assertNotIn("dependencies", pyproject)

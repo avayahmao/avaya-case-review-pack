@@ -111,6 +111,37 @@
 
 <div class="main-container">
 
+    <!-- VERSION 1.12.0 -->
+    <div>
+        <span class="version-tag">v1.12.0</span>
+        <span class="version-date">2026-10-02 - Clearer Case Progress and Technical Advice</span>
+        <h3>Clearer Case Progress and Technical Advice</h3>
+        <p>The stable v1.12.0 installation contract uses a unique temporary checkout:</p>
+        <pre><code>git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack &lt;unique-temp-directory&gt;
+git describe --exact-match --tags HEAD</code></pre>
+        <p>The tag check must return <code>v1.12.0</code>. This is the installation contract for the release; publication and clean-profile acceptance remain subject to the release checklist.</p>
+        <h3>Case Review Clarity</h3>
+        <ul>
+            <li>Opens each successful structured review with a concise Executive Summary of the official status, reported issue, evidenced impact, critical confirmed finding, and production outcome. Unsupported facts remain <code>unknown</code>; NotebookLM results appear only when case-specific validation is available and substantiated.</li>
+            <li>Separates <strong>Reported Problem / Symptom</strong> from detailed <strong>Current State</strong> in the Case Card. The <strong>Action Plan</strong> shows only the next step, owner, and due date already recorded in the case. A separate <strong>Technical Advice</strong> section gives evidence-linked immediate diagnostics, conditional potential solutions, and long-term recommendations.</li>
+            <li>Requires new review overlays to provide <code>current.impact</code>, <code>current.current_progress</code>, and <code>presentation.technical_advice</code> with <code>immediate_diagnostics</code>, <code>potential_solutions</code>, and <code>long_term_steps</code> arrays. The structured output and persisted record use the same validated fields.</li>
+        </ul>
+        <h3>Collection Integrity and Efficiency</h3>
+        <ul>
+            <li>Moves completed-thread resume data into atomic, hash-checked per-thread checkpoints so large collections do not repeatedly rewrite completed message bodies into the progress file. Resume checks the thread identity, snapshot, counts, and body hashes before reuse.</li>
+            <li>Strengthens thread-page scope checks and bounded targeted query handling. The existing single-snapshot coverage and body-integrity gates still determine whether a review may be generated.</li>
+            <li>URL-encodes message IDs in the explicit legacy Gmail rollback read path, so reserved query characters cannot alter request parameters.</li>
+            <li>Lets the candidate Codex runtime stop an older Managed Edge broker during an upgrade after verifying the live broker's protocol and identity; ordinary Gmail requests still require an exact broker build match.</li>
+            <li>Reads the Cloud Bridge identity correctly from a clean Windows checkout with CRLF line endings in the Antigravity installer and maintainer verification runbook.</li>
+            <li>Known coexistence constraint: Codex and an older Antigravity installation can share one Managed Edge broker. The first product to start it determines the build, so a Codex-only update does not guarantee concurrent Gmail use with an older Antigravity build.</li>
+            <li>Local synthetic measurements: with 20 threads of 20 KB each and a 0.39 MB final corpus, cumulative progress writes fell from 8.28 MB to 0.392 MB (about 21 times the corpus size to about 1 time). In a 500,000-match snippet search, elapsed time and peak memory fell from 0.789 s / 44.2 MB to 0.002 s / 1.1 MB. These measurements cover local collector work only; the cloud bridge still re-fetches a full thread for each cursor page.</li>
+        </ul>
+        <h3>QA Guidance</h3>
+        <ul>
+            <li>Includes the post-v1.11.0 QA refinement commit <code>06a4170</code>: example-led score calibration, evidence-safe credit for technical boundary work, concise <code>Problem</code> and <code>efforts</code> wording, and natural management comments followed by exact signed deduction or Plus tokens.</li>
+        </ul>
+    </div>
+
     <!-- VERSION 1.11.0 -->
     <div>
         <span class="version-tag">v1.11.0</span>

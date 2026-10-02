@@ -34,6 +34,7 @@ if hasattr(sys.stderr, "reconfigure"):
 COLLECTION_DIR_NAME = "collection"
 STAGING_DIR_NAME = "collection.staging"
 PREVIOUS_DIR_NAME = "collection.prev"
+PROMOTION_BACKUP_DIR_NAME = "collection.prev.promoting"
 DIGEST_SIZE_LIMIT_BYTES = 40 * 1024
 DEFAULT_QUERY_CHAR_BUDGET = 12_000
 SUBJECT_LIMIT = 120
@@ -114,7 +115,9 @@ def collection_paths(data_dir: Path, case_id: str) -> dict[str, Path]:
         "stable": base / COLLECTION_DIR_NAME,
         "staging": base / STAGING_DIR_NAME,
         "previous": base / PREVIOUS_DIR_NAME,
+        "promotion_backup": base / PROMOTION_BACKUP_DIR_NAME,
         "progress": base / STAGING_DIR_NAME / "progress.json",
+        "checkpoints": base / STAGING_DIR_NAME / "threads",
         "corpus": base / STAGING_DIR_NAME / "corpus.json",
         "manifest": base / STAGING_DIR_NAME / "manifest.json",
         "digest": base / STAGING_DIR_NAME / "digest.json",
@@ -217,6 +220,11 @@ def read_thread(client: Any, thread_id: str, snapshot: str) -> list[dict[str, An
             "gmail_read_thread_page",
             {"thread_id": thread_id, "snapshot_before": snapshot, "cursor": cursor},
         )
+        if (
+            response.get("thread_id") != thread_id
+            or response.get("snapshot_before") != snapshot
+        ):
+            raise CollectionError("PROTOCOL", "thread response scope changed")
         pages.append(response)
         next_cursor = str(response.get("next_cursor") or "")
         complete = response.get("complete") is True
@@ -403,7 +411,7 @@ def build_ledger(
     threads_read = len(threads)
     return {
         "record_ids_planned": 1,
-        "record_id_queries_completed": 1,
+        "record_id_queries_completed": int(list_pages > 0),
         "query_pages_completed": list_pages,
         "unique_threads_discovered": len(thread_ids),
         "threads_read_complete": threads_read,
@@ -421,7 +429,7 @@ def build_ledger(
         "body_chunks_expected": chunks_expected,
         "body_chunks_read": chunks_completed,
         "snapshot_before": "",
-        "query_complete": True,
+        "query_complete": list_pages > 0,
     }
 
 
@@ -457,15 +465,268 @@ def ledger_passes(ledger: dict[str, Any]) -> tuple[bool, list[str]]:
 
 
 def blocking_output(ledger: dict[str, Any], blocker: str) -> str:
+    threads_expected = (
+        str(ledger["unique_threads_discovered"])
+        if ledger["query_complete"]
+        else "unknown"
+    )
+    messages_expected = (
+        str(ledger["messages_expected"])
+        if ledger["query_complete"]
+        and ledger["threads_read_complete"] == ledger["unique_threads_discovered"]
+        else "unknown"
+    )
     return (
         "Context collection incomplete — review not generated.\n"
         "\n"
         f"Case notes: <pending>\n"
         f"Record-ID queries: {ledger['record_id_queries_completed']}/{ledger['record_ids_planned']}\n"
-        f"Gmail threads: {ledger['threads_read_complete']}/{ledger['unique_threads_discovered']}\n"
-        f"Gmail messages: {ledger['messages_completed']}/{ledger['messages_expected']}\n"
+        f"Gmail threads: {ledger['threads_read_complete']}/{threads_expected}\n"
+        f"Gmail messages: {ledger['messages_completed']}/{messages_expected}\n"
         f"Blocker: {blocker}"
     )
+
+
+def verified_progress_ledger(progress: dict[str, Any]) -> dict[str, Any]:
+    """Count only validated in-memory thread results in a failure report."""
+
+    thread_ids = progress.get("thread_ids")
+    if not isinstance(thread_ids, list):
+        thread_ids = []
+    thread_ids = [thread_id for thread_id in thread_ids if isinstance(thread_id, str)]
+    list_pages = progress.get("list_pages", 0)
+    if type(list_pages) is not int or list_pages < 0:
+        list_pages = 0
+    states = progress.get("completed_threads")
+    if not isinstance(states, dict):
+        states = {}
+    completed = []
+    for thread_id in thread_ids:
+        state = states.get(thread_id)
+        if state is None:
+            continue
+        try:
+            checked = validated_thread_state(state)
+        except (CollectionError, UnicodeError, ValueError, TypeError):
+            continue
+        stats = checked["stats"]
+        completed.append(
+            {
+                "thread_id": thread_id,
+                "pages": stats["pages"],
+                "message_count": stats["message_count"],
+                "manifest_sha256": stats["manifest_sha256"],
+                "messages": checked["messages"],
+            }
+        )
+    return build_ledger(thread_ids, list_pages, completed)
+
+
+def collection_retry_guidance(progress: dict[str, Any]) -> str:
+    if progress.get("snapshot_before"):
+        return "staging progress retained; re-run with --resume to continue"
+    return "no frozen snapshot was saved; re-run collect without --resume"
+
+
+def thread_checkpoint_path(checkpoints_dir: Path, thread_id: str) -> Path:
+    filename = hashlib.sha256(thread_id.encode("utf-8")).hexdigest() + ".json"
+    return checkpoints_dir / filename
+
+
+def validated_thread_state(state: Any) -> dict[str, Any]:
+    """Check a completed thread before saving or reusing its checkpoint."""
+
+    if not isinstance(state, dict):
+        raise CollectionError("CHECKPOINT", "thread checkpoint is invalid")
+    stats = state.get("stats")
+    messages = state.get("messages")
+    if not isinstance(stats, dict) or not isinstance(messages, list):
+        raise CollectionError("CHECKPOINT", "thread checkpoint is invalid")
+    if (
+        type(stats.get("message_count")) is not int
+        or stats["message_count"] < 0
+        or type(stats.get("pages")) is not int
+        or stats["pages"] < 1
+        or not isinstance(stats.get("manifest_sha256"), str)
+        or not stats["manifest_sha256"]
+        or len(messages) != stats["message_count"]
+    ):
+        raise CollectionError("CHECKPOINT", "thread checkpoint counts are invalid")
+    seen_message_ids: set[str] = set()
+    for message in messages:
+        if not isinstance(message, dict):
+            raise CollectionError("CHECKPOINT", "thread checkpoint message is invalid")
+        message_id = message.get("message_id")
+        body = message.get("body")
+        if (
+            not isinstance(message_id, str)
+            or not message_id
+            or message_id in seen_message_ids
+            or not isinstance(body, str)
+            or not isinstance(message.get("internal_date"), str)
+            or not isinstance(message.get("from"), str)
+            or not isinstance(message.get("subject"), str)
+            or not isinstance(message.get("attachment_names"), list)
+            or type(message.get("chunk_count")) is not int
+            or message["chunk_count"] < 1
+            or type(message.get("body_chars")) is not int
+            or message["body_chars"] != len(body)
+        ):
+            raise CollectionError("CHECKPOINT", "thread checkpoint message is invalid")
+        seen_message_ids.add(message_id)
+        if hashlib.sha256(body.encode("utf-8")).hexdigest() != message.get(
+            "body_sha256"
+        ):
+            raise CollectionError("CHECKPOINT", "thread checkpoint body hash failed")
+    return {"stats": stats, "messages": messages}
+
+
+def write_thread_checkpoint(
+    checkpoints_dir: Path, thread_id: str, snapshot: str, state: Any
+) -> None:
+    payload = {
+        "thread_id": thread_id,
+        "snapshot_before": snapshot,
+        "state": validated_thread_state(state),
+    }
+    checkpoint = {"sha256": canonical_hash(payload), "payload": payload}
+    atomic_write(
+        thread_checkpoint_path(checkpoints_dir, thread_id), dump_compact(checkpoint)
+    )
+
+
+def read_thread_checkpoint(
+    checkpoints_dir: Path, thread_id: str, snapshot: str
+) -> dict[str, Any] | None:
+    path = thread_checkpoint_path(checkpoints_dir, thread_id)
+    if not path.is_file():
+        return None
+    try:
+        checkpoint = read_json(path)
+        payload = checkpoint["payload"]
+        checksum = checkpoint["sha256"]
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(checksum, str)
+            or checksum != canonical_hash(payload)
+            or payload.get("thread_id") != thread_id
+            or payload.get("snapshot_before") != snapshot
+        ):
+            raise CollectionError("CHECKPOINT", "thread checkpoint scope or hash changed")
+        return validated_thread_state(payload.get("state"))
+    except CollectionError:
+        raise
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        raise CollectionError("CHECKPOINT", "thread checkpoint could not be read") from error
+
+
+def restore_completed_threads(
+    progress: dict[str, Any], paths: dict[str, Path]
+) -> dict[str, dict[str, Any]]:
+    """Recover atomic per-thread checkpoints, including older inline progress."""
+
+    thread_ids = progress["thread_ids"]
+    snapshot = progress["snapshot_before"]
+    inline = progress.get("completed_threads", {})
+    if not isinstance(inline, dict):
+        raise CollectionError("CHECKPOINT", "staging progress is invalid")
+    if inline:
+        # Finish writing all legacy data before replacing its only durable copy.
+        for thread_id, state in inline.items():
+            if thread_id not in thread_ids:
+                raise CollectionError("CHECKPOINT", "staging progress has an unknown thread")
+            write_thread_checkpoint(paths["checkpoints"], thread_id, snapshot, state)
+        progress["completed_threads"] = {}
+        write_json(paths["progress"], progress)
+    recovered: dict[str, dict[str, Any]] = {}
+    for thread_id in thread_ids:
+        state = read_thread_checkpoint(paths["checkpoints"], thread_id, snapshot)
+        if state is not None:
+            recovered[thread_id] = state
+    return recovered
+
+
+def verify_checkpoint_manifest(
+    client: Any, thread_id: str, snapshot: str, state: dict[str, Any]
+) -> None:
+    """Confirm a saved thread still has the same pre-cutoff message set."""
+
+    page = request_json(
+        client,
+        "gmail_read_thread_page",
+        {"thread_id": thread_id, "snapshot_before": snapshot, "cursor": ""},
+    )
+    stats = state["stats"]
+    if (
+        page.get("thread_id") != thread_id
+        or page.get("snapshot_before") != snapshot
+        or page.get("manifest_sha256") != stats["manifest_sha256"]
+        or page.get("message_count") != stats["message_count"]
+    ):
+        raise CollectionError(
+            "COVERAGE", "saved thread manifest changed under the frozen snapshot"
+        )
+
+
+def promote_collection(paths: dict[str, Path]) -> None:
+    """Publish staging, preserving both prior generations on rename failure."""
+
+    import shutil
+
+    stable = paths["stable"]
+    previous = paths["previous"]
+    pending = paths["promotion_backup"]
+    staging = paths["staging"]
+    # Recover a process interruption at any of the directory-rename boundaries.
+    if pending.exists():
+        try:
+            if stable.exists() and previous.exists():
+                shutil.rmtree(pending)
+            elif stable.exists():
+                pending.rename(previous)
+            elif previous.exists():
+                previous.rename(stable)
+                pending.rename(previous)
+            else:
+                pending.rename(previous)
+        except OSError as error:
+            raise CollectionError("PROMOTION", "prior promotion recovery failed") from error
+    elif not stable.exists() and previous.exists():
+        try:
+            previous.rename(stable)
+        except OSError as error:
+            raise CollectionError("PROMOTION", "prior promotion recovery failed") from error
+
+    moved_previous = False
+    moved_stable = False
+    try:
+        if previous.exists():
+            previous.rename(pending)
+            moved_previous = True
+        if stable.exists():
+            stable.rename(previous)
+            moved_stable = True
+        staging.rename(stable)
+    except OSError as error:
+        try:
+            if moved_stable and not stable.exists() and previous.exists():
+                previous.rename(stable)
+            if moved_previous and not previous.exists() and pending.exists():
+                pending.rename(previous)
+        except OSError as rollback_error:
+            raise CollectionError(
+                "PROMOTION", "prior collection rollback failed"
+            ) from rollback_error
+        raise CollectionError(
+            "PROMOTION", "validated collection could not be published"
+        ) from error
+    if moved_previous:
+        try:
+            shutil.rmtree(pending)
+        except OSError:
+            # Stable and previous are already published; the next promotion
+            # removes this older backup through the recovery branch above.
+            pass
 
 
 def collect_case(
@@ -493,7 +754,23 @@ def collect_case(
         if not paths["progress"].is_file():
             print("no staging progress to resume; run collect without --resume", file=sys.stderr)
             return 2
-        progress = read_json(paths["progress"])
+        try:
+            progress = read_json(paths["progress"])
+        except (OSError, ValueError):
+            print("staging progress could not be read", file=sys.stderr)
+            return 2
+        if (
+            not isinstance(progress, dict)
+            or progress.get("case_id") != case_id
+            or not isinstance(progress.get("thread_ids"), list)
+            or not isinstance(progress.get("snapshot_before"), str)
+            or type(progress.get("list_pages")) is not int
+            or progress["list_pages"] < 0
+            or not progress["snapshot_before"]
+            or (progress["thread_ids"] and progress["list_pages"] == 0)
+        ):
+            print("staging progress has no valid frozen snapshot", file=sys.stderr)
+            return 2
     else:
         if paths["staging"].exists():
             import shutil
@@ -504,12 +781,27 @@ def collect_case(
 
     started = time.perf_counter()
     try:
-        if not progress["thread_ids"]:
+        if resume and progress["list_pages"] > 0:
+            listed_ids, _listed_pages, listed_snapshot = enumerate_threads(
+                client, case_id, progress["snapshot_before"]
+            )
+            if (
+                listed_snapshot != progress["snapshot_before"]
+                or listed_ids != progress["thread_ids"]
+            ):
+                raise CollectionError(
+                    "COVERAGE", "thread list changed under the frozen snapshot"
+                )
+        else:
             progress["thread_ids"], progress["list_pages"], progress["snapshot_before"] = (
                 enumerate_threads(client, case_id, progress["snapshot_before"])
             )
             write_json(paths["progress"], progress)
         snapshot = progress["snapshot_before"]
+        progress["completed_threads"] = restore_completed_threads(progress, paths)
+        if resume:
+            for thread_id, state in progress["completed_threads"].items():
+                verify_checkpoint_manifest(client, thread_id, snapshot, state)
         for thread_id in progress["thread_ids"]:
             if thread_id in progress["completed_threads"]:
                 continue
@@ -522,28 +814,18 @@ def collect_case(
                     f"thread {thread_id} deduplicated {len(messages)} messages "
                     f"but manifest counts {stats['message_count']}",
                 )
-            progress["completed_threads"][thread_id] = {
-                "pages": pages,
-                "messages": messages,
-                "stats": stats,
-            }
-            write_json(paths["progress"], progress)
+            state = {"messages": messages, "stats": stats}
+            write_thread_checkpoint(paths["checkpoints"], thread_id, snapshot, state)
+            progress["completed_threads"][thread_id] = state
     except CollectionError as error:
-        ledger = build_ledger(progress["thread_ids"], progress["list_pages"], [
-            {
-                "thread_id": thread_id,
-                "pages": state["stats"]["pages"],
-                "message_count": state["stats"]["message_count"],
-                "manifest_sha256": state["stats"]["manifest_sha256"],
-                "messages": state["messages"],
-            }
-            for thread_id, state in progress["completed_threads"].items()
-        ])
+        ledger = verified_progress_ledger(progress)
         print(blocking_output(ledger, f"Gmail collection failed — {error}"))
-        print("staging progress retained; re-run with --resume to continue", file=sys.stderr)
+        print(collection_retry_guidance(progress), file=sys.stderr)
         return 1
     except Exception as error:  # broker/OS failures stay sanitized
-        print(blocking_output(build_ledger([], 0, []), f"Gmail collection failed — {type(error).__name__}"))
+        ledger = verified_progress_ledger(progress)
+        print(blocking_output(ledger, f"Gmail collection failed — {type(error).__name__}"))
+        print(collection_retry_guidance(progress), file=sys.stderr)
         return 1
 
     threads = [
@@ -623,13 +905,12 @@ def collect_case(
         )
         return 1
 
-    import shutil
-
-    if paths["previous"].exists():
-        shutil.rmtree(paths["previous"])
-    if paths["stable"].exists():
-        paths["stable"].rename(paths["previous"])
-    paths["staging"].rename(paths["stable"])
+    try:
+        promote_collection(paths)
+    except CollectionError as error:
+        print(blocking_output(ledger, f"Gmail collection failed — {error}"))
+        print("staging progress retained; re-run with --resume to continue", file=sys.stderr)
+        return 1
 
     print(
         json.dumps(
@@ -719,6 +1000,193 @@ def query_corpus(
     return 0
 
 
+def _first_casefold_match_spans(
+    value: str, folded_terms: list[str], limit: int
+) -> tuple[list[tuple[int, int]], bool]:
+    """Return bounded match spans in the original string, not its casefold."""
+
+    folded_value = value.casefold()
+    spans: dict[int, int] = {}
+    for term in folded_terms:
+        search_from = 0
+        original_offset = 0
+        folded_offset = 0
+        previous_original_offset = -1
+        unique_for_term = 0
+        # One extra distinct hit establishes whether this message was truncated.
+        # Never retain every occurrence in a long or repetitive message.
+        while unique_for_term <= limit:
+            match_offset = folded_value.find(term, search_from)
+            if match_offset < 0:
+                break
+            while original_offset < len(value):
+                width = len(value[original_offset].casefold())
+                if folded_offset + width > match_offset:
+                    break
+                folded_offset += width
+                original_offset += 1
+            if original_offset >= len(value):
+                break
+            match_end = match_offset + len(term)
+            end_offset = original_offset
+            folded_end = folded_offset
+            while end_offset < len(value) and folded_end < match_end:
+                folded_end += len(value[end_offset].casefold())
+                end_offset += 1
+            spans[original_offset] = max(spans.get(original_offset, 0), end_offset)
+            if original_offset != previous_original_offset:
+                previous_original_offset = original_offset
+                unique_for_term += 1
+            search_from = match_offset + max(1, len(term))
+    ordered = sorted(spans.items())
+    return ordered[:limit], len(ordered) > limit
+
+
+def _bounded_excerpt(
+    value: str, start: int, end: int, context_chars: int
+) -> tuple[str, bool]:
+    """Include the whole match when it fits; flag an over-budget match."""
+
+    budget = max(1, context_chars)
+    if len(value) <= budget:
+        return value.strip(), False
+    match_chars = end - start
+    if match_chars > budget:
+        return value[start : start + budget].strip(), True
+    marker_slots = min(
+        int(start > 0) + int(end < len(value)), budget - match_chars
+    )
+    content_budget = budget - marker_slots
+    window_start = max(0, start - (content_budget - match_chars) // 2)
+    window_end = min(len(value), window_start + content_budget)
+    window_start = max(0, window_end - content_budget)
+    snippet = value[window_start:window_end].strip()
+    if window_start > 0 and len(snippet) < budget:
+        snippet = "…" + snippet
+    if window_end < len(value) and len(snippet) < budget:
+        snippet += "…"
+    return snippet, False
+
+
+def query_snippets(
+    case_id: str,
+    data_dir: Path,
+    terms: list[str],
+    chars: int,
+    context_chars: int,
+    max_per_message: int,
+) -> int:
+    """Scan every collected message and return bounded literal-match excerpts."""
+
+    case_id = normalize_case_id(case_id)
+    max_per_message = max(1, max_per_message)
+    paths = collection_paths(data_dir, case_id)
+    corpus_path = paths["stable"] / "corpus.json"
+    if not corpus_path.is_file():
+        print(f"no collected corpus for {case_id}; run collect first", file=sys.stderr)
+        return 2
+    normalized_terms = []
+    folded_terms = []
+    seen_terms = set()
+    for value in terms:
+        term = value.strip()
+        folded = term.casefold()
+        if term and folded and folded not in seen_terms:
+            normalized_terms.append(term)
+            folded_terms.append(folded)
+            seen_terms.add(folded)
+    if not normalized_terms:
+        print("snippets requires at least one non-empty --term", file=sys.stderr)
+        return 2
+    corpus = read_json(corpus_path)
+    candidates = [
+        (thread["thread_id"], message)
+        for thread in corpus["threads"]
+        for message in thread["messages"]
+    ]
+    candidates.sort(key=lambda item: item[1]["internal_date"])
+    remaining = max(0, chars)
+    scanned_messages = 0
+    matching_messages_total = 0
+    output_messages = []
+    snippet_count = 0
+    truncated = False
+    for thread_id_value, message in candidates:
+        scanned_messages += 1
+        body = str(message.get("body", ""))
+        subject = str(message.get("subject", ""))
+        if remaining <= 0:
+            folded_body = body.casefold()
+            folded_subject = subject.casefold()
+            if any(
+                term in folded_body or term in folded_subject
+                for term in folded_terms
+            ):
+                matching_messages_total += 1
+                truncated = True
+            continue
+        spans, more_positions = _first_casefold_match_spans(
+            body, folded_terms, max_per_message
+        )
+        snippet_source = "body"
+        source_text = body
+        if not spans:
+            spans, more_positions = _first_casefold_match_spans(
+                subject, folded_terms, max_per_message
+            )
+            snippet_source = "subject"
+            source_text = subject
+            if not spans:
+                continue
+        matching_messages_total += 1
+        snippets = []
+        seen_message_snippets: set[str] = set()
+        for start, end in spans:
+            snippet, match_truncated = _bounded_excerpt(
+                source_text, start, end, context_chars
+            )
+            if match_truncated:
+                truncated = True
+            fingerprint = " ".join(snippet.casefold().split())
+            if not snippet or fingerprint in seen_message_snippets:
+                continue
+            if len(snippet) > remaining:
+                truncated = True
+                continue
+            seen_message_snippets.add(fingerprint)
+            snippets.append(snippet)
+            remaining -= len(snippet)
+            snippet_count += 1
+        if more_positions:
+            truncated = True
+        if snippets:
+            output_messages.append(
+                {
+                    "message_id": message["message_id"],
+                    "thread_id": thread_id_value,
+                    "internal_date": message["internal_date"],
+                    "from": message["from"],
+                    "subject": subject,
+                    "attachments": message["attachment_names"],
+                    "snippet_source": snippet_source,
+                    "snippets": snippets,
+                }
+            )
+    output = {
+        "case_id": case_id,
+        "snapshot_before": corpus["snapshot_before"],
+        "terms": normalized_terms,
+        "scanned_messages": scanned_messages,
+        "matching_messages_total": matching_messages_total,
+        "matched_messages": len(output_messages),
+        "snippet_count": snippet_count,
+        "truncated": truncated,
+        "messages": output_messages,
+    }
+    print(json.dumps(output, ensure_ascii=False))
+    return 0
+
+
 def status_case(case_id: str, data_dir: Path) -> int:
     case_id = normalize_case_id(case_id)
     paths = collection_paths(data_dir, case_id)
@@ -768,6 +1236,36 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Character budget (default {DEFAULT_QUERY_CHAR_BUDGET})",
     )
 
+    snippets = subparsers.add_parser(
+        "snippets",
+        help="Scan all collected messages and return bounded literal-match excerpts",
+    )
+    snippets.add_argument("--case-id", required=True)
+    snippets.add_argument(
+        "--term",
+        action="append",
+        required=True,
+        help="Case-insensitive literal search term; repeat as needed",
+    )
+    snippets.add_argument(
+        "--chars",
+        type=int,
+        default=30_000,
+        help="Total snippet character budget (default 30000)",
+    )
+    snippets.add_argument(
+        "--context-chars",
+        type=int,
+        default=800,
+        help="Characters retained around each match (default 800)",
+    )
+    snippets.add_argument(
+        "--max-per-message",
+        type=int,
+        default=2,
+        help="Maximum excerpts per matched message (default 2)",
+    )
+
     show = subparsers.add_parser("status", help="Print the completed collection manifest")
     show.add_argument("--case-id", required=True)
     return parser
@@ -788,6 +1286,15 @@ def main(argv: list[str] | None = None) -> int:
             sender=args.sender,
             since=args.since,
             chars=args.chars,
+        )
+    if args.command == "snippets":
+        return query_snippets(
+            args.case_id,
+            data_dir,
+            terms=args.term,
+            chars=max(1, args.chars),
+            context_chars=max(1, args.context_chars),
+            max_per_message=max(1, args.max_per_message),
         )
     if args.command == "status":
         return status_case(args.case_id, data_dir)

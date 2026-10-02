@@ -327,6 +327,18 @@ class ToolContractTests(unittest.TestCase):
 
 
 class LegacyBackendThreadContextTests(unittest.TestCase):
+    def test_read_message_id_is_url_encoded(self):
+        async def exercise():
+            with patch.object(gmail_legacy_backend, "query_apps_script", return_value="ok") as query:
+                result = await gmail_legacy_backend.legacy_query(
+                    "gmail_read", {"message_id": "message&action=send"}
+                )
+                return result, query
+
+        result, query = asyncio.run(exercise())
+        self.assertEqual(result, "ok")
+        query.assert_awaited_once_with("read", "&id=message%26action%3Dsend")
+
     def test_list_threads_matches_the_broker_url_contract(self):
         async def exercise():
             with patch.object(gmail_legacy_backend, "query_apps_script", return_value="ok") as query:

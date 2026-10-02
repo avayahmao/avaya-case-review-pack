@@ -133,16 +133,18 @@ Upon receiving a case ID, the engine analyzes ticket keywords and conditionally 
 4. **Log Evidence Sufficiency**: Distinguish logs that were requested, collected, attached, and analyzed, then identify evidence gaps without assuming silence means absence. `getlogs`, `csta_trace`, and `g3trace` are conditional examples, not universal requirements.
 
 #### Structured ReviewSnapshot v2 and Presentation Modes
-Before rendering, the analysis builds a **structured ReviewSnapshot v2**: current Case Card fields, whole-case storyline and problem lineage from the primary problem through blockers, corrections, outcome, and secondary problems, fixed proof-state Technical Specification, milestones, timeline, Evidence Register, and evidence-only visual context. Source recency and message length do not determine narrative weight.
+Before rendering, the analysis builds a **structured ReviewSnapshot v2**: current Case Card fields including required `current.impact` and `current.current_progress`, a required `presentation.technical_advice`, whole-case storyline and problem lineage from the primary problem through blockers, corrections, outcome, and secondary problems, fixed proof-state Technical Specification, milestones, timeline, Evidence Register, and evidence-only visual context. Technical advice has `immediate_diagnostics: [{action, basis}]`, `potential_solutions: [{action, condition, basis}]`, and `long_term_steps: [{action, basis}]`; an empty array is valid and renders an honest gap. The `basis` names case evidence or a precise evidence gap, while `condition` states when a proposed solution applies. Source recency and message length do not determine narrative weight.
+
+Every successful structured mode begins with `# Case Review - <ID>` and a four-line `## Executive Summary`: the first line combines official status with a concise reported issue from `current.primary_problem`; the others give evidenced impact, critical confirmed finding, and production outcome in plain language. Missing support is `unknown`; an available NotebookLM validation result is included only when case-specific and substantiated, and NotebookLM is not a required source. The following `## Case Card` (`## Current Case Card` in full/follow-up) separates **Reported Problem / Symptom** from detailed **Current State**. Its **Action Plan** contains only the documented **Required Action / Next Step**, owner, and due date. A separate `## Technical Advice` section presents recommended immediate diagnostics, conditional potential solutions, and long-term steps. Advice does not claim an existing commitment, implementation, or confirmed cause.
 
 The deterministic `review_presenter.py` router exposes six modes:
 
-1. **standard**: Default investigation-complete first or unchanged review with Case Card, mandatory Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and an optional secondary diagnostic visual.
-2. **compact**: Explicit compact request only; renders the Case Card without the investigation-complete sections.
-3. **follow-up**: Automatic delta-first view when a prior successful review has material state, ownership, or evidence changes; it then renders the same investigation-complete core as standard.
-4. **technical**: Fixed `Field | Proof state | Value | Evidence basis` Technical Specification.
-5. **flow**: Explicit investigation visual with chronology-not-causality wording and a seven-node Mermaid limit.
-6. **full**: Explicit structured report; the only mode that renders Appendix A — Evidence Register, with that section last.
+1. **standard**: Default investigation-complete first or unchanged review with the summary, Case Card, Technical Advice, mandatory Investigation Progress flow, Causal Assessment, six key Technical Specification fields, substantive Timeline, complete dynamic Evidence Register, and an optional secondary diagnostic visual.
+2. **compact**: Explicit compact request only; retains the summary, Case Card with recorded Action Plan, and Technical Advice without the investigation-complete sections.
+3. **follow-up**: Automatic view when a prior successful review has material state, ownership, or evidence changes; the computed delta follows the summary, then the Current Case Card, Technical Advice, and the same investigation-complete core as standard.
+4. **technical**: Fixed `Field | Proof state | Value | Evidence basis` Technical Specification after the common summary, Case Card, and Technical Advice.
+5. **flow**: Explicit investigation visual after the common summary, Case Card, and Technical Advice, with chronology-not-causality wording and a seven-node Mermaid limit.
+6. **full**: Explicit structured report with the summary, Current Case Card, and Technical Advice first; the only mode that renders Appendix A — Evidence Register, with that section last.
 
 The standard/follow-up renderer always includes a bounded Investigation Progress flow. The secondary diagnostic router may add at most one event comparison, claim-evidence matrix, component swimlane, or ownership checkpoint. Visual context never invents recurrence, hypotheses, component handoffs, or causal edges. Mitigation maturity remains Proposed, Lab Validated, Production Deployed, Production Outcome Confirmed, or None Active.
 
@@ -157,11 +159,11 @@ All dated milestones, timeline rows, and evidence rows are ordered oldest to new
 6. Evidence entries are never split, duplicated, or invented to reach a target count.
 7. A reference guide may explain case evidence but cannot replace it.
 8. `standard` and `follow-up` render the complete dynamic Evidence Register; `compact`, `technical`, and `flow` contain no Evidence IDs. `Supports` reverse-maps each evidence row to exact structured conclusions.
-9. The agent does not generate risk lists, scores, or directives. The agent does not generate recommendations. Evidence-backed commitments may be restated only as planned work or evidence-stated next checkpoints.
+9. The agent does not generate risk lists, scores, unsupported directives, or unevidenced recommendations. Evidence-backed commitments are restated as planned work or next checkpoints; new technical advice is visibly labeled recommendation or conditional hypothesis and tied to case evidence or a specific gap.
 10. Any rendered list or table containing dates or timestamps is sorted ascending by normalized date/time; the freshness calculation still uses the newest dated evidence internally.
 11. Build structured analysis before presentation; do not draft narrative prose and then attempt to compress it.
 12. Distinguish `NOT OBSERVED`, `NOT COLLECTED`, `UNKNOWN`, and `NOT APPLICABLE`; never use numeric confidence percentages.
-13. Existing prevention controls appear only when evidence confirms implementation. Planned work remains planned and is never an agent recommendation.
+13. Existing prevention controls appear only when evidence confirms implementation. Planned work remains planned; suggested future controls stay labeled as recommendations with their validation conditions.
 14. Milestones have no minimum count, remain chronological, and never pad or repeat evidence.
 
 #### Durable Follow-up Record and Closed-Case Learning
@@ -258,7 +260,7 @@ This payload applies only to a manually deployed optional extension and a separa
 
 ## 5. Deployment & Installation Architecture
 
-The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source or provide a production Case ID during installation. The v1.11.0 stable contract requires a unique temporary checkout created with `git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>` and requires `git describe --exact-match --tags HEAD` to return `v1.11.0`. After inspecting `INSTALL.md`, the agent runs no-flag `install-codex.ps1` or `install.bat`; each validates local attestation and live cloud compatibility before activation. SSO/MFA is the only intentional pause, followed by a new Codex task or Antigravity restart. These instructions do not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.
+The Gmail Apps Script deployment is a maintainer release gate, documented in `docs/GMAIL_CLOUD_BRIDGE.md`; end users do not deploy the cloud source or provide a production Case ID during installation. The v1.12.0 stable contract requires a unique temporary checkout created with `git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>` and requires `git describe --exact-match --tags HEAD` to return `v1.12.0`. After inspecting `INSTALL.md`, the agent runs no-flag `install-codex.ps1` or `install.bat`; each validates local attestation and live cloud compatibility before activation. SSO/MFA is the only intentional pause, followed by a new Codex task or Antigravity restart. These instructions do not assert that the tag, GitHub release, release asset, or URL-only acceptance run already succeeded.
 
 For Antigravity, `setup_env.ps1` automatically runs `verify-bridge`, opens Managed Edge login when authentication is required, and retries `verify-bridge`; the user only completes the visible SSO/MFA flow.
 

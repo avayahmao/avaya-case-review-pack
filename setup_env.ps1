@@ -338,7 +338,7 @@ function Get-CanonicalBrokerBuildId {
     $ProtocolMatch = [regex]::Match($IdentitySource, '(?m)^BRIDGE_PROTOCOL_VERSION\s*=\s*(?<value>\d+)\s*$')
     $RevisionMatch = [regex]::Match($IdentitySource, '(?m)^CONTRACT_REVISION\s*=\s*(?<value>\d+)\s*$')
     $RuntimeDigestMatch = [regex]::Match($IdentitySource, '(?m)^BRIDGE_SOURCE_SHA256\s*=\s*"(?<value>[0-9a-f]{64})"\s*$')
-    $CloudDigestMatch = [regex]::Match($CloudSource, '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "(?<value>[0-9a-f]{64})";$')
+    $CloudDigestMatch = [regex]::Match($CloudSource, '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "(?<value>[0-9a-f]{64})";\r?$')
     if (
         -not $ProtocolMatch.Success -or
         -not $RevisionMatch.Success -or

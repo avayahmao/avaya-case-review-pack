@@ -4,6 +4,41 @@ All notable changes, features, bug fixes, and architectural enhancements for the
 
 ---
 
+## [v1.12.0] - 2026-10-02: Clearer Case Progress and Technical Advice
+
+The stable v1.12.0 installation contract uses a unique temporary checkout:
+
+```text
+git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git describe --exact-match --tags HEAD
+```
+
+The tag check must return `v1.12.0`. This is the installation contract for the
+release; publication and clean-profile acceptance remain subject to the release
+checklist.
+
+### Case Review Clarity
+
+* Opens each successful structured review with a concise Executive Summary of the official status, reported issue, evidenced impact, critical confirmed finding, and production outcome. Unsupported facts remain `unknown`; NotebookLM results appear only when case-specific validation is available and substantiated.
+* Separates **Reported Problem / Symptom** from detailed **Current State** in the Case Card. The **Action Plan** shows only the next step, owner, and due date already recorded in the case. A separate **Technical Advice** section gives evidence-linked immediate diagnostics, conditional potential solutions, and long-term recommendations.
+* Requires new review overlays to provide `current.impact`, `current.current_progress`, and `presentation.technical_advice` with `immediate_diagnostics`, `potential_solutions`, and `long_term_steps` arrays. The structured output and persisted record use the same validated fields.
+
+### Collection Integrity and Efficiency
+
+* Moves completed-thread resume data into atomic, hash-checked per-thread checkpoints so large collections do not repeatedly rewrite completed message bodies into the progress file. Resume checks the thread identity, snapshot, counts, and body hashes before reuse.
+* Strengthens thread-page scope checks and bounded targeted query handling. The existing single-snapshot coverage and body-integrity gates still determine whether a review may be generated.
+* URL-encodes message IDs in the explicit legacy Gmail rollback read path, so reserved query characters cannot alter request parameters.
+* Lets the candidate Codex runtime stop an older Managed Edge broker during an upgrade after verifying the live broker's protocol and identity; ordinary Gmail requests still require an exact broker build match.
+* Reads the Cloud Bridge identity correctly from a clean Windows checkout with CRLF line endings in the Antigravity installer and maintainer verification runbook.
+* Known coexistence constraint: Codex and an older Antigravity installation can share one Managed Edge broker. The first product to start it determines the build, so a Codex-only update does not guarantee concurrent Gmail use with an older Antigravity build.
+* Local synthetic measurements: with 20 threads of 20 KB each and a 0.39 MB final corpus, cumulative progress writes fell from 8.28 MB to 0.392 MB (about 21 times the corpus size to about 1 time). In a 500,000-match snippet search, elapsed time and peak memory fell from 0.789 s / 44.2 MB to 0.002 s / 1.1 MB. These measurements cover local collector work only; the cloud bridge still re-fetches a full thread for each cursor page.
+
+### QA Guidance
+
+* Includes the post-v1.11.0 QA refinement commit `06a4170`: example-led score calibration, evidence-safe credit for technical boundary work, concise `Problem` and `efforts` wording, and natural management comments followed by exact signed deduction or Plus tokens.
+
+---
+
 ## [v1.11.0] - 2026-09-20: Deterministic Exhaustive Collection and Payload Assembly
 
 The stable v1.11.0 installation contract uses a unique temporary checkout:

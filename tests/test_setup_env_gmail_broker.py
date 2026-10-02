@@ -605,6 +605,22 @@ class InstallerContractTests(unittest.TestCase):
         self.assertLess(build_preflight, plugin_copy)
         self.assertLess(build_preflight, config_update)
 
+    def test_crlf_cloud_source_passes_canonical_build_preflight(self):
+        fixture = SetupInstallFixture()
+        self.addCleanup(fixture.close)
+        cloud_source = fixture.source / "tools/gmail/cloud/GmailMcpBridge.gs"
+        normalized = cloud_source.read_bytes().replace(b"\r\n", b"\n")
+        cloud_source.write_bytes(normalized.replace(b"\n", b"\r\n"))
+        cloud_bytes = cloud_source.read_bytes()
+        self.assertIn(b"\r\n", cloud_bytes)
+        self.assertNotIn(b"\n", cloud_bytes.replace(b"\r\n", b""))
+
+        completed = fixture.run("0")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("attestation-validate", fixture.event_lines())
+        self.assertIn("verify-bridge", fixture.broker_event_lines())
+
     def test_missing_or_malformed_canonical_broker_aborts_before_live_preflight(self):
         for mode in ("missing", "malformed"):
             with self.subTest(mode=mode):
@@ -945,7 +961,7 @@ class InstallerContractTests(unittest.TestCase):
         for installed, succeeds in (
             (None, False),
             ("1.9.0", False),
-            ("1.11.0", True),
+            ("1.12.0", True),
         ):
             with self.subTest(installed=installed):
                 fixture = SetupInstallFixture()

@@ -5,6 +5,7 @@
 pyproject.toml
 .gitignore
 INSTALL.md
+NOTES-v1.12.0.md
 README.html
 README.md
 AGENTS.md
@@ -44,6 +45,7 @@ plugins/avaya-case-review/skills/case-review/references/aes-cti-jtapi.md
 plugins/avaya-case-review/skills/case-review/references/analytics-kubernetes.md
 plugins/avaya-case-review/skills/case-review/references/certificates-login-outage.md
 plugins/avaya-case-review/skills/case-review/references/case-record-lifecycle.md
+plugins/avaya-case-review/skills/case-review/references/case-review-contract.md
 plugins/avaya-case-review/skills/case-review/references/contact-center.md
 plugins/avaya-case-review/skills/case-review/references/digital-channels.md
 plugins/avaya-case-review/skills/case-review/references/ip-office.md

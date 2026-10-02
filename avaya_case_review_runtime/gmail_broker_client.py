@@ -117,12 +117,15 @@ class BrokerClient:
         """Perform one request without starting an absent or unhealthy broker."""
 
         deadline = float(self._clock()) + self._request_timeout
-        state = self._discover_healthy_state(deadline)
+        state = self._discover_healthy_state(
+            deadline,
+            allow_old_build=method == "shutdown",
+        )
         if state is None:
             raise BrokerUnavailable()
         return self._send(state, method, params, deadline)
 
-    def _read_current_state(self) -> BrokerState | None:
+    def _read_current_state(self, *, allow_old_build: bool = False) -> BrokerState | None:
         try:
             state = self._state_store.read()
         except BrokerStateError:
@@ -133,12 +136,17 @@ class BrokerClient:
             raise BrokerProtocolMismatch()
         if is_stale_state(state, process_exists=self._process_exists):
             return None
-        if state.build_id != BROKER_BUILD_ID:
+        if state.build_id != BROKER_BUILD_ID and not allow_old_build:
             raise BrokerBuildMismatch()
         return state
 
-    def _discover_healthy_state(self, deadline: float) -> BrokerState | None:
-        state = self._read_current_state()
+    def _discover_healthy_state(
+        self,
+        deadline: float,
+        *,
+        allow_old_build: bool = False,
+    ) -> BrokerState | None:
+        state = self._read_current_state(allow_old_build=allow_old_build)
         if state is None:
             return None
         try:
@@ -159,6 +167,13 @@ class BrokerClient:
             or health["protocol_version"] != PROTOCOL_VERSION
         ):
             raise BrokerProtocolMismatch()
+        if (
+            type(health.get("pid")) is not int
+            or health["pid"] != state.pid
+            or health.get("instance_id") != state.instance_id
+            or health.get("build_id") != state.build_id
+        ):
+            raise BrokerProtocolMismatch("Gmail Edge broker identity mismatch")
         return state
 
     def _start_and_wait(self, request_deadline: float) -> BrokerState:

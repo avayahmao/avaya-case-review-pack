@@ -40,6 +40,7 @@ REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
         ".codex-plugin/plugin.json",
         ".mcp.json",
         "INSTALL.md",
+        "NOTES-v1.12.0.md",
         "docs/CODEX_PLUGIN_RELEASE_CHECKLIST.md",
         "docs/GMAIL_CLOUD_BRIDGE.md",
         "docs/GMAIL_EDGE_BROKER.md",
@@ -47,6 +48,7 @@ REQUIRED_RELEASE_PATHS = INSTALLER_ENTRY_POINTS | frozenset(
         "tools/installer/runtime_package.py",
         "plugins/avaya-case-review/plugin.json",
         "plugins/avaya-case-review/skills/case-review/SKILL.md",
+        "plugins/avaya-case-review/skills/case-review/references/case-review-contract.md",
         "plugins/avaya-case-review/skills/gmail-capability/SKILL.md",
         "skills/case-review/SKILL.md",
         "skills/gmail-capability/SKILL.md",
@@ -253,7 +255,7 @@ class ReleaseManifestTests(unittest.TestCase):
                 "--attestation",
                 str(extracted / CLOUD_BRIDGE_ATTESTATION),
                 "--plugin-version",
-                "1.11.0",
+                "1.12.0",
             ]
             validation = subprocess.run(
                 validator_command,

@@ -68,8 +68,8 @@
   {
     "id": "preventive_next_checkpoint",
     "input": "Evidence states a future preventive validation or change with an owner and ETA, but it has not been implemented.",
-    "expected": "The Case Card may restate the checkpoint only as an existing commitment; planned work must remain distinct from implemented controls.",
-    "contract_markers": ["Evidence-stated actions and checkpoints remain existing commitments", "never agent recommendations or implemented controls", "planned work is not an existing control"]
+    "expected": "The Case Card Action Plan restates the recorded checkpoint as an existing commitment. Separate Technical Advice can recommend evidence-backed future validation, without presenting it as an implemented control.",
+    "contract_markers": ["Evidence-stated actions and checkpoints remain existing commitments", "The separate `## Technical Advice` section", "planned work is not an existing control"]
   },
   {
     "id": "lab_success_not_production_confirmed",

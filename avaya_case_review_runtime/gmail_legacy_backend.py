@@ -115,7 +115,7 @@ async def legacy_query(method: str, params: dict[str, Any]) -> str:
         return await query_apps_script("search", f"&q={urllib.parse.quote(query)}")
     if method == "gmail_read":
         message_id = _required_string(params, "message_id")
-        return await query_apps_script("read", f"&id={message_id}")
+        return await query_apps_script("read", f"&id={urllib.parse.quote(message_id)}")
     if method == "gmail_send":
         to = _required_string(params, "to")
         subject = _required_string(params, "subject")

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import hmac
 import json
@@ -22,7 +23,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from review_presenter import PresentationError, render_review, validate_snapshot
+from review_presenter import (
+    PresentationError,
+    describe_presentation_schema,
+    render_review,
+    validate_snapshot,
+)
 
 
 SCHEMA_VERSION = 2
@@ -81,6 +87,8 @@ CURRENT_FIELDS = (
     "priority",
     "assignee",
     "primary_problem",
+    "impact",
+    "current_progress",
     "confirmed_finding",
     "unproven_or_contradicted",
     "rca_state",
@@ -95,6 +103,8 @@ STATE_FIELDS = (
     "official_status",
     "administrative_state",
     "primary_problem",
+    "impact",
+    "current_progress",
     "confirmed_finding",
     "unproven_or_contradicted",
     "rca_state",
@@ -267,6 +277,46 @@ def read_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def read_overlay_json(path: Path) -> dict[str, Any]:
+    """Read an agent-authored overlay with an optional BOM or trailing commas."""
+
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError as exc:
+        raise RecordError(f"record not found: {path}") from exc
+    output: list[str] = []
+    in_string = False
+    escaped = False
+    for index, character in enumerate(text):
+        if in_string:
+            output.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+            output.append(character)
+            continue
+        if character == ",":
+            lookahead = index + 1
+            while lookahead < len(text) and text[lookahead].isspace():
+                lookahead += 1
+            if lookahead < len(text) and text[lookahead] in "]}":
+                continue
+        output.append(character)
+    try:
+        value = json.loads("".join(output))
+    except json.JSONDecodeError as exc:
+        raise RecordError(f"invalid JSON record: {path}") from exc
+    if not isinstance(value, dict):
+        raise RecordError(f"JSON object required: {path}")
+    return value
+
+
 def atomic_write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -423,29 +473,73 @@ def validate_presentation(value: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(value, dict):
         raise RecordError("presentation must be an object")
+    normalized_value = copy.deepcopy(value)
+    for reserved in ("case_id", "current"):
+        if reserved in normalized_value:
+            raise RecordError(f"presentation.{reserved} may not override the validated case")
+    technical_spec = normalized_value.get("technical_spec")
+    if isinstance(technical_spec, dict):
+        for item in technical_spec.values():
+            if isinstance(item, dict) and isinstance(item.get("state"), str):
+                item["state"] = item["state"].strip().upper().replace("_", " ")
+    visual_context = normalized_value.get("visual_context")
+    if isinstance(visual_context, dict):
+        for key in ("hypotheses", "components", "transitions"):
+            values = visual_context.get(key)
+            if isinstance(values, list):
+                for item in values:
+                    if isinstance(item, dict) and isinstance(item.get("state"), str):
+                        item["state"] = item["state"].strip().upper().replace("_", " ")
     required = (
         "technical_spec",
         "problem_lineage",
+        "technical_advice",
         "milestones",
         "timeline",
         "evidence_register",
         "visual_context",
     )
     for key in required:
-        if key not in value:
+        if key not in normalized_value:
             raise RecordError(f"presentation.{key} is required")
-    if not isinstance(value["technical_spec"], dict):
+    if not isinstance(normalized_value["technical_spec"], dict):
         raise RecordError("presentation.technical_spec must be an object")
-    if not isinstance(value["problem_lineage"], dict):
+    if not isinstance(normalized_value["problem_lineage"], dict):
         raise RecordError("presentation.problem_lineage must be an object")
+    if not isinstance(normalized_value["technical_advice"], dict):
+        raise RecordError("presentation.technical_advice must be an object")
     for key in ("milestones", "timeline", "evidence_register"):
-        if not isinstance(value[key], list):
+        if not isinstance(normalized_value[key], list):
             raise RecordError(f"presentation.{key} must be a list")
-    if not value["evidence_register"]:
+    if not normalized_value["evidence_register"]:
         raise RecordError("presentation.evidence_register must contain evidence")
-    if not isinstance(value["visual_context"], dict):
+    if not isinstance(normalized_value["visual_context"], dict):
         raise RecordError("presentation.visual_context must be an object")
-    return dict(value)
+    return normalized_value
+
+
+def validate_renderable_presentation(
+    case_id: str,
+    current: dict[str, str],
+    presentation: dict[str, Any] | None,
+) -> None:
+    """Run the deterministic renderer before a payload can be finalized."""
+
+    if presentation is None:
+        return
+    snapshot = {
+        **presentation,
+        "case_id": case_id,
+        "current": current,
+    }
+    try:
+        validate_snapshot(snapshot)
+    except PresentationError as exc:
+        raise RecordError(f"presentation is not renderable: {exc}") from exc
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RecordError(
+            f"presentation is not renderable: missing or invalid field {exc}"
+        ) from exc
 
 
 def validate_update_payload(payload: Any) -> dict[str, Any]:
@@ -468,6 +562,7 @@ def validate_update_payload(payload: Any) -> dict[str, Any]:
         raise RecordError("snapshot_before cannot be later than reviewed_at")
     evidence_digest = validate_evidence_digest(payload.get("evidence_digest"))
     presentation = validate_presentation(payload.get("presentation"))
+    validate_renderable_presentation(case_id, current, presentation)
     full_review = payload.get("full_review_markdown")
     if presentation is None:
         if not isinstance(full_review, str) or not full_review.strip():
@@ -525,6 +620,7 @@ def compute_delta(
     state_changes = [
         describe_change(field.replace("_", " "), str(previous.get(field, "unknown")), current[field])
         for field in STATE_FIELDS
+        if field not in {"impact", "current_progress"} or field in previous
         if str(previous.get(field, "unknown")) != current[field]
     ]
     ownership_changes = [
@@ -605,6 +701,8 @@ def render_record(record: dict[str, Any]) -> str:
         ("Priority", "priority"),
         ("Assignee", "assignee"),
         ("Primary problem", "primary_problem"),
+        ("Impact", "impact"),
+        ("Current progress", "current_progress"),
         ("Confirmed technical finding", "confirmed_finding"),
         ("Unproven or contradicted", "unproven_or_contradicted"),
         ("RCA state", "rca_state"),
@@ -615,7 +713,10 @@ def render_record(record: dict[str, Any]) -> str:
         ("Next-action owner", "next_action_owner"),
         ("Next due", "next_due"),
     )
-    lines.extend(f"| {label} | {md_inline(current[key])} |" for label, key in card_fields)
+    lines.extend(
+        f"| {label} | {md_inline(current.get(key, 'unknown'))} |"
+        for label, key in card_fields
+    )
     lines.extend(["", "## Delta from Previous Review", "", render_delta(latest_delta), ""])
     lines.extend(
         [
@@ -764,9 +865,9 @@ def prepare_record_update(
     review_snapshot = None
     if normalized["presentation"] is not None:
         review_snapshot = {
+            **normalized["presentation"],
             "case_id": normalized["case_id"],
             "current": current,
-            **normalized["presentation"],
         }
         try:
             validate_snapshot(review_snapshot)
@@ -792,6 +893,7 @@ def prepare_record_update(
             record.pop("current_report_markdown", None)
         elif normalized["full_review_markdown"] is not None:
             record["current_report_markdown"] = normalized["full_review_markdown"]
+            record.pop("review_snapshot", None)
         record["reviews"].append(review)
     else:
         record = {
@@ -906,6 +1008,11 @@ def finalize_case_record(
         normalized = validate_update_payload(payload)
         if normalized["case_id"] != requested_case_id:
             raise RecordError("case ID argument does not match the update payload")
+        if normalized["presentation"] is None:
+            raise RecordError(
+                "finalize requires a current structured presentation; "
+                "full_review_markdown is supported by update only"
+            )
         existing = read_json(paths["json"]) if paths["json"].exists() else None
         record, update_result, should_save, suspend_learning = prepare_record_update(
             normalized, existing
@@ -1271,20 +1378,19 @@ def describe_schema() -> dict[str, Any]:
                 "item_fields": ["state", "date", "source", "fact"],
                 "states": sorted(EVIDENCE_STATES),
             },
-            "presentation": {
-                "required_when_full_review_markdown_absent": [
-                    "technical_spec",
-                    "problem_lineage",
-                    "milestones",
-                    "timeline",
-                    "evidence_register",
-                    "visual_context",
-                ],
-                "or": "a non-empty full_review_markdown string",
-            },
+            "presentation": describe_presentation_schema(),
         },
         "build_payload": {
             "purpose": "assemble the update payload from a passing collection manifest plus a small judgment overlay",
+            "overlay_syntax": "UTF-8 JSON; trailing commas are accepted",
+            "normal_one_shot_command": (
+                "finalize-overlay --manifest <manifest.json> --overlay <overlay.json> "
+                "--case-id <Case ID> --request <original request>"
+            ),
+            "finalize_requirement": (
+                "a current structured presentation is required; "
+                "full_review_markdown is supported by update only"
+            ),
             "mechanical_fields_from_manifest": [
                 "case_id",
                 "snapshot_before",
@@ -1295,13 +1401,143 @@ def describe_schema() -> dict[str, Any]:
                 "case_notes_discovered": "non-negative integer (required)",
                 "case_notes_processed": "non-negative integer (required, must equal discovered)",
                 "current": "object; the Case Card judgment fields listed in update_input.current",
-                "evidence_digest": "list; see update_input.evidence_digest",
+                "evidence_rows": {
+                    "normal_path": True,
+                    "purpose": "single source for evidence_digest, presentation.evidence_register, timeline, and milestones",
+                    "required_item_fields": [
+                        "state",
+                        "date",
+                        "source",
+                        "fact",
+                        "supports",
+                    ],
+                    "optional_item_fields": [
+                        "by",
+                        "change",
+                        "milestone_change",
+                    ],
+                    "date_format": (
+                        "extended ISO-8601 beginning YYYY-MM-DD, or the literal "
+                        "not stated or unknown"
+                    ),
+                    "rules": [
+                        "rows must be oldest-first so generated E1..EN refs are chronological",
+                        "by and change must be supplied together to emit a timeline row",
+                        "milestone_change emits a milestone row; more than five are bounded to the first two and last three",
+                        "do not also supply evidence_digest, presentation.evidence_register, presentation.timeline, or presentation.milestones",
+                    ],
+                    "states": sorted(EVIDENCE_STATES),
+                },
+                "evidence_digest": "legacy explicit list; omit when using evidence_rows",
                 "presentation": "optional object; see update_input.presentation",
                 "full_review_markdown": "optional string; alternative to presentation",
                 "reviewed_at": "optional ISO-8601 override; defaults to now",
             },
         },
     }
+
+
+def expand_evidence_rows(
+    value: Any,
+) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
+    """Expand one chronological evidence list into the repeated presentation surfaces."""
+
+    if not isinstance(value, list) or not value:
+        raise RecordError("overlay.evidence_rows must contain at least one evidence item")
+    evidence_digest: list[dict[str, str]] = []
+    evidence_register: list[dict[str, str]] = []
+    timeline: list[dict[str, str]] = []
+    milestones: list[dict[str, str]] = []
+    previous_date: datetime | None = None
+    undated_seen = False
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise RecordError(f"overlay.evidence_rows[{index}] must be an object")
+        normalized = require_string_map(
+            item,
+            f"overlay.evidence_rows[{index}]",
+            ("state", "date", "source", "fact", "supports"),
+        )
+        if normalized["state"] not in EVIDENCE_STATES:
+            raise RecordError(f"unsupported evidence state: {normalized['state']}")
+        date_text = normalized["date"]
+        if date_text.casefold() in {"not stated", "unknown"}:
+            date_key = None
+            undated_seen = True
+        else:
+            if not re.match(r"^\d{4}-\d{2}-\d{2}(?:$|[T ])", date_text):
+                raise RecordError(
+                    f"overlay.evidence_rows[{index}].date must use extended "
+                    "ISO-8601 (YYYY-MM-DD), not stated, or unknown"
+                )
+            try:
+                date_key = datetime.fromisoformat(date_text.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise RecordError(
+                    f"overlay.evidence_rows[{index}].date must be ISO-8601, not stated, or unknown"
+                ) from exc
+            if date_key.tzinfo is None:
+                date_key = date_key.replace(tzinfo=timezone.utc)
+            else:
+                date_key = date_key.astimezone(timezone.utc)
+            if undated_seen:
+                raise RecordError(
+                    "overlay.evidence_rows dated items must precede not stated or unknown items"
+                )
+            if previous_date is not None and date_key < previous_date:
+                raise RecordError("overlay.evidence_rows must be ordered oldest-first")
+            previous_date = date_key
+        ref = f"E{index + 1}"
+        evidence_digest.append(
+            {key: normalized[key] for key in ("state", "date", "source", "fact")}
+        )
+        evidence_register.append(
+            {
+                "ref": ref,
+                "date": normalized["date"],
+                "source": normalized["source"],
+                "evidence": normalized["fact"],
+                "supports": normalized["supports"],
+            }
+        )
+        by = item.get("by")
+        change = item.get("change")
+        if (by is None) != (change is None):
+            raise RecordError(
+                f"overlay.evidence_rows[{index}].by and change must be supplied together"
+            )
+        if by is not None and change is not None:
+            if not isinstance(by, str) or not by.strip():
+                raise RecordError(f"overlay.evidence_rows[{index}].by must be non-empty")
+            if not isinstance(change, str) or not change.strip():
+                raise RecordError(
+                    f"overlay.evidence_rows[{index}].change must be non-empty"
+                )
+            timeline.append(
+                {
+                    "date": normalized["date"],
+                    "by": by.strip(),
+                    "source": normalized["source"],
+                    "change": change.strip(),
+                    "evidence": ref,
+                }
+            )
+        milestone_change = item.get("milestone_change")
+        if milestone_change is not None:
+            if not isinstance(milestone_change, str) or not milestone_change.strip():
+                raise RecordError(
+                    f"overlay.evidence_rows[{index}].milestone_change must be non-empty"
+                )
+            milestones.append(
+                {
+                    "date": normalized["date"],
+                    "change": milestone_change.strip(),
+                    "evidence": ref,
+                }
+            )
+    if len(milestones) > 5:
+        milestones = milestones[:2] + milestones[-3:]
+    return evidence_digest, evidence_register, timeline, milestones
 
 
 def build_update_payload(
@@ -1312,7 +1548,7 @@ def build_update_payload(
     manifest = read_json(Path(manifest_path))
     if not isinstance(manifest, dict) or manifest.get("status") != "pass":
         raise RecordError("build-payload requires a collection manifest with status pass")
-    overlay = load_payload(str(overlay_path))
+    overlay = read_overlay_json(Path(overlay_path))
     if not isinstance(overlay, dict):
         raise RecordError("overlay must be a JSON object")
 
@@ -1349,6 +1585,39 @@ def build_update_payload(
         if isinstance(ledger.get(alias_key), int):
             coverage[alias_key] = ledger[alias_key]
 
+    evidence_digest = overlay.get("evidence_digest")
+    presentation = overlay.get("presentation")
+    evidence_rows = overlay.get("evidence_rows")
+    if evidence_rows is not None:
+        if evidence_digest is not None:
+            raise RecordError(
+                "overlay.evidence_rows cannot be combined with evidence_digest"
+            )
+        if not isinstance(presentation, dict):
+            raise RecordError(
+                "overlay.presentation must be an object when evidence_rows is used"
+            )
+        conflicting = [
+            key
+            for key in ("evidence_register", "timeline", "milestones")
+            if key in presentation
+        ]
+        if conflicting:
+            raise RecordError(
+                "overlay.evidence_rows cannot be combined with presentation."
+                + ", presentation.".join(conflicting)
+            )
+        (
+            evidence_digest,
+            evidence_register,
+            timeline,
+            milestones,
+        ) = expand_evidence_rows(evidence_rows)
+        presentation = dict(presentation)
+        presentation["evidence_register"] = evidence_register
+        presentation["timeline"] = timeline
+        presentation["milestones"] = milestones
+
     payload: dict[str, Any] = {
         "collection_status": "complete",
         "case_id": manifest.get("case_id"),
@@ -1356,11 +1625,12 @@ def build_update_payload(
         "snapshot_before": snapshot_before,
         "current": overlay.get("current"),
         "coverage": coverage,
-        "evidence_digest": overlay.get("evidence_digest"),
+        "evidence_digest": evidence_digest,
     }
-    for optional_key in ("presentation", "full_review_markdown"):
-        if optional_key in overlay:
-            payload[optional_key] = overlay[optional_key]
+    if presentation is not None:
+        payload["presentation"] = presentation
+    if "full_review_markdown" in overlay:
+        payload["full_review_markdown"] = overlay["full_review_markdown"]
 
     validated = validate_update_payload(payload)
     atomic_write(
@@ -1389,6 +1659,18 @@ def build_parser() -> argparse.ArgumentParser:
     finalize.add_argument("--input", required=True, help="Complete-review JSON payload")
     finalize.add_argument("--case-id", required=True)
     finalize.add_argument("--request", required=True, help="Original user request text")
+    finalize_overlay = subparsers.add_parser(
+        "finalize-overlay",
+        help="Build, validate, persist, render, and verify an overlay in one process",
+    )
+    finalize_overlay.add_argument(
+        "--manifest", required=True, help="gmail_collect_case.py manifest.json"
+    )
+    finalize_overlay.add_argument("--overlay", required=True, help="Judgment overlay JSON")
+    finalize_overlay.add_argument("--case-id", required=True)
+    finalize_overlay.add_argument(
+        "--request", required=True, help="Original user request text"
+    )
     schema = subparsers.add_parser(
         "schema", help="Print the current update-payload contract"
     )
@@ -1455,6 +1737,17 @@ def main() -> int:
                 args.request,
                 root,
             )
+            sys.stdout.buffer.write(result["markdown"].encode("utf-8"))
+        elif args.command == "finalize-overlay":
+            with tempfile.TemporaryDirectory(prefix="case-review-finalize-") as temporary:
+                payload_path = Path(temporary) / "payload.json"
+                build_update_payload(args.manifest, args.overlay, payload_path)
+                result = finalize_case_record(
+                    load_payload(str(payload_path)),
+                    args.case_id,
+                    args.request,
+                    root,
+                )
             sys.stdout.buffer.write(result["markdown"].encode("utf-8"))
         elif args.command == "schema":
             print(json.dumps(describe_schema(), ensure_ascii=False, indent=2))

@@ -273,6 +273,104 @@ class ExistingBrokerRequestTests(unittest.TestCase):
         )
         self.assertEqual(launched, [])
 
+    def test_old_build_can_only_receive_matching_authenticated_shutdown(self):
+        old_build = "1.11.0-old"
+        launched = []
+
+        def respond(request):
+            if request.method == "health":
+                return BrokerResponse.success(
+                    request.id,
+                    make_health_result(build_id=old_build),
+                )
+            return BrokerResponse.success(request.id, {"stopping": True})
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            store = BrokerStateStore(Path(tmp), acl_applier=None)
+            write_state(store, broker, build_id=old_build)
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda _pid: True,
+                launcher=lambda *args, **kwargs: launched.append((args, kwargs)),
+            )
+
+            with self.assertRaises(BrokerClientError) as rejected:
+                client.request_existing("gmail_read", {"message_id": "case"})
+            self.assertEqual(rejected.exception.code, "BROKER_BUILD_MISMATCH")
+            self.assertEqual(broker.requests, [])
+
+            result = client.request_existing("shutdown", {})
+
+        self.assertEqual(result, {"stopping": True})
+        self.assertEqual(
+            [request.method for request in broker.requests],
+            ["health", "shutdown"],
+        )
+        self.assertTrue(all(request.token == "test-token" for request in broker.requests))
+        self.assertEqual(launched, [])
+
+    def test_old_build_shutdown_rejects_mismatched_health_identity(self):
+        old_build = "1.11.0-old"
+        mismatches = (
+            ("protocol_version", PROTOCOL_VERSION + 1),
+            ("pid", os.getpid() + 1),
+            ("instance_id", "different-instance"),
+            ("build_id", "different-build"),
+        )
+        for field, wrong_value in mismatches:
+            with self.subTest(field=field):
+                def respond(request):
+                    health = make_health_result(build_id=old_build)
+                    health[field] = wrong_value
+                    return BrokerResponse.success(
+                        request.id,
+                        health,
+                    )
+
+                with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+                    store = BrokerStateStore(Path(tmp), acl_applier=None)
+                    write_state(store, broker, build_id=old_build)
+                    client = BrokerClient(
+                        state_store=store,
+                        process_exists=lambda _pid: True,
+                    )
+
+                    with self.assertRaises(BrokerProtocolMismatch):
+                        client.request_existing("shutdown", {})
+
+                self.assertEqual(
+                    [request.method for request in broker.requests],
+                    ["health"],
+                )
+
+    def test_old_build_shutdown_rejects_invalid_state_token(self):
+        old_build = "1.11.0-old"
+
+        def respond(request):
+            if request.token != "server-token":
+                return BrokerResponse.failure(
+                    request.id,
+                    BrokerErrorCode.INVALID_REQUEST,
+                    "Broker authentication failed",
+                )
+            return BrokerResponse.success(request.id, {"stopping": True})
+
+        with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+            store = BrokerStateStore(Path(tmp), acl_applier=None)
+            write_state(store, broker, build_id=old_build)
+            client = BrokerClient(
+                state_store=store,
+                process_exists=lambda _pid: True,
+            )
+
+            with self.assertRaises(BrokerUnavailable):
+                client.request_existing("shutdown", {})
+
+        self.assertEqual(
+            [request.method for request in broker.requests],
+            ["health"],
+        )
+
 
 class BuildCoherenceTests(unittest.TestCase):
     def test_matching_live_build_allows_health_and_data_without_launching(self):
@@ -300,6 +398,38 @@ class BuildCoherenceTests(unittest.TestCase):
             ["health", "gmail_search"],
         )
         self.assertEqual(launched, [])
+
+    def test_current_build_state_cannot_send_data_to_different_live_broker(self):
+        mismatches = (
+            ("pid", os.getpid() + 1),
+            ("instance_id", "different-instance"),
+            ("build_id", "1.11.0-old"),
+        )
+        for field, wrong_value in mismatches:
+            with self.subTest(field=field):
+                def respond(request):
+                    health = make_health_result()
+                    health[field] = wrong_value
+                    return BrokerResponse.success(request.id, health)
+
+                launched = []
+                with TemporaryDirectory() as tmp, FakeLoopbackBroker(respond) as broker:
+                    store = BrokerStateStore(Path(tmp), acl_applier=None)
+                    write_state(store, broker)
+                    client = BrokerClient(
+                        state_store=store,
+                        process_exists=lambda _pid: True,
+                        launcher=lambda *args, **kwargs: launched.append((args, kwargs)),
+                    )
+
+                    with self.assertRaises(BrokerProtocolMismatch):
+                        client.request("gmail_search", {"query": "case"})
+
+                self.assertEqual(
+                    [request.method for request in broker.requests],
+                    ["health"],
+                )
+                self.assertEqual(launched, [])
 
     def test_mismatched_live_build_fails_before_health_data_or_launch(self):
         launched = []

@@ -5,9 +5,9 @@ coverage uses temporary `CODEX_HOME` directories, synthetic attestation data,
 and command adapters; it never substitutes for the real marketplace, desktop,
 or SSO evidence recorded here.
 
-## Completed maintainer cloud gates
+## Maintainer cloud gates for v1.12.0
 
-- [x] Confirm Version 17 is active.
+- [ ] Confirm Version 17 is active in Apps Script deployment inventory.
 - [x] Confirm live source identity and capabilities match the candidate.
 - [x] Complete all 6 repeated probes successfully.
 - [x] Complete exhaustive zero-result, page, cursor, count, manifest, UTF-8,
@@ -15,6 +15,19 @@ or SSO evidence recorded here.
 - [x] Complete candidate `gmail_brokerctl.py verify-bridge` successfully.
 - [x] Validate the production release attestation against the candidate source
   and plugin version.
+
+The v1.11.0 verification record did not complete these candidate gates. Fresh
+v1.12.0 verification used the authenticated Managed Edge broker; a direct HTTP
+request returned login HTML. The source stamp was idempotent with SHA-256
+`14f8542b9ed19f1bb84ea2fb0209f8c70151f0d427b48453b904683187e884c0`.
+The live bridge was compatible. A zero-result probe and one shared-snapshot
+collection covered 41 list pages, 41 threads, 247 messages, and 44 read pages;
+manifest, count, body-hash, UTF-8 byte, and transport-budget checks passed.
+Six additional live Managed Edge probe cycles passed in 40.3 seconds; each
+checked source capability identity, zero-result completion, a case-list
+snapshot, and the first thread's manifest and count.
+The production attestation for plugin `1.12.0` validated at
+`2026-10-02T02:50:48Z`. No case or message identifiers are recorded here.
 
 ## Candidate identity
 
@@ -24,11 +37,11 @@ or SSO evidence recorded here.
 - [ ] Record the candidate commit SHA: `________________`.
 - [ ] Record the release tag and confirm it resolves to that candidate SHA:
   `________________`.
-- [ ] Record the Cloud Bridge source SHA-256 from the release attestation:
-  `________________`.
-- [ ] Confirm the attestation plugin version, bridge version, and contract
-  revision match the candidate: `________________`.
-- [ ] Verify the existing Apps Script deployment against the final stamped
+- [x] Record the Cloud Bridge source SHA-256 from the release attestation:
+  `14f8542b9ed19f1bb84ea2fb0209f8c70151f0d427b48453b904683187e884c0`.
+- [x] Confirm the attestation plugin version, bridge version, and contract
+  revision match the candidate: `plugin 1.12.0; bridge protocol 4; contract revision 1`.
+- [x] Verify the existing Apps Script deployment against the final stamped
   source by following `docs/GMAIL_CLOUD_BRIDGE.md`; do not redeploy it merely
   because a release is being prepared.
 - [ ] If the existing deployment is proven mismatched, record the mismatch and
@@ -37,8 +50,10 @@ or SSO evidence recorded here.
 
 ## Publication sequence
 
-Complete these gates in order. Leave every box unchecked until that exact
-external action has fresh evidence, and never force a branch or tag update.
+Begin only after the code and efficiency review and the local automated gates
+below pass. Complete these publication gates in order. Leave every box
+unchecked until that exact external action has fresh evidence, and never force
+a branch or tag update.
 
 - [ ] **Push the candidate branch and verify its exact remote SHA.**
 
@@ -62,20 +77,20 @@ external action has fresh evidence, and never force a branch or tag update.
   $DefaultBranchCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-main-" + [guid]::NewGuid().ToString("N"))
   git clone --depth 1 --branch main https://github.com/avayahmao/avaya-case-review-pack $DefaultBranchCheckout
   $DefaultReadme = Get-Content -LiteralPath (Join-Path $DefaultBranchCheckout "README.md") -Raw
-  $StableBootstrap = "git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
-  if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.11.0 bootstrap" }
+  $StableBootstrap = "git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>"
+  if (-not $DefaultReadme.Contains($StableBootstrap) -or -not $DefaultReadme.Contains("git describe --exact-match --tags HEAD")) { throw "Default-branch README is missing the stable v1.12.0 bootstrap" }
   ```
 
   Verify the default-branch README from a new shallow `main` checkout exposes
-  the exact stable v1.11.0 clone command and exact-tag check before creating
+  the exact stable v1.12.0 clone command and exact-tag check before creating
   the tag.
 
 - [ ] **Create and verify the annotated immutable tag at the accepted SHA.**
 
   ```powershell
-  git tag -a v1.11.0 $CandidateSha -m "v1.11.0"
-  git push origin refs/tags/v1.11.0
-  $RemoteTagSha = ((git ls-remote origin "refs/tags/v1.11.0^{}") -split '\s+')[0]
+  git tag -a v1.12.0 $CandidateSha -m "v1.12.0"
+  git push origin refs/tags/v1.12.0
+  $RemoteTagSha = ((git ls-remote origin "refs/tags/v1.12.0^{}") -split '\s+')[0]
   if ($RemoteTagSha -cne $CandidateSha) { throw "Remote tag SHA mismatch" }
   ```
 
@@ -84,14 +99,14 @@ external action has fresh evidence, and never force a branch or tag update.
 
 - [ ] **Build and verify the release ZIP.** Do not build from the candidate
   worktree. Use this exact procedure to build outside Git from a fresh, clean,
-  detached checkout of `v1.11.0`, and confirm the tag peels to the accepted
+  detached checkout of `v1.12.0`, and confirm the tag peels to the accepted
   candidate SHA:
 
   ```powershell
-  $ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.11.0-" + [guid]::NewGuid().ToString("N"))
-  $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.11.0.zip"
+  $ReleaseCheckout = Join-Path ([IO.Path]::GetTempPath()) ("avaya-v1.12.0-" + [guid]::NewGuid().ToString("N"))
+  $ArchivePath = Join-Path ([IO.Path]::GetTempPath()) "avaya-case-review-pack-v1.12.0.zip"
   git clone --no-checkout https://github.com/avayahmao/avaya-case-review-pack $ReleaseCheckout
-  git -C $ReleaseCheckout checkout --detach v1.11.0
+  git -C $ReleaseCheckout checkout --detach v1.12.0
   $TaggedSha = (git -C $ReleaseCheckout rev-parse HEAD).Trim()
   if ($TaggedSha -cne $CandidateSha) { throw "Tagged checkout SHA mismatch" }
   if (@(git -C $ReleaseCheckout status --porcelain).Count -ne 0) { throw "Tagged checkout is not clean" }
@@ -129,8 +144,8 @@ external action has fresh evidence, and never force a branch or tag update.
 - [ ] **Publish and verify the GitHub Release.** Only after every prior gate:
 
   ```powershell
-  gh release create v1.11.0 $ArchivePath --title "Codex URL installation repair" --notes-file NOTES-v1.11.0.md --latest
-  gh release view v1.11.0
+  gh release create v1.12.0 $ArchivePath --title "Clearer case progress and technical advice" --notes-file NOTES-v1.12.0.md --latest
+  gh release view v1.12.0
   ```
 
 ## Module-package MCP launch contract
@@ -149,6 +164,9 @@ option: the module-package commands below are the only supported launch gates.
 
 ## Local automated gates
 
+- [ ] Review the final candidate diff for correctness, large-input memory use,
+  repeated I/O, and evidence integrity. Record the local collector benchmark
+  separately from cloud and end-to-end performance claims.
 - [ ] Run the complete Python suite on each supported release host (Python 3.10 through 3.13):
   `python -m unittest discover -s tests -p "test_*.py"`.
 - [ ] Run the complete cloud and rollback Node suites:

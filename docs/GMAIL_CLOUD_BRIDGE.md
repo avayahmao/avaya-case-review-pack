@@ -1,18 +1,20 @@
 # Gmail Cloud Bridge Maintainer Release Runbook
 
-This maintainer-only runbook records the completed verification of the
-already-deployed exhaustive Gmail MCP cloud endpoint for **v1.11.0**. It does not redeploy
+This maintainer-only runbook defines verification of the already-deployed
+exhaustive Gmail MCP cloud endpoint for **v1.12.0**. This document does not
+record a passing result; the maintainer must record fresh evidence for each
+release gate. It does not redeploy
 the existing Gmail MCP Apps Script Web App unless verification proves a
 mismatch and a maintainer separately authorizes that update. It never deploys
 the optional governance example in
 `examples/optional-appsscript/Code.gs`. The stable installation contract is:
 
 ```text
-git clone --depth 1 --branch v1.11.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
+git clone --depth 1 --branch v1.12.0 https://github.com/avayahmao/avaya-case-review-pack <unique-temp-directory>
 git describe --exact-match --tags HEAD
 ```
 
-The tag check must return `v1.11.0`; then the agent inspects `INSTALL.md` and
+The tag check must return `v1.12.0`; then the agent inspects `INSTALL.md` and
 runs no-flag `install-codex.ps1` or `install.bat`. End users never deploy this
 cloud source or provide a production Case ID during installation. These are
 the release instructions published by this commit, not a claim that the tag,
@@ -93,9 +95,9 @@ $WebAppUrl = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_WEB_APP_URL")
 $CaseId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_CASE_ID")
 $ZeroResultId = [Environment]::GetEnvironmentVariable("GMAIL_VERIFY_ZERO_RESULT_ID")
 $CandidateSource = Get-Content -LiteralPath "tools/gmail/cloud/GmailMcpBridge.gs" -Raw
-$ExpectedBridgeVersion = [int]([regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_VERSION = (\d+);$').Groups[1].Value)
-$ExpectedContractRevision = [int]([regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_CONTRACT_REVISION = (\d+);$').Groups[1].Value)
-$ExpectedSourceDigest = [regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "([0-9a-f]{64})";$').Groups[1].Value
+$ExpectedBridgeVersion = [int]([regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_VERSION = (\d+);\r?$').Groups[1].Value)
+$ExpectedContractRevision = [int]([regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_CONTRACT_REVISION = (\d+);\r?$').Groups[1].Value)
+$ExpectedSourceDigest = [regex]::Match($CandidateSource, '(?m)^var GMAIL_BRIDGE_SOURCE_SHA256 = "([0-9a-f]{64})";\r?$').Groups[1].Value
 
 function Assert-Equal([string]$Name, $Actual, $Expected) {
     if ($Actual -ne $Expected) { throw "FAIL: $Name; do not publish local release package" }
